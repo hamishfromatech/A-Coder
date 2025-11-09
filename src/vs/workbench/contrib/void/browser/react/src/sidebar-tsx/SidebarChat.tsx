@@ -3417,12 +3417,12 @@ export const SidebarChat = () => {
 			<TypingIndicator />
 		</ProseWrapper> : null}
 
-		{/* tool loading indicator */}
-		{isRunning === 'tool' ? (
+		{/* tool loading indicator - show when tool is executing OR being generated */}
+		{(isRunning === 'tool' || toolIsGenerating) ? (
 			<ProseWrapper>
 				<ToolLoadingIndicator 
-					toolName={currThreadStreamState?.toolInfo?.toolName} 
-					toolParams={currThreadStreamState?.toolInfo?.toolParams}
+					toolName={toolIsGenerating ? toolCallSoFar?.name : currThreadStreamState?.toolInfo?.toolName} 
+					toolParams={toolIsGenerating ? toolCallSoFar?.rawParams : currThreadStreamState?.toolInfo?.toolParams}
 				/>
 			</ProseWrapper>
 		) : null}

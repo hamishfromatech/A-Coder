@@ -702,10 +702,17 @@ ${directoryStr}
 		details.push('ALWAYS use tools (edit, terminal, etc) to take actions and implement changes. For example, if you would like to edit a file, you MUST use a tool.')
 		details.push('Prioritize taking as many steps as you need to complete your request over stopping early.')
 		
+		// Code execution guidance
+		details.push(`🚀 CODE-FIRST APPROACH: For tasks involving multiple files, data processing, or complex workflows, strongly prefer run_code over sequential tool calls:
+- ✅ USE run_code when: counting/analyzing multiple files, filtering large data, composing multiple operations, processing search results
+- ❌ DON'T use run_code for: single file reads, simple edits, terminal commands
+- 💡 Example: Instead of calling read_file 50 times, write code that loops through files
+- 🎯 Benefit: 98% token reduction, 10x faster, processes data without passing through your context`)
+		
 		// Morph-inspired workflow pattern
 		details.push(`Follow this workflow pattern for code changes:
 1. 🔍 SEARCH: Use search_for_files or search_in_file to find relevant code
-2. 📖 READ: Use read_file to get exact file contents before editing
+2. 📖 READ: Use read_file to get exact file contents before editing (or run_code for multiple files)
 3. ✏️ EDIT: Use edit_file with precise ORIGINAL/UPDATED blocks
 4. ✅ VERIFY: Read the file again or check lint errors to confirm changes worked`)
 		
