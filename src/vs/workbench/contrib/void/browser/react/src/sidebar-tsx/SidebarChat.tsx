@@ -1335,20 +1335,6 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 		chatbubbleContents = <>
 			<SelectedFiles type='past' messageIdx={messageIdx} selections={chatMessage.selections || []} />
 			<span className='px-0.5'>{chatMessage.displayContent}</span>
-			{/* Show skeleton for vision analysis instead of displaying the text */}
-			{chatMessage.visionAnalysis && chatMessage.images && chatMessage.images.length > 0 && (
-				<div className="mt-2 px-3 py-2 bg-void-bg-2 border border-void-border-1 rounded-md w-full">
-					<div className="flex items-center gap-2 text-void-fg-3 text-xs mb-1">
-						<span>🔍</span>
-						<span className="font-medium">Image Analysis</span>
-					</div>
-					<div className="space-y-1">
-						<div className="h-2 bg-void-bg-3 rounded animate-pulse w-full"></div>
-						<div className="h-2 bg-void-bg-3 rounded animate-pulse w-5/6"></div>
-						<div className="h-2 bg-void-bg-3 rounded animate-pulse w-4/6"></div>
-					</div>
-				</div>
-			)}
 		</>
 	}
 	else if (mode === 'edit') {
@@ -2894,13 +2880,43 @@ const _ChatBubble = ({ threadId, chatMessage, currCheckpointIdx, isCommitted, me
 	const isCheckpointGhost = messageIdx > (currCheckpointIdx ?? Infinity) && !chatIsRunning // whether to show as gray (if chat is running, for good measure just dont show any ghosts)
 
 	if (role === 'user') {
-		return <UserMessageComponent
-			chatMessage={chatMessage}
-			isCheckpointGhost={isCheckpointGhost}
-			currCheckpointIdx={currCheckpointIdx}
-			messageIdx={messageIdx}
-			_scrollToBottom={_scrollToBottom}
-		/>
+		return <>
+			<UserMessageComponent
+				chatMessage={chatMessage}
+				isCheckpointGhost={isCheckpointGhost}
+				currCheckpointIdx={currCheckpointIdx}
+				messageIdx={messageIdx}
+				_scrollToBottom={_scrollToBottom}
+			/>
+			{/* Show skeleton for vision analysis below user message */}
+			{chatMessage.visionAnalysis && chatMessage.images && chatMessage.images.length > 0 && (
+				<div className="mt-2 ml-auto self-end w-fit max-w-full">
+					<div className="px-3 py-2 bg-void-bg-2 border border-void-border-1 rounded-md">
+						<div className="flex items-center gap-2 text-void-fg-3 text-xs mb-2">
+							<span>🔍</span>
+							<span className="font-medium">Image Analysis</span>
+						</div>
+						{/* Show image thumbnails */}
+						<div className="flex flex-wrap gap-2 mb-2">
+							{chatMessage.images.map((image, index) => (
+								<img
+									key={index}
+									src={`data:${image.mimeType};base64,${image.base64}`}
+									alt={image.name || `Image ${index + 1}`}
+									className="w-20 h-20 object-cover rounded border border-void-border-2"
+								/>
+							))}
+						</div>
+						{/* Skeleton loading animation */}
+						<div className="space-y-1">
+							<div className="h-2 bg-void-bg-3 rounded animate-pulse w-full"></div>
+							<div className="h-2 bg-void-bg-3 rounded animate-pulse w-5/6"></div>
+							<div className="h-2 bg-void-bg-3 rounded animate-pulse w-4/6"></div>
+						</div>
+					</div>
+				</div>
+			)}
+		</>
 	}
 	else if (role === 'assistant') {
 		return <AssistantMessageComponent
@@ -3439,21 +3455,23 @@ export const SidebarChat = () => {
 
 		// send message to LLM
 		const userMessage = _forceSubmit || textAreaRef.current?.value || ''
+		const imagesToSend = attachedImages.length > 0 ? attachedImages : undefined
+
+		// Clear UI immediately (before async call)
+		setSelections([]) // clear staging
+		setAttachedImages([]) // clear images
+		textAreaFnsRef.current?.setValue('')
+		textAreaRef.current?.focus() // focus input after submit
 
 		try {
 			await chatThreadsService.addUserMessageAndStreamResponse({ 
 				userMessage, 
 				threadId,
-				images: attachedImages.length > 0 ? attachedImages : undefined
+				images: imagesToSend
 			})
 		} catch (e) {
 			console.error('Error while sending message in chat:', e)
 		}
-
-		setSelections([]) // clear staging
-		setAttachedImages([]) // clear images
-		textAreaFnsRef.current?.setValue('')
-		textAreaRef.current?.focus() // focus input after submit
 
 	}, [chatThreadsService, isDisabled, isRunning, textAreaRef, textAreaFnsRef, setSelections, settingsState, attachedImages])
 

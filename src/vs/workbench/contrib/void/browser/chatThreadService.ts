@@ -840,6 +840,14 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 			this._setStreamState(threadId, { isRunning: 'idle', interrupt: idleInterruptor })
 
 			const chatMessages = this.state.allThreads[threadId]?.messages ?? []
+			console.log(`[_runChatAgent] threadId: ${threadId}, messages count: ${chatMessages.length}`);
+			if (chatMessages.length > 0) {
+				const lastMsg = chatMessages[chatMessages.length - 1];
+				console.log(`[_runChatAgent] Last message role: ${lastMsg.role}`);
+				if (lastMsg.role === 'user') {
+					console.log(`[_runChatAgent] Last user message content length: ${(lastMsg as any).content?.length || 0}`);
+				}
+			}
 			const { messages, separateSystemMessage, tokenUsage } = await this._convertToLLMMessagesService.prepareLLMChatMessages({
 				chatMessages,
 				modelSelection,
@@ -1431,55 +1439,51 @@ We only need to do it for files that were edited since `from`, ie files between 
 
 
 		// add user's message to chat history
-		let instructions = userMessage
-		const currSelns: StagingSelectionItem[] = _chatSelections ?? thread.state.stagingSelections
+	const currSelns: StagingSelectionItem[] = _chatSelections ?? thread.state.stagingSelections
 
-		// Process images with vision model if present and enabled
-		let visionAnalysis: string | undefined;
-		if (images && images.length > 0 && this._settingsService.state.globalSettings.enableVisionSupport) {
-			try {
-				console.log(`[chatThreadService] Processing ${images.length} image(s) with vision model...`);
-				
-				// Process images
-				const imageDescriptions = await this._visionService.processImages(images, userMessage);
-				
-				// Store vision analysis separately (will be hidden from display)
-				if (imageDescriptions) {
-					visionAnalysis = imageDescriptions;
-					// Append to instructions for LLM (but not shown to user)
-					instructions = userMessage 
-						? `${userMessage}\n\n[Image Analysis]\n${imageDescriptions}`
-						: `[Image Analysis]\n${imageDescriptions}`;
-					console.log('[chatThreadService] Image processing complete, descriptions added to message');
-				}
-			} catch (error) {
-				console.error('[chatThreadService] Error processing images:', error);
-				// Show error to user but continue with message
-				this._notificationService.notify({
-					severity: Severity.Warning,
-					message: `Failed to process images: ${error instanceof Error ? error.message : 'Unknown error'}`,
-				});
-			}
+	// Process images FIRST if present (before adding message)
+	let visionAnalysis: string | undefined;
+	if (images && images.length > 0 && this._settingsService.state.globalSettings.enableVisionSupport) {
+		// Show typing indicator while processing images
+		this._setStreamState(threadId, { isRunning: 'idle', interrupt: 'not_needed' });
+		
+		try {
+			visionAnalysis = await this._visionService.processImages(images, userMessage);
+		} catch (error) {
+			console.error(`[chatThreadService] Error processing images:`, error);
+			this._notificationService.notify({
+				severity: Severity.Warning,
+				message: `Failed to process images: ${error instanceof Error ? error.message : 'Unknown error'}`,
+			});
+		} finally {
+			// Clear stream state after processing
+			this._setStreamState(threadId, undefined);
 		}
+	}
 
-		const userMessageContent = await chat_userMessageContent(instructions, currSelns, { directoryStrService: this._directoryStringService, fileService: this._fileService }) // user message + names of files (NOT content)
-		const userHistoryElt: ChatMessage = { 
-			role: 'user', 
-			content: userMessageContent, 
-			displayContent: userMessage, // Show only original message, not vision analysis
-			selections: currSelns, 
-			images, 
-			visionAnalysis, // Store vision analysis separately for skeleton display
-			state: defaultMessageState 
-		}
-		this._addMessageToThread(threadId, userHistoryElt)
+	// Build message content with vision analysis if available
+	const messageContent = visionAnalysis 
+		? (userMessage ? `${userMessage}\n\n[Image Analysis]\n${visionAnalysis}` : `[Image Analysis]\n${visionAnalysis}`)
+		: userMessage;
+	
+	let finalContent = await chat_userMessageContent(messageContent, currSelns, { directoryStrService: this._directoryStringService, fileService: this._fileService })
+	const userHistoryElt: ChatMessage = { 
+		role: 'user', 
+		content: finalContent, 
+		displayContent: userMessage,
+		selections: currSelns, 
+		images, 
+		visionAnalysis, 
+		state: defaultMessageState 
+	}
+	this._addMessageToThread(threadId, userHistoryElt)
 
-		this._setThreadState(threadId, { currCheckpointIdx: null }) // no longer at a checkpoint because started streaming
+	this._setThreadState(threadId, { currCheckpointIdx: null }) // no longer at a checkpoint because started streaming
 
-		this._wrapRunAgentToNotify(
-			this._runChatAgent({ threadId, ...this._currentModelSelectionProps(), }),
-			threadId,
-		)
+	this._wrapRunAgentToNotify(
+		this._runChatAgent({ threadId, ...this._currentModelSelectionProps(), }),
+		threadId,
+	)
 
 		// scroll to bottom
 		this.state.allThreads[threadId]?.state.mountedInfo?.whenMounted.then(m => {

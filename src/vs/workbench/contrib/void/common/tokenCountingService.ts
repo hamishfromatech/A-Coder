@@ -5,144 +5,34 @@
 
 import { LLMChatMessage } from './sendLLMMessageTypes.js';
 
-// Type definitions for js-tiktoken (loaded dynamically)
-type Tiktoken = any;
-
 /**
  * Service for counting tokens in messages and managing context windows.
- * Uses tiktoken for accurate token counting across different models.
- * Falls back to character-based estimation if tiktoken is unavailable.
+ * Uses character-based estimation (~4 chars per token).
+ * For exact counting, use the IPC channel directly in main process.
  */
 export class TokenCountingService {
-	private encoderCache: Map<string, Tiktoken> = new Map();
-	private tiktokenAvailable: boolean = false;
-	private encodingForModel: any = null;
-
 	constructor() {
-		// Try to load js-tiktoken dynamically (only works in Node.js/Electron main process)
-		this.initializeTiktoken();
-	}
-
-	private async initializeTiktoken(): Promise<void> {
-		try {
-			// Dynamic import - will fail gracefully in browser context
-			const tiktoken = await import('js-tiktoken');
-			this.encodingForModel = tiktoken.encodingForModel;
-			this.tiktokenAvailable = true;
-			console.log('[TokenCountingService] js-tiktoken loaded successfully');
-		} catch (error) {
-			console.warn('[TokenCountingService] js-tiktoken not available, using character-based estimation');
-			this.tiktokenAvailable = false;
-		}
-	}
-
-	/**
-	 * Get or create an encoder for a specific model
-	 */
-	private getEncoder(modelName: string): Tiktoken | null {
-		if (!this.tiktokenAvailable || !this.encodingForModel) {
-			return null;
-		}
-
-		if (!this.encoderCache.has(modelName)) {
-			try {
-				const encoder = this.encodingForModel(modelName as any);
-				this.encoderCache.set(modelName, encoder);
-			} catch (error) {
-				// Fallback to cl100k_base for unknown models (GPT-4 encoding)
-				console.warn(`[TokenCountingService] Unknown model ${modelName}, using cl100k_base encoding`);
-				try {
-					const encoder = this.encodingForModel('gpt-4' as any);
-					this.encoderCache.set(modelName, encoder);
-				} catch {
-					return null;
-				}
-			}
-		}
-		return this.encoderCache.get(modelName) || null;
+		console.log('[TokenCountingService] Using character-based token estimation');
 	}
 
 	/**
 	 * Count tokens in a single text string
+	 * Uses character-based estimation: ~4 characters per token
 	 */
 	public countTextTokens(text: string, modelName: string): number {
-		const encoder = this.getEncoder(modelName);
-		if (!encoder) {
-			// Fallback: estimate ~4 characters per token
-			return Math.ceil(text.length / 4);
-		}
-		return encoder.encode(text).length;
+		// Fallback: estimate ~4 characters per token
+		return Math.ceil(text.length / 4);
 	}
 
 	/**
 	 * Count tokens in a chat message
-	 * Based on OpenAI's token counting logic
-	 * Handles Anthropic, OpenAI, and Gemini message formats
+	 * Uses character-based estimation
 	 */
 	public countMessageTokens(message: LLMChatMessage, modelName: string): number {
-		const encoder = this.getEncoder(modelName);
-		if (!encoder) {
-			// Fallback: estimate based on JSON string length
-			return Math.ceil(JSON.stringify(message).length / 4);
-		}
-		
-		// Token overhead per message varies by model
-		const { tokensPerMessage } = this.getModelOverhead(modelName);
-		
-		let numTokens = tokensPerMessage;
-		
-		// Count tokens in role
-		numTokens += encoder.encode(message.role).length;
-		
-		// Handle different message formats
-		if ('content' in message) {
-			// Anthropic or OpenAI format
-			if (typeof message.content === 'string') {
-				numTokens += encoder.encode(message.content).length;
-			} else if (Array.isArray(message.content)) {
-				// Handle multi-part content (images, text, tool calls, etc.)
-				for (const part of message.content) {
-					if ('type' in part) {
-						if (part.type === 'text' && 'text' in part) {
-							numTokens += encoder.encode(part.text).length;
-						} else if (part.type === 'tool_use' && 'name' in part) {
-							numTokens += encoder.encode(part.name).length;
-							numTokens += encoder.encode(JSON.stringify(part.input)).length;
-						} else if (part.type === 'tool_result' && 'content' in part) {
-							numTokens += encoder.encode(part.content).length;
-						}
-					}
-				}
-			}
-		} else if ('parts' in message) {
-			// Gemini format
-			for (const part of message.parts) {
-				if ('text' in part) {
-					numTokens += encoder.encode(part.text).length;
-				} else if ('functionCall' in part) {
-					numTokens += encoder.encode(part.functionCall.name).length;
-					numTokens += encoder.encode(JSON.stringify(part.functionCall.args)).length;
-				} else if ('functionResponse' in part) {
-					numTokens += encoder.encode(part.functionResponse.name).length;
-					numTokens += encoder.encode(part.functionResponse.response.output).length;
-				}
-			}
-		}
-		
-		// Handle OpenAI tool calls
-		if ('tool_calls' in message && message.tool_calls) {
-			for (const toolCall of message.tool_calls) {
-				numTokens += encoder.encode(toolCall.function.name).length;
-				numTokens += encoder.encode(toolCall.function.arguments).length;
-			}
-		}
-		
-		// Handle OpenAI tool results
-		if ('tool_call_id' in message && message.tool_call_id) {
-			numTokens += encoder.encode(message.tool_call_id).length;
-		}
-		
-		return numTokens;
+		// Estimate based on JSON string length
+		const messageStr = JSON.stringify(message);
+		// Add overhead for message formatting (~4 tokens per message)
+		return Math.ceil(messageStr.length / 4) + 4;
 	}
 
 	/**
@@ -161,21 +51,6 @@ export class TokenCountingService {
 		return totalTokens;
 	}
 
-	/**
-	 * Get token overhead per message and name for a specific model
-	 */
-	private getModelOverhead(modelName: string): { tokensPerMessage: number; tokensPerName: number } {
-		// Based on OpenAI's official token counting logic
-		if (modelName.includes('gpt-4') || modelName.includes('gpt-3.5-turbo')) {
-			if (modelName.includes('0301')) {
-				return { tokensPerMessage: 4, tokensPerName: -1 };
-			}
-			return { tokensPerMessage: 3, tokensPerName: 1 };
-		}
-		
-		// Default for unknown models
-		return { tokensPerMessage: 3, tokensPerName: 1 };
-	}
 
 	/**
 	 * Get the context window size for a model
@@ -291,11 +166,9 @@ export class TokenCountingService {
 	}
 
 	/**
-	 * Dispose of cached encoders
+	 * Dispose (no-op for character-based estimation)
 	 */
 	public dispose(): void {
-		// Clear the cache
-		// Note: js-tiktoken encoders don't have a free() method like Python version
-		this.encoderCache.clear();
+		// No cleanup needed
 	}
 }
