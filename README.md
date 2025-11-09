@@ -17,9 +17,9 @@ This repo contains the full sourcecode for A-Coder. If you're new, welcome!
 
 - 🧭 Original Void: [voideditor.com](https://voideditor.com)
 
-- 📖 [Development Guide](./DEVELOPMENT_GUIDE.md)
-- 🛠️ [Latest Models Tool Calling Analysis](./LATEST_MODELS_TOOL_CALLING_ANALYSIS.md)
-- ⚠️ [Ollama Cloud Tool Calling Bug](./OLLAMA_CLOUD_TOOL_CALLING_BUG.md)
+- 📖 [Development Guide](./docs/DEVELOPMENT_GUIDE.md)
+- 🛠️ [Latest Models Tool Calling Analysis](./docs/LATEST_MODELS_TOOL_CALLING_ANALYSIS.md)
+- ⚠️ [Ollama Cloud Tool Calling Bug](./docs/OLLAMA_CLOUD_TOOL_CALLING_BUG.md)
 
 
 ## Recent Features & Fixes
@@ -45,7 +45,7 @@ This repo contains the full sourcecode for A-Coder. If you're new, welcome!
 3. Drag & drop or paste images into chat
 4. Images are analyzed and descriptions added to your message
 
-**Details:** See [VISION_SUPPORT_IMPLEMENTATION.md](./VISION_SUPPORT_IMPLEMENTATION.md)
+**Details:** See [VISION_SUPPORT_IMPLEMENTATION.md](./docs/VISION_SUPPORT_IMPLEMENTATION.md)
 
 ---
 
@@ -82,12 +82,12 @@ This repo contains the full sourcecode for A-Coder. If you're new, welcome!
 
 **Status:** ✅ Fixed! All Ollama Cloud models now use native OpenAI-style tool calling.
 
-**Details:** See [OLLAMA_CLOUD_TOOL_CALLING_BUG.md](./OLLAMA_CLOUD_TOOL_CALLING_BUG.md)
+**Details:** See [OLLAMA_CLOUD_TOOL_CALLING_BUG.md](./docs/OLLAMA_CLOUD_TOOL_CALLING_BUG.md)
 
 
 ## Development
 
-To get started developing A-Coder, see [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md) for complete instructions on:
+To get started developing A-Coder, see [DEVELOPMENT_GUIDE.md](./docs/DEVELOPMENT_GUIDE.md) for complete instructions on:
 - Running in development mode
 - Building for production
 - Creating DMG installers
@@ -95,4 +95,4 @@ To get started developing A-Coder, see [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUID
 
 ## Reference
 
-A-Coder is a fork of [Void](https://github.com/voideditor/void), which itself is a fork of [VS Code](https://github.com/microsoft/vscode). For a guide to the codebase, see [VOID_CODEBASE_GUIDE.md](./VOID_CODEBASE_GUIDE.md).
+A-Coder is a fork of [Void](https://github.com/voideditor/void), which itself is a fork of [VS Code](https://github.com/microsoft/vscode). For a guide to the codebase, see [VOID_CODEBASE_GUIDE.md](./docs/VOID_CODEBASE_GUIDE.md).
