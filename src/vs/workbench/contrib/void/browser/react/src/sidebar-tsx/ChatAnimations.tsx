@@ -78,17 +78,55 @@ export const SlideInRight = ({ children, delay = 0 }: { children: React.ReactNod
 };
 
 /**
- * Typing indicator with animated dots (for LLM response)
+ * Typing indicator with smooth wave animation (for LLM response)
  */
 export const TypingIndicator = () => {
+	// Generate unique ID for this instance to avoid keyframe conflicts
+	const animId = useRef(`wave-${Math.random().toString(36).substr(2, 9)}`).current;
+	
 	return (
-		<div className="flex items-center gap-1 py-2">
-			<div className="flex gap-1">
-				<div className="w-2 h-2 bg-void-fg-4 rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1s' }} />
-				<div className="w-2 h-2 bg-void-fg-4 rounded-full animate-bounce" style={{ animationDelay: '150ms', animationDuration: '1s' }} />
-				<div className="w-2 h-2 bg-void-fg-4 rounded-full animate-bounce" style={{ animationDelay: '300ms', animationDuration: '1s' }} />
+		<>
+			<style>{`
+				@keyframes ${animId} {
+					0%, 60%, 100% {
+						transform: scale(1);
+						opacity: 0.6;
+					}
+					30% {
+						transform: scale(1.3);
+						opacity: 1;
+					}
+				}
+			`}</style>
+			<div className="flex items-center gap-1 py-2">
+				<div className="flex gap-1.5">
+					<div 
+						className="w-2 h-2 rounded-full"
+						style={{ 
+							backgroundColor: 'var(--vscode-void-accent, #007acc)',
+							animation: `${animId} 1.4s ease-in-out infinite`,
+							animationDelay: '0s'
+						}} 
+					/>
+					<div 
+						className="w-2 h-2 rounded-full"
+						style={{ 
+							backgroundColor: 'var(--vscode-void-accent, #007acc)',
+							animation: `${animId} 1.4s ease-in-out infinite`,
+							animationDelay: '0.2s'
+						}} 
+					/>
+					<div 
+						className="w-2 h-2 rounded-full"
+						style={{ 
+							backgroundColor: 'var(--vscode-void-accent, #007acc)',
+							animation: `${animId} 1.4s ease-in-out infinite`,
+							animationDelay: '0.4s'
+						}} 
+					/>
+				</div>
 			</div>
-		</div>
+		</>
 	);
 };
 

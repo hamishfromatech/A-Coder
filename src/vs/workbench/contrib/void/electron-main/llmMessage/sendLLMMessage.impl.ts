@@ -357,7 +357,16 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 	let toolId = ''
 	let toolParamsStr = ''
 
+	console.log(`[sendLLMMessage] Reasoning extraction config:`, {
+		needsManualReasoningParse,
+		canIOReasoning,
+		hasOpenSourceThinkTags: !!openSourceThinkTags,
+		openSourceThinkTags,
+		manuallyParseReasoning
+	})
+
 	if (manuallyParseReasoning && openSourceThinkTags) {
+		console.log(`[sendLLMMessage] ✅ Enabling reasoning extraction with tags:`, openSourceThinkTags)
 		const { newOnText, newOnFinalMessage } = extractReasoningWrapper(onText, onFinalMessage, openSourceThinkTags)
 		onText = newOnText
 		onFinalMessage = newOnFinalMessage

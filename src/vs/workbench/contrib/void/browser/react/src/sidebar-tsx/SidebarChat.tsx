@@ -1628,6 +1628,8 @@ const titleOfBuiltinToolName = {
 
 	'read_lint_errors': { done: `Read lint errors`, proposed: 'Read lint errors', running: loadingTitleWrapper('Reading lint errors') },
 	'search_in_file': { done: 'Searched in file', proposed: 'Search in file', running: loadingTitleWrapper('Searching in file') },
+	
+	'run_code': { done: 'Executed code', proposed: 'Execute code', running: loadingTitleWrapper('Executing code') },
 } as const satisfies Record<BuiltinToolName, { done: any, proposed: any, running: any }>
 
 
@@ -1786,6 +1788,12 @@ const toolNameToDesc = (toolName: BuiltinToolName, _toolParams: BuiltinToolCallP
 			return {
 				desc1: getBasename(toolParams.uri.fsPath),
 				desc1Info: getRelative(toolParams.uri, accessor),
+			}
+		},
+		'run_code': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['run_code']
+			return {
+				desc1: 'Executing code in sandbox',
 			}
 		}
 	}
@@ -2721,6 +2729,41 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 			return <ToolHeaderWrapper {...componentParams} />
 		},
 	},
+	'run_code': {
+		resultWrapper: ({ toolMessage }) => {
+			const accessor = useAccessor()
+
+			const { desc1, desc1Info } = toolNameToDesc(toolMessage.name, toolMessage.params, accessor)
+			const title = getTitle(toolMessage)
+			const icon = null
+
+			if (toolMessage.type === 'tool_request') return null
+			if (toolMessage.type === 'running_now') return null
+
+			const isError = false
+			const isRejected = toolMessage.type === 'rejected'
+			const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError, icon, isRejected, }
+
+			if (toolMessage.type === 'success') {
+				const { result } = toolMessage
+				componentParams.bottomChildren = <BottomChildren title='Result'>
+					<CodeChildren>
+						{JSON.stringify(result.result, null, 2)}
+					</CodeChildren>
+				</BottomChildren>
+			}
+			else if (toolMessage.type === 'tool_error') {
+				const { result } = toolMessage
+				componentParams.bottomChildren = <BottomChildren title='Error'>
+					<CodeChildren>
+						{result}
+					</CodeChildren>
+				</BottomChildren>
+			}
+
+			return <ToolHeaderWrapper {...componentParams} />
+		},
+	},
 };
 
 
@@ -3239,11 +3282,28 @@ export const SidebarChat = () => {
 	const { displayContentSoFar, toolCallSoFar, reasoningSoFar, _rawTextBeforeStripping } = currThreadStreamState?.llmInfo ?? {}
 
 	// this is just if it's currently being generated, NOT if it's currently running
-	const toolIsGenerating = toolCallSoFar && !toolCallSoFar.isDone // show loading for slow tools (right now just edit)
+	const toolIsGenerating = !!(toolCallSoFar && !toolCallSoFar.isDone) // show loading for slow tools (right now just edit)
+	
+	// Also detect if tool name exists (even if params aren't done yet)
+	const hasToolName = !!(toolCallSoFar && toolCallSoFar.name)
 	
 	// For XML tool calling: detect if we're inside a <function_calls> block even before parsing completes
 	// Use raw text before stripping to detect the XML tags
-	const isGeneratingXMLToolCall = !toolIsGenerating && _rawTextBeforeStripping && _rawTextBeforeStripping.includes('<function_calls>') && !_rawTextBeforeStripping.includes('</function_calls>');
+	const isGeneratingXMLToolCall = !!(!toolIsGenerating && _rawTextBeforeStripping && _rawTextBeforeStripping.includes('<function_calls>') && !_rawTextBeforeStripping.includes('</function_calls>'));
+	
+	// Detect ANY tool call activity (native or XML) - ensure boolean
+	const isAnyToolActivity = hasToolName || toolIsGenerating || isGeneratingXMLToolCall;
+	
+	// Debug: log loading indicator state
+	console.log('[SidebarChat] Loading indicator state:', {
+		isRunning,
+		isAnyToolActivity,
+		hasToolName,
+		toolIsGenerating,
+		isGeneratingXMLToolCall,
+		shouldShowTyping: isRunning === 'LLM' && !isAnyToolActivity,
+		shouldShowTool: isRunning === 'tool' || isAnyToolActivity
+	});
 	
 	// Debug: log tool state
 	if (toolCallSoFar || isGeneratingXMLToolCall) {
@@ -3412,17 +3472,17 @@ export const SidebarChat = () => {
 		{/* Generating tool */}
 		{generatingTool}
 
-		{/* loading indicator - only show if NOT generating a tool */}
-		{isRunning === 'LLM' && !toolIsGenerating ? <ProseWrapper>
+		{/* loading indicator - show when LLM is running and NOT generating a tool */}
+		{(isRunning === 'LLM' || isRunning === 'idle') && !isAnyToolActivity ? <ProseWrapper>
 			<TypingIndicator />
 		</ProseWrapper> : null}
 
-		{/* tool loading indicator - show when tool is executing OR being generated */}
-		{(isRunning === 'tool' || toolIsGenerating) ? (
+		{/* tool loading indicator - show when tool is executing OR any tool activity detected (native or XML) */}
+		{(isRunning === 'tool' || isAnyToolActivity) ? (
 			<ProseWrapper>
 				<ToolLoadingIndicator 
-					toolName={toolIsGenerating ? toolCallSoFar?.name : currThreadStreamState?.toolInfo?.toolName} 
-					toolParams={toolIsGenerating ? toolCallSoFar?.rawParams : currThreadStreamState?.toolInfo?.toolParams}
+					toolName={hasToolName ? toolCallSoFar?.name : currThreadStreamState?.toolInfo?.toolName} 
+					toolParams={hasToolName ? toolCallSoFar?.rawParams : currThreadStreamState?.toolInfo?.toolParams}
 				/>
 			</ProseWrapper>
 		) : null}
