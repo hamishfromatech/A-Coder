@@ -20,6 +20,7 @@ import { MAX_CHILDREN_URIs_PAGE, MAX_FILE_CHARS_PAGE, MAX_TERMINAL_BG_COMMAND_TI
 import { IVoidSettingsService } from '../common/voidSettingsService.js'
 import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js'
 import { generateUuid } from '../../../../base/common/uuid.js'
+import { IMorphService } from './morphService.js'
 
 
 // tool use for AI
@@ -156,6 +157,7 @@ export class ToolsService implements IToolsService {
 		@IMarkerService private readonly markerService: IMarkerService,
 		@IVoidSettingsService private readonly voidSettingsService: IVoidSettingsService,
 		@IMainProcessService private readonly mainProcessService: IMainProcessService,
+		@IMorphService private readonly morphService: IMorphService,
 	) {
 		const queryBuilder = instantiationService.createInstance(QueryBuilder);
 
@@ -470,7 +472,28 @@ export class ToolsService implements IToolsService {
 					throw new Error(`Another LLM is currently making changes to this file. Please stop streaming for now and ask the user to resume later.`)
 				}
 				await editCodeService.callBeforeApplyOrEdit(uri)
-				editCodeService.instantlyRewriteFile({ uri, newContent })
+				
+				// Check if Morph Fast Apply is enabled for Chat feature
+				const chatModelSelection = this.voidSettingsService.state.modelSelectionOfFeature['Chat'];
+				const useMorph = chatModelSelection 
+					? this.voidSettingsService.state.optionsOfModelSelection['Chat'][chatModelSelection.providerName]?.[chatModelSelection.modelName]?.morphFastApply
+					: false;
+				
+				if (useMorph) {
+					// Use Morph Fast Apply
+					const fileContent = await fileService.readFile(uri);
+					const originalContent = fileContent.value.toString();
+					const appliedCode = await this.morphService.applyCodeChange({
+						instruction: 'Rewriting entire file with new content',
+						originalCode: originalContent,
+						updatedCode: newContent
+					});
+					editCodeService.instantlyRewriteFile({ uri, newContent: appliedCode });
+				} else {
+					// Use standard rewrite
+					editCodeService.instantlyRewriteFile({ uri, newContent });
+				}
+				
 				// at end, get lint errors
 				const lintErrorsPromise = Promise.resolve().then(async () => {
 					await timeout(2000)
@@ -486,7 +509,27 @@ export class ToolsService implements IToolsService {
 					throw new Error(`Another LLM is currently making changes to this file. Please stop streaming for now and ask the user to resume later.`)
 				}
 				await editCodeService.callBeforeApplyOrEdit(uri)
-				await editCodeService.instantlyApplySearchReplaceBlocks({ uri, searchReplaceBlocks })
+				
+				// Check if Morph Fast Apply is enabled for Chat feature
+				const chatModelSelection = this.voidSettingsService.state.modelSelectionOfFeature['Chat'];
+				const useMorph = chatModelSelection 
+					? this.voidSettingsService.state.optionsOfModelSelection['Chat'][chatModelSelection.providerName]?.[chatModelSelection.modelName]?.morphFastApply
+					: false;
+				
+				if (useMorph) {
+					// Use Morph Fast Apply - convert search/replace blocks to Morph format
+					const fileContent = await fileService.readFile(uri);
+					const originalContent = fileContent.value.toString();
+					const appliedCode = await this.morphService.applyCodeChange({
+						instruction: 'Applying code edits',
+						originalCode: originalContent,
+						updatedCode: searchReplaceBlocks // Morph expects code with // ... existing code ... format
+					});
+					editCodeService.instantlyRewriteFile({ uri, newContent: appliedCode });
+				} else {
+					// Use standard search/replace
+					await editCodeService.instantlyApplySearchReplaceBlocks({ uri, searchReplaceBlocks });
+				}
 
 				// at end, get lint errors
 				const lintErrorsPromise = Promise.resolve().then(async () => {

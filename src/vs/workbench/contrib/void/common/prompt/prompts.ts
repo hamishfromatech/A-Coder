@@ -535,10 +535,13 @@ export const availableTools = (chatMode: ChatMode | null, mcpTools: InternalTool
 			: chatMode === 'agent' ? Object.keys(builtinTools) as BuiltinToolName[]
 				: undefined
 
-	const effectiveBuiltinTools = builtinToolNames?.map(toolName => builtinTools[toolName]) ?? undefined
+	// Filter out run_code tool (not working, causes failures and slowdowns)
+	const filteredBuiltinToolNames = builtinToolNames?.filter(toolName => toolName !== 'run_code');
+
+	const effectiveBuiltinTools = filteredBuiltinToolNames?.map(toolName => builtinTools[toolName]) ?? undefined
 	const effectiveMCPTools = chatMode === 'agent' ? mcpTools : undefined
 
-	const tools: InternalToolInfo[] | undefined = !(builtinToolNames || mcpTools) ? undefined
+	const tools: InternalToolInfo[] | undefined = !(filteredBuiltinToolNames || mcpTools) ? undefined
 		: [
 			...effectiveBuiltinTools ?? [],
 			...effectiveMCPTools ?? [],

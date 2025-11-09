@@ -458,6 +458,7 @@ export type GlobalSettings = {
 	enableVisionSupport: boolean;
 	enableMorphFastApply: boolean; // Use Morph API for intelligent code application
 	morphApiKey: string; // API key for Morph Fast Apply
+	morphModel: 'morph-v3-fast' | 'morph-v3-large' | 'auto'; // Morph model to use
 }
 
 export const defaultGlobalSettings: GlobalSettings = {
@@ -477,6 +478,7 @@ export const defaultGlobalSettings: GlobalSettings = {
 	enableVisionSupport: false,
 	enableMorphFastApply: false,
 	morphApiKey: '',
+	morphModel: 'auto',
 }
 
 export type GlobalSettingName = keyof GlobalSettings
@@ -497,6 +499,7 @@ export type ModelSelectionOptions = {
 	reasoningEnabled?: boolean;
 	reasoningBudget?: number;
 	reasoningEffort?: string;
+	morphFastApply?: boolean; // Use Morph Fast Apply for edit_file and rewrite_file tools
 }
 
 export type OptionsOfModelSelection = {

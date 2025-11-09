@@ -43,19 +43,23 @@ export class MorphService implements IMorphService {
 		updatedCode: string;
 		model?: 'morph-v3-fast' | 'morph-v3-large' | 'auto';
 	}): Promise<string> {
-		const { instruction, originalCode, updatedCode } = params;
+		const { instruction, originalCode, updatedCode, model } = params;
 		
 		console.log('[MorphService] Starting applyCodeChange...');
 		console.log('[MorphService] Instruction:', instruction);
 		console.log('[MorphService] Original code length:', originalCode.length);
 		console.log('[MorphService] Updated code length:', updatedCode.length);
 		
-		// Get API key from settings
+		// Get API key and model from settings
 		const apiKey = this._settingsService.state.globalSettings.morphApiKey;
 		if (!apiKey) {
 			console.error('[MorphService] No API key configured');
 			throw new Error('Morph API key not configured. Please add your API key in Settings.');
 		}
+		
+		// Use model from parameter or fall back to settings
+		const selectedModel = model || this._settingsService.state.globalSettings.morphModel;
+		console.log('[MorphService] Using model:', selectedModel);
 
 		// Get IPC channel to electron-main
 		const channel = this._mainProcessService.getChannel('void-channel-morph');
@@ -69,7 +73,8 @@ export class MorphService implements IMorphService {
 				originalCode,
 				updatedCode,
 				filePath: 'temp.ts', // Temp file name, actual path created in main process
-				apiKey
+				apiKey,
+				model: selectedModel
 			}) as string;
 
 			console.log('[MorphService] Successfully received applied code, length:', appliedCode.length);

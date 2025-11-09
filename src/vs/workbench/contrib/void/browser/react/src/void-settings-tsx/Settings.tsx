@@ -1395,17 +1395,36 @@ export const Settings = () => {
 
 													{/* API Key Input */}
 													{settingsState.globalSettings.enableMorphFastApply && (
-														<div className='my-2'>
-															<div className='text-xs text-void-fg-3 mb-1'>API Key:</div>
-															<input
-																type="password"
-																value={settingsState.globalSettings.morphApiKey}
-																onChange={(e) => voidSettingsService.setGlobalSetting('morphApiKey', e.target.value)}
-																placeholder="Enter your Morph API key"
-																className='w-full text-xs text-void-fg-1 bg-void-bg-1 border border-void-border-1 rounded p-1.5 px-2 focus:outline-none focus:border-void-accent'
-															/>
-															<div className='text-xs text-void-fg-4 mt-1'>
-																Get your API key from <a href="https://morphllm.com/dashboard" target="_blank" rel="noopener noreferrer" className="text-void-accent hover:underline">morphllm.com/dashboard</a>
+														<div className='my-2 space-y-3'>
+															<div>
+																<div className='text-xs text-void-fg-3 mb-1'>API Key:</div>
+																<input
+																	type="password"
+																	value={settingsState.globalSettings.morphApiKey}
+																	onChange={(e) => voidSettingsService.setGlobalSetting('morphApiKey', e.target.value)}
+																	placeholder="Enter your Morph API key"
+																	className='w-full text-xs text-void-fg-1 bg-void-bg-1 border border-void-border-1 rounded p-1.5 px-2 focus:outline-none focus:border-void-accent'
+																/>
+																<div className='text-xs text-void-fg-4 mt-1'>
+																	Get your API key from <a href="https://morphllm.com/dashboard" target="_blank" rel="noopener noreferrer" className="text-void-accent hover:underline">morphllm.com/dashboard</a>
+																</div>
+															</div>
+															
+															{/* Model Selection */}
+															<div>
+																<div className='text-xs text-void-fg-3 mb-1'>Model:</div>
+																<select
+																	value={settingsState.globalSettings.morphModel}
+																	onChange={(e) => voidSettingsService.setGlobalSetting('morphModel', e.target.value as 'morph-v3-fast' | 'morph-v3-large' | 'auto')}
+																	className='w-full text-xs text-void-fg-1 bg-void-bg-1 border border-void-border-1 rounded p-1.5 px-2 focus:outline-none focus:border-void-accent cursor-pointer'
+																>
+																	<option value="auto">Auto (Recommended)</option>
+																	<option value="morph-v3-fast">Morph V3 Fast</option>
+																	<option value="morph-v3-large">Morph V3 Large</option>
+																</select>
+																<div className='text-xs text-void-fg-4 mt-1'>
+																	Auto selects the best model based on file size
+																</div>
 															</div>
 														</div>
 													)}
