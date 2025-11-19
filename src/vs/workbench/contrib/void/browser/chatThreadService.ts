@@ -32,7 +32,7 @@ import { INotificationService, Severity } from '../../../../platform/notificatio
 import { truncate } from '../../../../base/common/strings.js';
 import { THREAD_STORAGE_KEY } from '../common/storageKeys.js';
 import { IVisionService } from './visionService.js';
-import { EMPTY_MESSAGE, IConvertToLLMMessageService } from './convertToLLMMessageService.js';
+import { IConvertToLLMMessageService } from './convertToLLMMessageService.js';
 import { timeout } from '../../../../base/common/async.js';
 import { deepClone } from '../../../../base/common/objects.js';
 import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
@@ -45,21 +45,9 @@ import { RawMCPToolCall } from '../common/mcpServiceTypes.js';
 // related to retrying when LLM message has error
 const CHAT_RETRIES = 5 // Increased from 3 to handle Ollama errors better
 const RETRY_DELAY = 3000 // Increased from 2500ms to give Ollama more time to recover
-export const AUTO_CONTINUE_CHAR_THRESHOLD = 200;
+export const AUTO_CONTINUE_CHAR_THRESHOLD = 200; // Still used by UI auto-continue
 
-const isEffectivelyEmptyAssistantResponse = (text: string): boolean => {
-	const trimmed = (text ?? '').trim()
-	return trimmed.length === 0 || trimmed === EMPTY_MESSAGE
-}
-
-const getNormalizedAssistantResponseLength = (text: string): number => {
-	if (isEffectivelyEmptyAssistantResponse(text)) {
-		return 0
-	}
-	return text.trim().length
-}
-
-type AutoContinueReason = 'post_tool_short' | 'about_to_act' | 'queued_message'
+type AutoContinueReason = 'queued_message'
 
 const splitThinkTags = (input: string): { displayText: string; reasoningText: string } => {
 	if (!input) {
@@ -280,7 +268,7 @@ const newThreadObject = () => {
 			stagingSelections: [],
 			focusedMessageIdx: undefined,
 			linksOfMessageIdx: {},
-			autoContinueEnabled: true, // Enable by default for silent auto-continue on "About to Act" pattern
+			autoContinueEnabled: false,
 		},
 		filesWithUserChanges: new Set()
 	} satisfies ThreadType
@@ -509,7 +497,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				...thread,
 				state: {
 					...thread.state,
-					autoContinueEnabled: thread.state?.autoContinueEnabled ?? true, // Default to enabled
+					autoContinueEnabled: thread.state?.autoContinueEnabled ?? false,
 				},
 			}
 		}
@@ -854,7 +842,6 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		let nMessagesSent = 0
 		let shouldSendAnotherMessage = true
 		let isRunningWhenEnd: IsRunningType = undefined
-		let justCompletedToolCall = false // Track if we just completed a tool call
 
 		// before enter loop, call tool
 		if (callThisToolFirst) {
@@ -1070,66 +1057,15 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 					if (awaitingUserApproval) { isRunningWhenEnd = 'awaiting_user' }
 					else {
 						shouldSendAnotherMessage = true
-						justCompletedToolCall = true // Mark that we just completed a tool call
 					}
 
 					this._setStreamState(threadId, { isRunning: 'idle', interrupt: 'not_needed' }) // just decorative, for clarity
 				}
-				// If we just completed a tool call and model returned empty/short response,
-				// automatically continue to prompt the model to actually respond
-				// We use 200 chars as threshold because models often say "let me check..." but then stop
-				// This applies to BOTH XML and native tool calling models
-				// NOTE: This is SILENT - no "continue" message is added to chat history
-				const normalizedResponseLength = getNormalizedAssistantResponseLength(info.fullText)
-				const isShortAssistantResponse = normalizedResponseLength < AUTO_CONTINUE_CHAR_THRESHOLD
 
-				if (justCompletedToolCall && isShortAssistantResponse && this._shouldAutoContinue(threadId, 'post_tool_short')) {
-					console.log(`[chatThreadService] Model returned short response (${normalizedResponseLength} chars) after tool call, auto-continuing...`)
+				// Check if there are queued messages to process
+				if (this._hasQueuedMessagesAvailable(threadId) && this._shouldAutoContinue(threadId, 'queued_message')) {
+					console.log(`[chatThreadService] Found queued messages, will process next`)
 					shouldSendAnotherMessage = true
-					justCompletedToolCall = false
-				}
-				// Note: Text-only auto-continue is handled by the UI's "Continue" button
-				// Backend auto-continue only happens after tool calls complete (handled above)
-				else {
-					console.log(`[chatThreadService] Text-only response, stopping (shouldSendAnotherMessage=${shouldSendAnotherMessage})`)
-					justCompletedToolCall = false // Reset flag
-
-					// Check for "About to Act" pattern - LLM announcing it will use a tool
-					// If detected, auto-continue to prompt it to actually execute the action
-					const detectAboutToAct = (text: string): boolean => {
-						const trimmed = text.trim();
-						if (!trimmed.endsWith(':')) return false;
-
-						// Only trigger if the response is relatively short (not a long paragraph)
-						// Split by sentences and check if there are too many
-						const sentences = trimmed.split(/[.!?]+/).filter(s => s.trim().length > 0);
-						if (sentences.length > 3) return false; // More than 3 sentences = long paragraph
-
-						const lastPart = trimmed.split(/[.!]/).pop()?.toLowerCase() || '';
-
-						// Detect action announcements with various phrase patterns
-						// Supports: "Let me", "Let me also", "I'll", "I'll also", "I will", "Additionally", "Next", "Now", "First"
-						const actionVerbs = '(edit|modify|update|change|fix|read|check|look at|examine|view|create|add|make|delete|remove|run|execute)';
-						const patterns = [
-							new RegExp(`(let me|let me also|i'?ll|i'?ll also|i will|additionally|next|now|first).*${actionVerbs}`)
-						];
-
-						return patterns.some(pattern => lastPart.match(pattern));
-					};
-
-					if (detectAboutToAct(info.fullText) && isShortAssistantResponse && this._shouldAutoContinue(threadId, 'about_to_act')) {
-						console.log(`[chatThreadService] Detected 'About to Act' pattern, auto-continuing...`)
-						// Don't add visible "continue" message - just continue the loop
-						shouldSendAnotherMessage = true
-					}
-					// Check if there are queued messages to process
-					else if (this._hasQueuedMessagesAvailable(threadId) && this._shouldAutoContinue(threadId, 'queued_message')) {
-						console.log(`[chatThreadService] Found queued messages, will process next`)
-						shouldSendAnotherMessage = true
-					}
-					else {
-						console.log(`[chatThreadService] Assistant response length ${normalizedResponseLength} >= threshold, not auto-continuing.`)
-					}
 				}
 
 			} // end while (attempts)
@@ -2255,7 +2191,7 @@ We only need to do it for files that were edited since `from`, ie files between 
 	}
 
 	getAutoContinuePreference(threadId: string): boolean {
-		return this.state.allThreads[threadId]?.state.autoContinueEnabled ?? true // Default to enabled
+		return this.state.allThreads[threadId]?.state.autoContinueEnabled ?? false
 	}
 
 	setAutoContinuePreference(threadId: string, enabled: boolean): void {
