@@ -172,7 +172,7 @@ This will download the Electron binary and create the app structure.
 | Reload app | `Cmd+R` in A-Coder window |
 | Production build | `npm run gulp -- vscode-darwin-arm64` |
 | Create DMG | `hdiutil create -volname "A-Coder" -srcfolder ../VSCode-darwin-arm64/A-Coder.app -ov -format UDZO A-Coder.dmg` |
-| Remove quarantine | `xattr -cr A-Coder.dmg` (required before running on macOS) |
+| Remove quarantine | `sudo xattr -d com.apple.quarantine "/Applications/A-Coder.app` (required before running on macOS) |
 
 ## Additional Resources
 
