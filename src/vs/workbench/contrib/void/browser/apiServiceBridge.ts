@@ -73,6 +73,12 @@ export class ApiServiceBridge extends Disposable implements IApiServiceBridge {
 			case 'cancelThread':
 				return this.cancelThread(params.threadId);
 
+			case 'approveToolCall':
+				return this.approveToolCall(params.threadId);
+
+			case 'rejectToolCall':
+				return this.rejectToolCall(params.threadId);
+
 			// ===== Workspace Methods =====
 			case 'getWorkspace':
 				return this.getWorkspace();
@@ -139,6 +145,19 @@ export class ApiServiceBridge extends Disposable implements IApiServiceBridge {
 		// console.log('[ApiServiceBridge] Initializing...');
 		// Get API channel from main process
 		const apiChannel = this.mainProcessService.getChannel('void-channel-api');
+
+		// Subscribe to stream state changes and broadcast to WebSocket clients
+		this._register(this.chatThreadService.onDidChangeStreamState(({ threadId }) => {
+			this.broadcastStreamUpdate(threadId, apiChannel);
+		}));
+
+		// Also subscribe to thread changes for message updates
+		this._register(this.chatThreadService.onDidChangeCurrentThread(() => {
+			const currentThreadId = this.chatThreadService.state.currentThreadId;
+			if (currentThreadId) {
+				this.broadcastThreadUpdate(currentThreadId, apiChannel);
+			}
+		}));
 
 		// Listen for API requests from main process using the event system
 		this._register((apiChannel.listen('onApiRequest'))(async (e: unknown) => {
@@ -216,6 +235,91 @@ export class ApiServiceBridge extends Disposable implements IApiServiceBridge {
 		} catch (err) {
 			console.error('[API Bridge] Failed to update main process settings:', err);
 		}
+	}
+
+	// ===== WebSocket Broadcasting =====
+
+	/**
+	 * Broadcast stream state updates to WebSocket clients
+	 */
+	private broadcastStreamUpdate(threadId: string, apiChannel: any) {
+		const streamState = this.chatThreadService.streamState[threadId];
+		if (!streamState) return;
+
+		const event = {
+			type: 'stream_update',
+			channel: 'chat',
+			event: 'stream_state_changed',
+			data: {
+				threadId,
+				isRunning: streamState.isRunning,
+				// LLM streaming info
+				content: streamState.llmInfo?.displayContentSoFar || null,
+				reasoning: streamState.llmInfo?.reasoningSoFar || null,
+				toolCall: streamState.llmInfo?.toolCallSoFar || null,
+				// Tool execution info
+				toolInfo: streamState.toolInfo ? {
+					toolName: streamState.toolInfo.toolName,
+					toolParams: streamState.toolInfo.toolParams,
+					content: streamState.toolInfo.content,
+				} : null,
+				// Error info
+				error: streamState.error ? {
+					message: streamState.error.message,
+				} : null,
+				// Token usage
+				tokenUsage: streamState.tokenUsage || null,
+			}
+		};
+
+		// Send to main process for WebSocket broadcast
+		apiChannel.call('broadcast', event).catch((err: any) => {
+			// Silently ignore broadcast errors (e.g., no clients connected)
+		});
+	}
+
+	/**
+	 * Broadcast thread updates (new messages, etc.) to WebSocket clients
+	 */
+	private broadcastThreadUpdate(threadId: string, apiChannel: any) {
+		const thread = this.chatThreadService.state.allThreads[threadId];
+		if (!thread) return;
+
+		// Get the last message for the update
+		const lastMessage = thread.messages[thread.messages.length - 1];
+		if (!lastMessage) return;
+
+		const event = {
+			type: 'thread_update',
+			channel: 'chat',
+			event: 'message_added',
+			data: {
+				threadId,
+				messageCount: thread.messages.length,
+				lastMessage: {
+					role: lastMessage.role,
+					// Include content based on role
+					...(lastMessage.role === 'user' && {
+						content: (lastMessage as any).displayContent || (lastMessage as any).content,
+					}),
+					...(lastMessage.role === 'assistant' && {
+						content: (lastMessage as any).displayContent,
+						reasoning: (lastMessage as any).reasoning,
+					}),
+					...(lastMessage.role === 'tool' && {
+						name: (lastMessage as any).name,
+						type: (lastMessage as any).type,
+						content: (lastMessage as any).content,
+					}),
+				},
+				lastModified: thread.lastModified,
+			}
+		};
+
+		// Send to main process for WebSocket broadcast
+		apiChannel.call('broadcast', event).catch((err: any) => {
+			// Silently ignore broadcast errors
+		});
 	}
 
 	// ===== Chat/Thread Implementations =====
@@ -345,6 +449,40 @@ export class ApiServiceBridge extends Disposable implements IApiServiceBridge {
 	private async cancelThread(threadId: string) {
 		// Cancel any running operations for this thread
 		await this.chatThreadService.abortRunning(threadId);
+		return { success: true };
+	}
+
+	private async approveToolCall(threadId: string) {
+		const allThreads = this.chatThreadService.state.allThreads;
+		if (!allThreads || !allThreads[threadId]) {
+			throw new Error('Thread not found');
+		}
+
+		// Check if thread is awaiting user approval
+		const streamState = this.chatThreadService.streamState[threadId];
+		if (streamState?.isRunning !== 'awaiting_user') {
+			throw new Error('Thread is not awaiting user approval');
+		}
+
+		// Approve the pending tool call
+		this.chatThreadService.approveLatestToolRequest(threadId);
+		return { success: true };
+	}
+
+	private async rejectToolCall(threadId: string) {
+		const allThreads = this.chatThreadService.state.allThreads;
+		if (!allThreads || !allThreads[threadId]) {
+			throw new Error('Thread not found');
+		}
+
+		// Check if thread is awaiting user approval
+		const streamState = this.chatThreadService.streamState[threadId];
+		if (streamState?.isRunning !== 'awaiting_user') {
+			throw new Error('Thread is not awaiting user approval');
+		}
+
+		// Reject the pending tool call
+		this.chatThreadService.rejectLatestToolRequest(threadId);
 		return { success: true };
 	}
 

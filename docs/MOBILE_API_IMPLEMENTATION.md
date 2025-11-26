@@ -403,6 +403,44 @@ Cancel running agent for a thread.
 - Update UI status immediately
 - Handle errors gracefully
 
+#### POST `/api/v1/threads/:id/approve`
+Approve a pending tool call for a thread. Called when the agent is in `awaiting_user` state.
+
+**Parameters:**
+- `id` (path): Thread ID
+
+**Response:**
+```json
+{
+  "success": true
+}
+```
+
+**Frontend Handling:**
+- Show approve button in tool approval UI
+- Disable button during request
+- Resume typing/processing indicator after approval
+- Handle errors gracefully
+
+#### POST `/api/v1/threads/:id/reject`
+Reject a pending tool call for a thread. Called when the agent is in `awaiting_user` state.
+
+**Parameters:**
+- `id` (path): Thread ID
+
+**Response:**
+```json
+{
+  "success": true
+}
+```
+
+**Frontend Handling:**
+- Show reject button in tool approval UI
+- Disable button during request
+- Reload thread to get updated state
+- Handle errors gracefully
+
 ---
 
 ### Workspace
@@ -1377,9 +1415,137 @@ Events are broadcast in the following format:
 
 ### Available Channels
 
-- `threads` - Chat thread updates
+- `chat` - Chat streaming and thread updates
 - `workspace` - File system changes
 - `planning` - Plan and task updates
+
+### Streaming Events
+
+The WebSocket API now broadcasts real-time streaming events for chat interactions:
+
+#### `stream_state_changed` Event
+
+Broadcast when the LLM streaming state changes (tokens being generated, tool execution, etc.):
+
+```json
+{
+  "type": "stream_update",
+  "channel": "chat",
+  "event": "stream_state_changed",
+  "data": {
+    "threadId": "thread-uuid",
+    "isRunning": "LLM",
+    "content": "Here's how to implement...",
+    "reasoning": "Let me think about this...",
+    "toolCall": {
+      "name": "read_file",
+      "arguments": "{\"path\": \"src/app.ts\"}"
+    },
+    "toolInfo": null,
+    "error": null,
+    "tokenUsage": {
+      "used": 1500,
+      "total": 8000,
+      "percentage": 18.75
+    }
+  }
+}
+```
+
+**`isRunning` values:**
+- `"LLM"` - LLM is generating tokens
+- `"tool"` - A tool is being executed
+- `"awaiting_user"` - Waiting for user approval
+- `"idle"` - Between operations
+- `undefined` - Not running
+
+**Fields:**
+- `content` - Accumulated display content from LLM (null if not streaming)
+- `reasoning` - Accumulated reasoning/thinking content (null if not available)
+- `toolCall` - Current tool call being streamed (null if none)
+- `toolInfo` - Info about tool being executed (null if not executing tool)
+- `error` - Error information if an error occurred (null otherwise)
+- `tokenUsage` - Current token usage stats (null if not available)
+
+#### `message_added` Event
+
+Broadcast when a new message is added to a thread:
+
+```json
+{
+  "type": "thread_update",
+  "channel": "chat",
+  "event": "message_added",
+  "data": {
+    "threadId": "thread-uuid",
+    "messageCount": 5,
+    "lastMessage": {
+      "role": "assistant",
+      "content": "Here's the implementation...",
+      "reasoning": "I analyzed the codebase..."
+    },
+    "lastModified": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+**`lastMessage.role` values:**
+- `"user"` - User message (includes `content`)
+- `"assistant"` - LLM response (includes `content`, `reasoning`)
+- `"tool"` - Tool result (includes `name`, `type`, `content`)
+
+### Example: Real-time Chat Streaming
+
+```javascript
+const ws = new WebSocket('ws://localhost:3737?token=acoder_YOUR_TOKEN');
+
+let currentContent = '';
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+
+  if (data.type === 'stream_update' && data.event === 'stream_state_changed') {
+    const { isRunning, content, toolInfo, error } = data.data;
+
+    if (isRunning === 'LLM' && content) {
+      // Update UI with streaming content
+      currentContent = content;
+      updateChatUI(currentContent);
+    }
+
+    if (isRunning === 'tool' && toolInfo) {
+      // Show tool execution indicator
+      showToolIndicator(toolInfo.toolName);
+    }
+
+    if (!isRunning) {
+      // Streaming complete
+      hideLoadingIndicator();
+    }
+
+    if (error) {
+      // Handle error
+      showError(error.message);
+    }
+  }
+
+  if (data.type === 'thread_update' && data.event === 'message_added') {
+    // New message added - refresh thread
+    refreshThread(data.data.threadId);
+  }
+};
+
+// Send a message via REST API
+fetch('http://localhost:3737/api/v1/threads/thread-id/messages', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer acoder_YOUR_TOKEN',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({ message: 'Create a React component' })
+});
+// Then receive streaming updates via WebSocket
+```
 
 ---
 

@@ -14,6 +14,9 @@
 	--void-bg-2-alt: color-mix(in srgb, var(--vscode-editor-background) 30%, var(--vscode-sideBar-background) 70%);
 	--void-bg-2-hover: color-mix(in srgb, var(--vscode-editor-foreground) 8%, var(--vscode-sideBar-background) 92%);
 	--void-bg-3: var(--vscode-editor-background);
+	/* Smokey black glassy variant - darker with subtle transparency feel */
+	--void-bg-4: color-mix(in srgb, var(--vscode-editor-background) 70%, black 30%);
+	--void-bg-4-hover: color-mix(in srgb, var(--vscode-editor-background) 60%, black 40%);
 
 	--void-fg-0: color-mix(in srgb, var(--vscode-tab-activeForeground) 90%, black 10%);
 	--void-fg-1: var(--vscode-editor-foreground);

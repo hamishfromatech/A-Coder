@@ -103,6 +103,26 @@ export class ApiRoutes {
 			}
 		});
 
+		// POST /api/v1/threads/:id/approve - Approve pending tool call
+		this.router.register('POST', '/api/v1/threads/:id/approve', async (req, res, params) => {
+			try {
+				await this.callRenderer('approveToolCall', { threadId: params.id });
+				this.router.sendJson(res, 200, { success: true });
+			} catch (err) {
+				this.router.sendError(res, 500, 'Failed to approve', err instanceof Error ? err.message : String(err));
+			}
+		});
+
+		// POST /api/v1/threads/:id/reject - Reject pending tool call
+		this.router.register('POST', '/api/v1/threads/:id/reject', async (req, res, params) => {
+			try {
+				await this.callRenderer('rejectToolCall', { threadId: params.id });
+				this.router.sendJson(res, 200, { success: true });
+			} catch (err) {
+				this.router.sendError(res, 500, 'Failed to reject', err instanceof Error ? err.message : String(err));
+			}
+		});
+
 		// ===== Workspace Endpoints =====
 
 		// GET /api/v1/workspace - Get workspace info

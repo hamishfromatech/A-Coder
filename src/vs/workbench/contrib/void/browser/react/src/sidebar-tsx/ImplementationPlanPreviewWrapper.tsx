@@ -167,9 +167,9 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 
 Please begin execution now.`
 
-			await chatThreadsService.sendMessage({
+			await chatThreadsService.addUserMessageAndStreamResponse({
 				threadId,
-				message: approvalMessage
+				userMessage: approvalMessage
 			})
 		} catch (error) {
 			console.error('Failed to approve implementation plan:', error)
@@ -197,9 +197,9 @@ Please revise the plan based on my feedback. After making changes, use \`preview
 
 My requested changes:`
 
-			await chatThreadsService.sendMessage({
+			await chatThreadsService.addUserMessageAndStreamResponse({
 				threadId,
-				message: changeMessage
+				userMessage: changeMessage
 			})
 		} catch (error) {
 			console.error('Failed to request plan changes:', error)
@@ -262,7 +262,7 @@ My requested changes:`
 		<div className="void-implementation-plan-preview border border-void-border-2 rounded-lg overflow-hidden">
 			{/* Header */}
 			<div
-				className="bg-void-bg-2 px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-void-bg-3 transition-colors"
+				className="px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-void-bg-2 transition-colors"
 				onClick={() => setIsExpanded(!isExpanded)}
 			>
 				<div className="flex items-center gap-2 min-w-0 flex-1">
@@ -330,7 +330,7 @@ My requested changes:`
 
 					{/* Action Buttons */}
 					{planInfo.canApprove && isSuccess && (
-						<div className="border-t border-void-border-2 p-3 bg-void-bg-1">
+						<div className="border-t border-void-border-2 p-3">
 							<div className="flex items-center gap-2 mb-2">
 								<span className="text-sm font-medium text-void-fg-2">Plan Actions:</span>
 							</div>

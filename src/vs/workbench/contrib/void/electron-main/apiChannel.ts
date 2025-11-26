@@ -58,6 +58,15 @@ export class ApiChannel implements IServerChannel {
 			return this.apiServiceManager.restart();
 		}
 
+		// Handle WebSocket broadcast from renderer
+		if (command === 'broadcast') {
+			if (this.apiServiceManager) {
+				this.apiServiceManager.broadcast(params);
+				return { success: true };
+			}
+			return { success: false, reason: 'API server not running' };
+		}
+
 		// Handle renderer registration
 		if (command === 'registerRenderer') {
 			return { success: true };
