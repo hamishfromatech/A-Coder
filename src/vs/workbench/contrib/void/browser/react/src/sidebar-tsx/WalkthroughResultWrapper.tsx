@@ -66,7 +66,8 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 
 	const result = latestWalkthrough.result
 	if (!result) {
-		return <div className="p-3 text-void-fg-3">Walkthrough tool result not available</div>
+		// Hide the "not available" message - the open_walkthrough_preview tool will show the result
+		return null
 	}
 
 	const openWalkthrough = async () => {

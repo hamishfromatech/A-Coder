@@ -383,16 +383,17 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		manuallyParseReasoning
 	})
 
-	// Use manual parsing if we have tags AND needsManualParse is true
-	// This can work alongside nameOfReasoningFieldInDelta (e.g., Ollama supports both)
-	if (manuallyParseReasoning && openSourceThinkTags) {
+	// Use manual parsing ONLY if we need to parse <think> tags from content
+	// Do NOT use extractReasoningWrapper if there's a direct reasoning field (like delta.reasoning or delta.thinking)
+	// because extractReasoningWrapper will overwrite the accumulated reasoning from the direct field
+	if (manuallyParseReasoning && openSourceThinkTags && !nameOfReasoningFieldInDelta) {
 		console.log(`[sendLLMMessage] ✅ Enabling reasoning extraction with tags:`, openSourceThinkTags)
 		const { newOnText, newOnFinalMessage } = extractReasoningWrapper(onText, onFinalMessage, openSourceThinkTags)
 		onText = newOnText
 		onFinalMessage = newOnFinalMessage
 	}
 	if (nameOfReasoningFieldInDelta) {
-		console.log(`[sendLLMMessage] ✅ Also checking direct reasoning field:`, nameOfReasoningFieldInDelta)
+		console.log(`[sendLLMMessage] ✅ Using direct reasoning field:`, nameOfReasoningFieldInDelta)
 	}
 
 	const toText = (content: unknown): string => {

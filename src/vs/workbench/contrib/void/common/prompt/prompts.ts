@@ -760,6 +760,8 @@ Example: [
 		name: 'update_walkthrough',
 		description: `Creates or updates a walkthrough.md file in the workspace root to document progress on the current task.
 
+**IMPORTANT:** After calling this tool, you MUST call open_walkthrough_preview to display the walkthrough to the user.
+
 **What you'll receive:**
 - Confirmation that the walkthrough was updated
 - File path and action taken (created/updated/appended)

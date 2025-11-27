@@ -3,7 +3,7 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'; // Added useRef import just in case it was missed, though likely already present
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { ProviderName, SettingName, displayInfoOfSettingName, providerNames, VoidStatefulModelInfo, customSettingNamesOfProvider, RefreshableProviderName, refreshableProviderNames, displayInfoOfProviderName, nonlocalProviderNames, localProviderNames, GlobalSettingName, featureNames, displayInfoOfFeatureName, isProviderNameDisabled, FeatureName, hasDownloadButtonsOnModelsProviderNames, subTextMdOfProviderName } from '../../../../common/voidSettingsTypes.js'
 import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js'
 import { VoidButtonBgDarken, VoidCustomDropdownBox, VoidInputBox2, VoidSimpleInputBox, VoidSwitch } from '../util/inputs.js'
@@ -208,15 +208,8 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 	const settingsStateService = accessor.get('IVoidSettingsService')
 	const settingsState = useSettingsState()
 
-	// State to track which model's settings dialog is open
-	const [openSettingsModel, setOpenSettingsModel] = useState<{
-		modelName: string,
-		providerName: ProviderName,
-		type: 'autodetected' | 'custom' | 'default'
-	} | null>(null);
-
-	// Track where the user clicked the "+" button so we can anchor the dialog near that point
-	const [settingsDialogAnchor, setSettingsDialogAnchor] = useState<{ x: number; y: number } | null>(null);
+	// State to track which model's config card is expanded (inline, not modal)
+	const [expandedModel, setExpandedModel] = useState<{ modelName: string, providerName: ProviderName } | null>(null);
 
 	// States for add model functionality
 	const [isAddModelOpen, setIsAddModelOpen] = useState(false);
@@ -270,165 +263,112 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 		setErrorString('');
 	};
 
-	// Simple Model Settings Dialog component
-	const SimpleModelSettingsDialog = ({
-		isOpen,
-		onClose,
-		modelInfo,
-		anchor,
-	}: {
-		isOpen: boolean;
-		onClose: () => void;
-		modelInfo: { modelName: string; providerName: ProviderName; type: 'autodetected' | 'custom' | 'default' } | null;
-		anchor: { x: number; y: number } | null;
-	}) => {
-		if (!isOpen || !modelInfo) return null;
+	// Track editing state with refs to prevent re-render issues
+	const editingTextRef = useRef<{ [key: string]: string }>({});
+	const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-		const { modelName, providerName, type } = modelInfo;
-		const mouseDownInsideModal = useRef(false); // Ref to track mousedown origin
-
-		// current overrides and defaults
+	// Inline config card - always editable, no view/edit toggle
+	const renderConfigCard = (modelName: string, providerName: ProviderName, type: string) => {
 		const defaultModelCapabilities = getModelCapabilities(providerName, modelName, undefined);
 		const currentOverrides = settingsState.overridesOfModel?.[providerName]?.[modelName] ?? undefined;
-		const { recognizedModelName, isUnrecognizedModel } = defaultModelCapabilities
+		const { recognizedModelName, isUnrecognizedModel } = defaultModelCapabilities;
 
-		// Create the placeholder with the default values for allowed keys
 		const partialDefaults: Partial<ModelOverrides> = {};
 		for (const k of modelOverrideKeys) { if (defaultModelCapabilities[k]) partialDefaults[k] = defaultModelCapabilities[k] as any; }
-		const placeholder = JSON.stringify(partialDefaults, null, 2);
 
-		const [overrideEnabled, setOverrideEnabled] = useState<boolean>(() => !!currentOverrides);
-		const [errorMsg, setErrorMsg] = useState<string | null>(null);
-		const textAreaRef = useRef<HTMLTextAreaElement | null>(null)
+		const key = `${providerName}:${modelName}`;
+		const savedValue = currentOverrides ? JSON.stringify(currentOverrides, null, 2) : '';
 
-		// reset when dialog toggles
-		useEffect(() => {
-			if (!isOpen) return;
-			const cur = settingsState.overridesOfModel?.[providerName]?.[modelName];
-			setOverrideEnabled(!!cur);
-			setErrorMsg(null);
-		}, [isOpen, providerName, modelName, settingsState.overridesOfModel, placeholder]);
+		// Initialize ref value if not set, or sync with saved value when card first opens
+		if (editingTextRef.current[key] === undefined) {
+			editingTextRef.current[key] = savedValue;
+		}
 
-		const onSave = async () => {
-			// if disabled override, reset overrides
-			if (!overrideEnabled) {
+		const handleSave = async () => {
+			const text = editingTextRef.current[key] || '';
+			if (!text.trim()) {
 				await settingsStateService.setOverridesOfModel(providerName, modelName, undefined);
-				onClose();
+				editingTextRef.current[key] = ''; // Sync ref with saved state
+				setErrorMsg(null);
 				return;
 			}
 
-			// enabled overrides
-			// parse json
-			let parsedInput: Record<string, unknown>
-
-			if (textAreaRef.current?.value) {
-				try {
-					parsedInput = JSON.parse(textAreaRef.current.value);
-				} catch (e) {
-					setErrorMsg('Invalid JSON');
-					return;
-				}
-			} else {
+			let parsed: Record<string, unknown>;
+			try {
+				parsed = JSON.parse(text);
+			} catch {
 				setErrorMsg('Invalid JSON');
 				return;
 			}
 
-			// only keep allowed keys
 			const cleaned: Partial<ModelOverrides> = {};
 			for (const k of modelOverrideKeys) {
-				if (!(k in parsedInput)) continue
-				const isEmpty = parsedInput[k] === '' || parsedInput[k] === null || parsedInput[k] === undefined;
-				if (!isEmpty) {
-					cleaned[k] = parsedInput[k] as any;
+				if (k in parsed && parsed[k] !== null && parsed[k] !== undefined && parsed[k] !== '') {
+					cleaned[k] = parsed[k] as any;
 				}
 			}
-			await settingsStateService.setOverridesOfModel(providerName, modelName, cleaned);
-			onClose();
+
+			const finalValue = Object.keys(cleaned).length > 0 ? cleaned : undefined;
+			await settingsStateService.setOverridesOfModel(providerName, modelName, finalValue);
+			// Sync ref with what was actually saved
+			editingTextRef.current[key] = finalValue ? JSON.stringify(finalValue, null, 2) : '';
+			setErrorMsg(null);
 		};
 
-		const sourcecodeOverridesLink = `https://github.com/voideditor/void/blob/2e5ecb291d33afbe4565921664fb7e183189c1c5/src/vs/workbench/contrib/void/common/modelCapabilities.ts#L146-L172`
+		const handleClear = async () => {
+			await settingsStateService.setOverridesOfModel(providerName, modelName, undefined);
+			editingTextRef.current[key] = '';
+			setErrorMsg(null);
+		};
 
 		return (
-			<div // Backdrop
-				className="fixed inset-0 bg-black/50 z-[9999999]"
-				onMouseDown={() => {
-					mouseDownInsideModal.current = false;
-				}}
-				onMouseUp={() => {
-					if (!mouseDownInsideModal.current) {
-						onClose();
-					}
-					mouseDownInsideModal.current = false;
-				}}
-			>
-				{/* MODAL - always centered in viewport */}
-				<div
-					className="bg-void-bg-1 rounded-md p-4 max-w-xl w-full shadow-xl overflow-y-auto max-h-[90vh] fixed z-[10000000]"
-					style={{
-						top: '50%',
-						left: '50%',
-						transform: 'translate(-50%, -50%)',
-					}}
-					onClick={(e) => e.stopPropagation()} // Keep stopping propagation for normal clicks inside
-					onMouseDown={(e) => {
-						mouseDownInsideModal.current = true;
-						e.stopPropagation();
-					}}
-				>
-					<div className="flex justify-between items-center mb-4">
-						<h3 className="text-lg font-medium">
-							Change Defaults for {modelName} ({displayInfoOfProviderName(providerName).title})
-						</h3>
+			<div className="ml-8 mr-3 mb-2 p-3 bg-void-bg-2 border border-void-border-2 rounded-md text-sm">
+				<div className="flex justify-between items-start mb-2">
+					<div>
+						<span className="font-medium">{modelName}</span>
+						<span className="text-void-fg-3 ml-2 text-xs">
+							{isUnrecognizedModel ? '(unrecognized)' : `→ ${recognizedModelName}`}
+						</span>
+					</div>
+					<button onClick={() => setExpandedModel(null)} className="text-void-fg-3 hover:text-void-fg-1">
+						<X size={14} />
+					</button>
+				</div>
+
+				<div className="text-xs text-void-fg-3 mb-2">
+					{currentOverrides ? '⚠️ Has custom overrides' : 'Using defaults (edit to override)'}
+				</div>
+
+				<textarea
+					defaultValue={editingTextRef.current[key]}
+					onChange={(e) => { editingTextRef.current[key] = e.target.value; }}
+					className="w-full h-40 p-2 font-mono text-xs bg-void-bg-1 border border-void-border-2 rounded resize-y"
+					placeholder={JSON.stringify(partialDefaults, null, 2)}
+				/>
+
+				{errorMsg && <div className="text-red-500 text-xs mt-1">{errorMsg}</div>}
+
+				<div className="flex gap-2 mt-2">
+					<button
+						onClick={handleSave}
+						className="px-3 py-1 text-xs bg-[#0e70c0] text-white rounded hover:bg-[#0c5fa0]"
+					>
+						Save
+					</button>
+					{currentOverrides && (
 						<button
-							onClick={onClose}
-							className="text-void-fg-3 hover:text-void-fg-1"
+							onClick={handleClear}
+							className="px-3 py-1 text-xs text-red-400 bg-void-bg-1 border border-void-border-2 rounded hover:bg-red-900/20"
 						>
-							<X className="size-5" />
+							Clear Overrides
 						</button>
-					</div>
-
-					{/* Display model recognition status */}
-					<div className="text-sm text-void-fg-3 mb-4">
-						{type === 'default' ? `${modelName} comes packaged with A-Coder, so you shouldn't need to change these settings.`
-							: isUnrecognizedModel
-								? `Model not recognized by A-Coder.`
-								: `A-Coder recognizes ${modelName} ("${recognizedModelName}").`}
-					</div>
-
-					{/* override toggle */}
-					<div className="flex items-center gap-2 mb-4">
-						<VoidSwitch size='xs' value={overrideEnabled} onChange={setOverrideEnabled} />
-						<span className="text-void-fg-3 text-sm">Override model defaults</span>
-					</div>
-
-					{/* Informational link */}
-					{overrideEnabled && <div className="text-sm text-void-fg-3 mb-4">
-						<ChatMarkdownRender string={`See the [sourcecode](${sourcecodeOverridesLink}) for a reference on how to set this JSON (advanced).`} chatMessageLocation={undefined} />
-					</div>}
-
-					<textarea
-						key={overrideEnabled + ''}
-						ref={textAreaRef}
-						className={`w-full min-h-[200px] p-2 rounded-sm border border-void-border-2 bg-void-bg-2 resize-none font-mono text-sm ${!overrideEnabled ? 'text-void-fg-3' : ''}`}
-						defaultValue={overrideEnabled && currentOverrides ? JSON.stringify(currentOverrides, null, 2) : placeholder}
-						placeholder={placeholder}
-						readOnly={!overrideEnabled}
-					/>
-					{errorMsg && (
-						<div className="text-red-500 mt-2 text-sm">{errorMsg}</div>
 					)}
-
-					<div className="flex justify-end gap-2 mt-4">
-						<VoidButtonBgDarken onClick={onClose} className="px-3 py-1">
-							Cancel
-						</VoidButtonBgDarken>
-						<VoidButtonBgDarken
-							onClick={onSave}
-							className="px-3 py-1 bg-[#0e70c0] text-white"
-						>
-							Save
-						</VoidButtonBgDarken>
-					</div>
+					<button
+						onClick={() => setExpandedModel(null)}
+						className="px-3 py-1 text-xs bg-void-bg-1 border border-void-border-2 rounded hover:bg-void-bg-2"
+					>
+						Close
+					</button>
 				</div>
 			</div>
 		);
@@ -459,41 +399,39 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 					: undefined
 
 			const hasOverrides = !!settingsState.overridesOfModel?.[providerName]?.[modelName]
+			const isExpanded = expandedModel?.modelName === modelName && expandedModel?.providerName === providerName;
 
-			return <div key={`${modelName}${providerName}`}
-				className={`flex items-center justify-between gap-4 hover:bg-black/10 dark:hover:bg-gray-300/10 py-1 px-3 rounded-sm overflow-hidden cursor-default truncate group
-				`}
-			>
-				{/* left part is width:full */}
-				<div className={`flex flex-grow items-center gap-4`}>
-					<span className='w-full max-w-32'>{isNewProviderName ? providerTitle : ''}</span>
-					<span className='w-fit max-w-[400px] truncate'>{modelName}</span>
-				</div>
+			return <div key={`${modelName}${providerName}`}>
+				<div
+					className={`flex items-center justify-between gap-4 hover:bg-black/10 dark:hover:bg-gray-300/10 py-1 px-3 rounded-sm overflow-hidden cursor-default truncate group`}
+				>
+					{/* left part is width:full */}
+					<div className={`flex flex-grow items-center gap-4`}>
+						<span className='w-full max-w-32'>{isNewProviderName ? providerTitle : ''}</span>
+						<span className='w-fit max-w-[400px] truncate'>{modelName}</span>
+					</div>
 
-				{/* right part is anything that fits */}
-				<div className="flex items-center gap-2 w-fit">
+					{/* right part is anything that fits */}
+					<div className="flex items-center gap-2 w-fit">
 
-					{/* Advanced Settings button (gear). Hide entirely when provider/model disabled. */}
-					{disabled ? null : (
-						<button
-							onClick={(e) => {
-								const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-								const anchor = {
-									x: rect.left + rect.width / 2,
-									y: rect.top + rect.height / 2,
-								};
-								console.log('Modal anchor coordinates:', JSON.stringify(anchor), 'Window size:', window.innerWidth, 'x', window.innerHeight);
-								setSettingsDialogAnchor(anchor);
-								setOpenSettingsModel({ modelName, providerName, type });
-							}}
-							data-tooltip-id='void-tooltip'
-							data-tooltip-place='right'
-							data-tooltip-content='Advanced Settings'
-							className={`${hasOverrides ? '' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}
-						>
-							<Plus size={12} className="text-void-fg-3 opacity-50" />
-						</button>
-					)}
+						{/* Config button - toggles inline card */}
+						{disabled ? null : (
+							<button
+								onClick={() => {
+									if (isExpanded) {
+										setExpandedModel(null);
+									} else {
+										setExpandedModel({ modelName, providerName });
+									}
+								}}
+								data-tooltip-id='void-tooltip'
+								data-tooltip-place='right'
+								data-tooltip-content={isExpanded ? 'Hide Config' : 'Show Config'}
+								className={`${hasOverrides || isExpanded ? '' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}
+							>
+								<Plus size={12} className={`text-void-fg-3 ${isExpanded ? 'rotate-45' : ''} transition-transform`} />
+							</button>
+						)}
 
 					{/* Blue star */}
 					{detailAboutModel}
@@ -525,6 +463,9 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 					</div>
 				</div>
 			</div>
+			{/* Inline config card - shows when expanded */}
+			{isExpanded && renderConfigCard(modelName, providerName, type)}
+		</div>
 		})}
 
 		{/* Add Model Section */}
@@ -603,13 +544,6 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 			</div>
 		)}
 
-		{/* Model Settings Dialog */}
-		<SimpleModelSettingsDialog
-			isOpen={openSettingsModel !== null}
-			onClose={() => { setOpenSettingsModel(null); setSettingsDialogAnchor(null); }}
-			modelInfo={openSettingsModel}
-			anchor={settingsDialogAnchor}
-		/>
 	</div>
 }
 

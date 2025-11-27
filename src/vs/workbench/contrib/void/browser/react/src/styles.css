@@ -151,23 +151,36 @@
 }
 
 /* Text shimmer effect - KITT scanner style sweep */
-.text-shimmer {
+/* Dark mode: muted gray base with subtle silver shine */
+/* Note: Use void-text-shimmer prefix since scope-tailwind doesn't prefix custom classes */
+.void-text-shimmer {
 	background-image: linear-gradient(90deg,
-		#666666 0%,
-		#666666 35%,
-		#888888 42%,
-		#cccccc 48%,
-		#ffffff 50%,
-		#cccccc 52%,
-		#888888 58%,
-		#666666 65%,
-		#666666 100%);
-	background-size: 400% 100%;
+		#52525b 0%,
+		#52525b 44%,
+		#71717a 47%,
+		#a1a1aa 50%,
+		#71717a 53%,
+		#52525b 56%,
+		#52525b 100%);
+	background-size: 300% 100%;
 	-webkit-background-clip: text;
 	background-clip: text;
 	color: transparent;
-	animation: text-shimmer 2.5s ease-in-out infinite;
+	animation: text-shimmer 3.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 	will-change: background-position;
+}
+
+/* Light mode: smokey black base with silver shine */
+.vscode-light .void-text-shimmer,
+.vscode-high-contrast-light .void-text-shimmer {
+	background-image: linear-gradient(90deg,
+		#3f3f46 0%,
+		#3f3f46 44%,
+		#52525b 47%,
+		#71717a 50%,
+		#52525b 53%,
+		#3f3f46 56%,
+		#3f3f46 100%);
 }
 
 /* Smooth message transitions */

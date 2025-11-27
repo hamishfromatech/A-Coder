@@ -1769,21 +1769,35 @@ export const getModelCapabilities = (
 	// Get any override settings for this model
 	const overrides = overridesOfModel?.[providerName]?.[modelName];
 
+	// Helper to deep-merge reasoningCapabilities so overrides don't wipe out openSourceThinkTags
+	const mergeWithOverrides = <T extends Record<string, any>>(base: T, overrides: Partial<ModelOverrides> | undefined): T => {
+		if (!overrides) return base;
+		const merged = { ...base, ...overrides };
+		// Deep merge reasoningCapabilities if both exist
+		if (base.reasoningCapabilities && overrides.reasoningCapabilities) {
+			merged.reasoningCapabilities = { ...base.reasoningCapabilities, ...overrides.reasoningCapabilities };
+		}
+		return merged;
+	};
+
 	// search model options object directly first
 	for (const modelName_ in modelOptions) {
 		const lowercaseModelName_ = modelName_.toLowerCase()
 		if (lowercaseModelName === lowercaseModelName_) {
 			// Use modelName_ (the actual key) to access modelOptions, not the input modelName
-			return { ...modelOptions[modelName_], ...overrides, modelName, recognizedModelName: modelName_, isUnrecognizedModel: false };
+			const base = { ...modelOptions[modelName_], modelName, recognizedModelName: modelName_, isUnrecognizedModel: false as const };
+			return mergeWithOverrides(base, overrides);
 		}
 	}
 
 	const result = modelOptionsFallback(modelName)
 	if (result) {
-		return { ...result, ...overrides, modelName: result.modelName, isUnrecognizedModel: false };
+		const base = { ...result, modelName: result.modelName, isUnrecognizedModel: false as const };
+		return mergeWithOverrides(base, overrides);
 	}
 
-	return { modelName, ...defaultModelOptions, ...overrides, isUnrecognizedModel: true };
+	const base = { modelName, ...defaultModelOptions, isUnrecognizedModel: true as const };
+	return mergeWithOverrides(base, overrides);
 }
 
 // non-model settings

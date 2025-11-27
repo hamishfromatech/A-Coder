@@ -1051,7 +1051,9 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 						})
 					},
 					onFinalMessage: async ({ fullText, fullReasoning, toolCall, anthropicReasoning, }) => {
+						console.log(`[chatThreadService] onFinalMessage received - fullReasoning length: ${fullReasoning?.length ?? 0}`)
 						const parsed = partitionReasoningContent(fullText, fullReasoning)
+						console.log(`[chatThreadService] After partitioning - reasoningText length: ${parsed.reasoningText?.length ?? 0}`)
 						resMessageIsDonePromise({ type: 'llmDone', toolCall, info: { fullText: parsed.displayText, fullReasoning: parsed.reasoningText, anthropicReasoning } }) // resolve with tool calls
 					},
 					onError: async (error) => {
@@ -1171,6 +1173,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 				// Only add non-empty messages to thread
 				if (!isEmptyResponse) {
+					console.log(`[chatThreadService] Adding assistant message with reasoning length: ${info.fullReasoning?.length ?? 0}`)
 					this._addMessageToThread(threadId, { role: 'assistant', displayContent: info.fullText, reasoning: info.fullReasoning, anthropicReasoning: info.anthropicReasoning })
 				}
 
