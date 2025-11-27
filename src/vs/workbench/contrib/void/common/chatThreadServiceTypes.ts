@@ -109,3 +109,21 @@ export type CodespanLocationLink = {
 		endColumn: number,
 	} | undefined
 } | null
+
+// Student mode exercise tracking
+export type StudentExercise = {
+	id: string;
+	topic: string;
+	difficulty: 'easy' | 'medium' | 'hard';
+	language: string;
+	type: 'fill_blank' | 'fix_bug' | 'write_function' | 'extend_code';
+	createdAt: number;
+	hintLevel: number; // 0 = no hints, 1-3 = hints given, 4 = solution shown
+	status: 'active' | 'completed' | 'skipped';
+}
+
+export type StudentSession = {
+	activeExercises: { [exerciseId: string]: StudentExercise };
+	completedExerciseCount: number;
+	conceptsLearned: string[];
+}

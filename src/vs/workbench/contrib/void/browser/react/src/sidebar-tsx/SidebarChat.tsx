@@ -532,16 +532,105 @@ const ReasoningOptionSlider = ({ featureName }: { featureName: FeatureName }) =>
 
 
 
-const nameOfChatMode = {
+const nameOfChatMode: Record<ChatMode, string> = {
 	'normal': 'Chat',
 	'gather': 'Plan',
 	'agent': 'Code',
+	'student': 'Learn',
 }
 
-const detailOfChatMode = {
+const detailOfChatMode: Record<ChatMode, string> = {
 	'normal': 'Conversation only, no tools',
 	'gather': 'Research, plan & document',
 	'agent': 'Edit files & run commands',
+	'student': '📚 Learn to code with a tutor',
+}
+
+const nameOfStudentLevel = {
+	'beginner': '🌱 Beginner',
+	'intermediate': '🌿 Intermediate',
+	'advanced': '🌳 Advanced',
+}
+
+const detailOfStudentLevel = {
+	'beginner': 'New to coding - simple explanations, no jargon',
+	'intermediate': 'Some experience - technical terms with definitions',
+	'advanced': 'Experienced - deep dives and best practices',
+}
+
+// Student Mode Onboarding Modal
+const StudentOnboardingModal = ({ isOpen, onClose, onSelectLevel }: {
+	isOpen: boolean,
+	onClose: () => void,
+	onSelectLevel: (level: 'beginner' | 'intermediate' | 'advanced') => void
+}) => {
+	if (!isOpen) return null
+
+	return (
+		<div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+			<div className="bg-void-bg-1 border border-void-border-1 rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+				{/* Header */}
+				<div className="bg-gradient-to-r from-purple-600 to-blue-600 p-4 sm:p-6 text-white sticky top-0">
+					<div className="flex items-center gap-3 mb-2">
+						<span className="text-3xl sm:text-4xl">🎓</span>
+						<h2 className="text-xl sm:text-2xl font-bold">Welcome to Student Mode!</h2>
+					</div>
+					<p className="text-white/90 text-sm sm:text-base">
+						A-Coder will now act as your personal coding tutor, explaining concepts and helping you learn.
+					</p>
+				</div>
+
+				{/* Content */}
+				<div className="p-4 sm:p-6">
+					<h3 className="text-base sm:text-lg font-semibold text-void-fg-1 mb-3 sm:mb-4">What's your coding experience?</h3>
+
+					<div className="space-y-2 sm:space-y-3">
+						{(['beginner', 'intermediate', 'advanced'] as const).map((level) => (
+							<button
+								key={level}
+								onClick={() => onSelectLevel(level)}
+								className="w-full p-3 sm:p-4 text-left rounded-xl border border-void-border-2 bg-void-bg-2 hover:bg-void-bg-2-hover hover:border-void-accent transition-all group"
+							>
+								<div className="flex items-center gap-2 sm:gap-3">
+									<span className="text-xl sm:text-2xl">{nameOfStudentLevel[level].split(' ')[0]}</span>
+									<div>
+										<div className="font-medium text-void-fg-1 group-hover:text-void-accent text-sm sm:text-base">
+											{nameOfStudentLevel[level].split(' ').slice(1).join(' ')}
+										</div>
+										<div className="text-xs sm:text-sm text-void-fg-3">
+											{detailOfStudentLevel[level]}
+										</div>
+									</div>
+								</div>
+							</button>
+						))}
+					</div>
+
+					{/* Features */}
+					<div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-void-bg-2 rounded-xl">
+						<h4 className="font-medium text-void-fg-1 mb-2 text-sm sm:text-base">What you'll get:</h4>
+						<ul className="text-xs sm:text-sm text-void-fg-3 space-y-1">
+							<li>✅ Line-by-line code explanations</li>
+							<li>✅ Concept teaching with real-world analogies</li>
+							<li>✅ Practice exercises with hints</li>
+							<li>✅ Progressive hints (not immediate answers)</li>
+							<li>✅ Structured lesson plans</li>
+						</ul>
+					</div>
+				</div>
+
+				{/* Footer */}
+				<div className="px-4 sm:px-6 pb-4 sm:pb-6">
+					<button
+						onClick={onClose}
+						className="text-xs sm:text-sm text-void-fg-3 hover:text-void-fg-1 transition-colors"
+					>
+						Skip for now (defaults to Beginner)
+					</button>
+				</div>
+			</div>
+		</div>
+	)
 }
 
 
@@ -551,22 +640,40 @@ const ChatModeDropdown = ({ className }: { className: string }) => {
 	const voidSettingsService = accessor.get('IVoidSettingsService')
 	const settingsState = useSettingsState()
 
-	const options: ChatMode[] = useMemo(() => ['normal', 'gather', 'agent'], [])
+	const [showStudentOnboarding, setShowStudentOnboarding] = useState(false)
+
+	const options: ChatMode[] = useMemo(() => ['normal', 'gather', 'agent', 'student'], [])
 
 	const onChangeOption = useCallback((newVal: ChatMode) => {
+		// Show onboarding when switching to student mode for the first time
+		if (newVal === 'student' && settingsState.globalSettings.chatMode !== 'student') {
+			setShowStudentOnboarding(true)
+		}
 		voidSettingsService.setGlobalSetting('chatMode', newVal)
+	}, [voidSettingsService, settingsState.globalSettings.chatMode])
+
+	const handleSelectLevel = useCallback((level: 'beginner' | 'intermediate' | 'advanced') => {
+		voidSettingsService.setGlobalSetting('studentLevel', level)
+		setShowStudentOnboarding(false)
 	}, [voidSettingsService])
 
-	return <VoidCustomDropdownBox
-		className={className}
-		options={options}
-		selectedOption={settingsState.globalSettings.chatMode}
-		onChangeOption={onChangeOption}
-		getOptionDisplayName={(val) => nameOfChatMode[val]}
-		getOptionDropdownName={(val) => nameOfChatMode[val]}
-		getOptionDropdownDetail={(val) => detailOfChatMode[val]}
-		getOptionsEqual={(a, b) => a === b}
-	/>
+	return <>
+		<VoidCustomDropdownBox
+			className={className}
+			options={options}
+			selectedOption={settingsState.globalSettings.chatMode}
+			onChangeOption={onChangeOption}
+			getOptionDisplayName={(val) => nameOfChatMode[val]}
+			getOptionDropdownName={(val) => nameOfChatMode[val]}
+			getOptionDropdownDetail={(val) => detailOfChatMode[val]}
+			getOptionsEqual={(a, b) => a === b}
+		/>
+		<StudentOnboardingModal
+			isOpen={showStudentOnboarding}
+			onClose={() => setShowStudentOnboarding(false)}
+			onSelectLevel={handleSelectLevel}
+		/>
+	</>
 
 }
 
@@ -872,7 +979,7 @@ const ScrollToBottomContainer = ({ children, className, style, scrollContainerRe
 
 		isScrollingRef.current = true;
 		scrollTimeoutRef.current = setTimeout(() => {
-			scrollToBottom(divRef);
+			scrollToBottom(divRef, true); // Use smooth scrolling
 			isScrollingRef.current = false;
 		}, 50); // Small delay to batch multiple updates
 	}, [divRef]);
@@ -1221,7 +1328,7 @@ const ToolHeaderWrapper = ({
 
 	// Apply different styles based on tool type
 	const containerClasses = `
-		w-full rounded-xl overflow-hidden transition-all duration-200 shadow-sm hover:shadow-md
+		w-full rounded-xl overflow-hidden shadow-sm hover:shadow-md
 		${isReadingTool ? 'border border-void-border-2 bg-void-bg-2' : ''}
 		${isCodingTool ? 'border-l-4 border-l-void-accent border border-void-border-2 bg-void-bg-2' : ''}
 		${!isReadingTool && !isCodingTool ? 'border border-void-border-2 bg-void-bg-2' : ''}
@@ -1314,7 +1421,7 @@ const ToolHeaderWrapper = ({
 			</div>
 			{/* children */}
 			{<div
-				className={`overflow-hidden transition-all duration-200 ease-in-out ${isExpanded ? 'opacity-100' : 'max-h-0 opacity-0'}
+				className={`overflow-hidden ${isExpanded ? '' : 'max-h-0 hidden'}
 				${isReadingTool ? 'py-1 px-3' : 'py-2 px-3'}
 				text-void-fg-4 rounded-sm overflow-x-auto
 			  `}
@@ -1481,7 +1588,7 @@ const SimplifiedToolHeader = ({
 				</div>
 				{/* children */}
 				{<div
-					className={`overflow-hidden transition-all duration-200 ease-in-out ${isOpen ? 'opacity-100' : 'max-h-0 opacity-0'} text-void-fg-4`}
+					className={`overflow-hidden ${isOpen ? '' : 'max-h-0 hidden'} text-void-fg-4`}
 				>
 					{children}
 				</div>}
@@ -1680,7 +1787,7 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 		<div
 			// style chatbubble according to role
 			className={`
-            text-left rounded-xl max-w-full transition-all duration-200
+            text-left rounded-xl max-w-full transition-colors duration-200
             ${mode === 'edit' ? ''
 					: mode === 'display' ? 'p-3 flex flex-col bg-void-bg-2 border border-void-border-2 text-void-fg-1 overflow-x-auto cursor-pointer hover:bg-void-bg-3' : ''
 				}
@@ -1942,6 +2049,13 @@ const titleOfBuiltinToolName = {
 	// Documentation tools
 	'update_walkthrough': { done: 'Updated walkthrough', proposed: 'Update walkthrough', running: loadingTitleWrapper('Updating walkthrough') },
 	'open_walkthrough_preview': { done: 'Opened walkthrough preview', proposed: 'Open walkthrough preview', running: loadingTitleWrapper('Opening walkthrough preview') },
+	// Teaching tools (Student Mode)
+	'explain_code': { done: 'Explained code', proposed: 'Explain code', running: loadingTitleWrapper('Explaining code') },
+	'teach_concept': { done: 'Taught concept', proposed: 'Teach concept', running: loadingTitleWrapper('Teaching concept') },
+	'create_exercise': { done: 'Created exercise', proposed: 'Create exercise', running: loadingTitleWrapper('Creating exercise') },
+	'check_answer': { done: 'Checked answer', proposed: 'Check answer', running: loadingTitleWrapper('Checking answer') },
+	'give_hint': { done: 'Gave hint', proposed: 'Give hint', running: loadingTitleWrapper('Giving hint') },
+	'create_lesson_plan': { done: 'Created lesson plan', proposed: 'Create lesson plan', running: loadingTitleWrapper('Creating lesson plan') },
 } as const satisfies Record<BuiltinToolName, { done: any, proposed: any, running: any }>
 
 
@@ -2171,6 +2285,43 @@ const toolNameToDesc = (toolName: BuiltinToolName, _toolParams: BuiltinToolCallP
 			const toolParams = _toolParams as BuiltinToolCallParams['open_walkthrough_preview']
 			return {
 				desc1: toolParams.file_path,
+			}
+		},
+		// Teaching tools (Student Mode)
+		'explain_code': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['explain_code']
+			return {
+				desc1: `${toolParams.language} (${toolParams.level})`,
+			}
+		},
+		'teach_concept': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['teach_concept']
+			return {
+				desc1: toolParams.concept,
+			}
+		},
+		'create_exercise': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['create_exercise']
+			return {
+				desc1: `${toolParams.topic} (${toolParams.difficulty})`,
+			}
+		},
+		'check_answer': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['check_answer']
+			return {
+				desc1: toolParams.exercise_id,
+			}
+		},
+		'give_hint': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['give_hint']
+			return {
+				desc1: toolParams.exercise_id,
+			}
+		},
+		'create_lesson_plan': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['create_lesson_plan']
+			return {
+				desc1: toolParams.goal,
 			}
 		},
 	}
@@ -2540,6 +2691,41 @@ const MCPToolWrapper = ({ toolMessage }: WrapperProps<string>) => {
 }
 
 type ResultWrapper<T extends ToolName> = (props: WrapperProps<T>) => React.ReactNode
+
+// Default wrapper for tools that just show their result as markdown
+const DefaultToolResultWrapper: ResultWrapper<BuiltinToolName> = ({ toolMessage }) => {
+	const accessor = useAccessor()
+
+	const title = getTitle(toolMessage)
+	const { desc1, desc1Info } = toolNameToDesc(toolMessage.name as BuiltinToolName, toolMessage.params, accessor)
+
+	if (toolMessage.type === 'tool_request') return null
+	if (toolMessage.type === 'running_now') return null
+
+	const isRejected = toolMessage.type === 'rejected'
+	const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError: false, icon: null, isRejected }
+
+	if (toolMessage.type === 'success') {
+		const result = toolMessage.result as any
+		const resultStr = result?.template || JSON.stringify(result, null, 2)
+		componentParams.children = <ToolChildrenWrapper>
+			<SmallProseWrapper>
+				<ChatMarkdownRender
+					string={resultStr}
+					chatMessageLocation={undefined}
+					isApplyEnabled={false}
+					isLinkDetectionEnabled={true}
+				/>
+			</SmallProseWrapper>
+		</ToolChildrenWrapper>
+	} else if (toolMessage.type === 'tool_error') {
+		componentParams.bottomChildren = <BottomChildren title='Error'>
+			<CodeChildren>{toolMessage.result}</CodeChildren>
+		</BottomChildren>
+	}
+
+	return <ToolHeaderWrapper {...componentParams} />
+}
 
 const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: ResultWrapper<T>, } } = {
 	'read_file': {
@@ -3347,6 +3533,13 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 			)
 		}
 	},
+	// Teaching tools (Student Mode) - use default rendering
+	'explain_code': { resultWrapper: DefaultToolResultWrapper },
+	'teach_concept': { resultWrapper: DefaultToolResultWrapper },
+	'create_exercise': { resultWrapper: DefaultToolResultWrapper },
+	'check_answer': { resultWrapper: DefaultToolResultWrapper },
+	'give_hint': { resultWrapper: DefaultToolResultWrapper },
+	'create_lesson_plan': { resultWrapper: DefaultToolResultWrapper },
 };
 
 
@@ -3914,6 +4107,10 @@ export const SidebarChat = () => {
 	// Also detect if tool name exists (even if params aren't done yet)
 	const hasToolName = !!(toolCallSoFar && toolCallSoFar.name && toolCallSoFar.name !== 'detecting...')
 
+	// Detect if a tool call just completed but hasn't started executing yet
+	// This covers the gap between stream completion and tool execution start
+	const toolCallJustCompleted = !!(toolCallSoFar && toolCallSoFar.isDone && isRunning === 'LLM')
+
 	// For XML tool calling: detect if we're inside a <function_calls> block even before parsing completes
 	// Use raw text before stripping to detect the XML tags
 	const isGeneratingXMLToolCall = !!(!toolIsGenerating && _rawTextBeforeStripping && _rawTextBeforeStripping.includes('<function_calls>') && !_rawTextBeforeStripping.includes('</function_calls>'));
@@ -4068,6 +4265,7 @@ export const SidebarChat = () => {
 		// send message to LLM
 		const userMessage = _forceSubmit || textAreaRef.current?.value || ''
 		const imagesToSend = attachedImages.length > 0 ? attachedImages : undefined
+		const selectionsToSend = selections.length > 0 ? [...selections] : undefined // copy before clearing
 
 		// Clear UI immediately (before async call)
 		setSelections([]) // clear staging
@@ -4079,13 +4277,14 @@ export const SidebarChat = () => {
 			await chatThreadsService.addUserMessageAndStreamResponse({
 				userMessage,
 				threadId,
-				images: imagesToSend
+				images: imagesToSend,
+				selections: selectionsToSend
 			})
 		} catch (e) {
 			console.error('Error while sending message in chat:', e)
 		}
 
-	}, [chatThreadsService, isDisabled, isRunning, textAreaRef, textAreaFnsRef, setSelections, settingsState, attachedImages])
+	}, [chatThreadsService, isDisabled, isRunning, textAreaRef, textAreaFnsRef, setSelections, settingsState, attachedImages, selections])
 
 	const onAbort = async () => {
 		const threadId = currentThread.id
@@ -4153,10 +4352,11 @@ export const SidebarChat = () => {
 			})
 	}, [previousMessages, threadId, currCheckpointIdx, isRunning])
 
-	const streamingChatIdx = previousMessagesHTML.length
+	// Use the actual message index for the streaming bubble so React doesn't remount when streaming ends
+	const streamingChatIdx = previousMessages.length
 	const currStreamingMessageHTML = reasoningSoFar || displayContentSoFar || isRunning ?
 		<ChatBubble
-			key={'curr-streaming-msg'}
+			key={streamingChatIdx}
 			currCheckpointIdx={currCheckpointIdx}
 			chatMessage={{
 				role: 'assistant',
@@ -4202,9 +4402,11 @@ export const SidebarChat = () => {
 
 	// Show tool UI when:
 	// 1. Tool is being generated (toolIsGenerating) AND not already in messages
-	// 2. Tool is executing (isRunning === 'tool') AND not already in messages
+	// 2. Tool name detected (hasToolName) - covers streaming detection
+	// 3. Tool call just completed but execution hasn't started (toolCallJustCompleted)
+	// 4. Tool is executing (isRunning === 'tool') AND not already in messages
 
-	const shouldShowToolUI = (toolIsGenerating || isRunning === 'tool' || isReActActionPhase) && !lastMessageIsTool;
+	const shouldShowToolUI = (toolIsGenerating || hasToolName || toolCallJustCompleted || isRunning === 'tool' || isReActActionPhase) && !lastMessageIsTool;
 
 	const generatingTool = shouldShowToolUI && (activeToolName || isReActActionPhase) ? (
 		<>
@@ -4573,10 +4775,27 @@ export const SidebarChat = () => {
 
 
 
+	// "I'm stuck" button handler for student mode
+	const handleImStuck = useCallback(() => {
+		onSubmit("I'm stuck and need a hint. Can you help me with the current exercise?")
+	}, [onSubmit])
+
 	const threadPageInput = <div key={'input' + chatThreadsState.currentThreadId} className="space-y-3">
 		<div className='px-4'>
 			<CommandBarInChat />
 		</div>
+		{/* Student mode quick actions */}
+		{settingsState.globalSettings.chatMode === 'student' && previousMessages.length > 0 && !isRunning && (
+			<div className='px-4 flex gap-2'>
+				<button
+					onClick={handleImStuck}
+					className="flex items-center gap-2 px-3 py-1.5 text-sm bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 rounded-lg transition-colors"
+				>
+					<span>🤔</span>
+					<span>I'm stuck</span>
+				</button>
+			</div>
+		)}
 		<div className='px-0 pb-4'>
 			{inputChatArea}
 		</div>
@@ -4588,6 +4807,15 @@ export const SidebarChat = () => {
 
 	const currentChatMode = settingsState.globalSettings.chatMode
 	const chatModeName = nameOfChatMode[currentChatMode]
+	const studentLevel = settingsState.globalSettings.studentLevel
+
+	// Different taglines for different modes
+	const modeTaglines: Record<ChatMode, React.ReactNode> = {
+		'normal': <>Kick off a new project. Make changes<br />across your entire codebase.</>,
+		'gather': <>Research your codebase. Create detailed<br />implementation plans for review.</>,
+		'agent': <>Kick off a new project. Make changes<br />across your entire codebase.</>,
+		'student': <>Ask questions, learn concepts, and practice<br />coding with your personal tutor.</>
+	}
 
 	const landingPageContent = <div
 		ref={sidebarRef}
@@ -4596,25 +4824,51 @@ export const SidebarChat = () => {
 		{/* Centered empty state */}
 		<div className='flex-1 flex flex-col items-center justify-center px-8 pb-8'>
 			<ErrorBoundary>
-				{/* Logo */}
-				<div className='@@void-void-icon mb-8' style={{ width: '96px', height: '96px', opacity: 0.9 }} />
+				{/* Logo - different for student mode */}
+				{currentChatMode === 'student' ? (
+					<div className='text-6xl mb-6'>🎓</div>
+				) : (
+					<div className='@@void-void-icon mb-8' style={{ width: '96px', height: '96px', opacity: 0.9 }} />
+				)}
 
 				{/* Title with mode */}
 				<div className="text-center space-y-3">
 					<h1 className='text-void-fg-1 text-3xl font-bold mb-2'>
-						A-Coder
+						{currentChatMode === 'student' ? 'A-Coder Tutor' : 'A-Coder'}
 					</h1>
 					<div className="flex items-center justify-center gap-2">
-						<span className="px-3 py-1 text-sm font-medium bg-void-accent/20 text-void-accent rounded-full">
+						<span className={`px-3 py-1 text-sm font-medium rounded-full ${
+							currentChatMode === 'student'
+								? 'bg-purple-500/20 text-purple-400'
+								: 'bg-void-accent/20 text-void-accent'
+						}`}>
 							{chatModeName}
 						</span>
+						{currentChatMode === 'student' && (
+							<span className="px-3 py-1 text-sm font-medium bg-void-bg-2 text-void-fg-3 rounded-full">
+								{nameOfStudentLevel[studentLevel]}
+							</span>
+						)}
 					</div>
 				</div>
 
 				{/* Tagline */}
 				<p className='text-void-fg-3 text-base text-center mt-6 leading-relaxed max-w-md'>
-					Kick off a new project. Make changes<br />across your entire codebase.
+					{modeTaglines[currentChatMode]}
 				</p>
+
+				{/* Student mode quick tips */}
+				{currentChatMode === 'student' && (
+					<div className="mt-6 p-4 bg-void-bg-2 rounded-xl max-w-sm text-sm">
+						<div className="font-medium text-void-fg-2 mb-2">💡 Try asking:</div>
+						<ul className="text-void-fg-3 space-y-1">
+							<li>"What is a function?"</li>
+							<li>"Explain this code to me"</li>
+							<li>"Give me a practice exercise"</li>
+							<li>"Help me build a todo app"</li>
+						</ul>
+					</div>
+				)}
 			</ErrorBoundary>
 		</div>
 
@@ -4642,6 +4896,11 @@ export const SidebarChat = () => {
 	</div>
 
 
+	// Get student session for progress display
+	const studentSession = chatThreadsService.getStudentSession(threadId)
+	const activeExerciseCount = studentSession ? Object.values(studentSession.activeExercises).filter(e => e.status === 'active').length : 0
+	const completedExerciseCount = studentSession?.completedExerciseCount ?? 0
+
 	const threadPageContent = <div
 		ref={sidebarRef}
 		className='w-full h-full flex flex-col overflow-hidden'
@@ -4649,7 +4908,21 @@ export const SidebarChat = () => {
 		{/* Top toolbar with MCP Server button */}
 		<ErrorBoundary>
 			<div className='flex-shrink-0 px-4 py-2 flex justify-between items-center border-b border-void-border-1'>
-				<div className='flex-1' />
+				{/* Student mode progress indicator */}
+				{currentChatMode === 'student' && (completedExerciseCount > 0 || activeExerciseCount > 0) ? (
+					<div className='flex items-center gap-3 text-xs'>
+						<div className='flex items-center gap-1.5 text-purple-400'>
+							<span>🎯</span>
+							<span>{activeExerciseCount} active</span>
+						</div>
+						<div className='flex items-center gap-1.5 text-green-400'>
+							<span>✅</span>
+							<span>{completedExerciseCount} completed</span>
+						</div>
+					</div>
+				) : (
+					<div className='flex-1' />
+				)}
 				<div className='flex gap-2 items-center'>
 					{/* MCP Server Button */}
 					<IconShell1

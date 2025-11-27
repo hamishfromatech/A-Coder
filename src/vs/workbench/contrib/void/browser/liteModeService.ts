@@ -267,6 +267,12 @@ export class LiteModeService extends Disposable implements ILiteModeService {
                             }
                             this._isOpen = false;
                             break;
+                        case 'approveContent':
+                            this._metricsService.capture('Content Preview', { action: 'approved', title });
+                            break;
+                        case 'requestContentChanges':
+                            this._sendContentChangesToChat(title, content, message.requestedChanges);
+                            break;
                     }
                 },
                 undefined,
@@ -285,13 +291,8 @@ export class LiteModeService extends Disposable implements ILiteModeService {
     }
 
     private _getContentPreviewHtml(title: string, content: string): string {
-        // Escape HTML in content for safe rendering
-        const escapedContent = content
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
+        // Process markdown content for better rendering
+        const processedContent = this._processMarkdownContent(content);
 
         return `<!DOCTYPE html>
 <html lang="en">
@@ -299,157 +300,509 @@ export class LiteModeService extends Disposable implements ILiteModeService {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${title}</title>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
-        :root {
-            --bg-color: #1e1e1e;
-            --text-color: #d4d4d4;
-            --heading-color: #ffffff;
-            --link-color: #4fc3f7;
-            --code-bg: #2d2d2d;
-            --border-color: #404040;
-            --accent-color: #4fc3f7;
-        }
-
         * {
-            margin: 0;
-            padding: 0;
             box-sizing: border-box;
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--vscode-editor-background);
+            color: var(--vscode-editor-foreground);
             line-height: 1.6;
-            padding: 24px;
-            max-width: 900px;
-            margin: 0 auto;
+            font-size: 14px;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
         }
 
         .header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            margin-bottom: 24px;
-            padding-bottom: 16px;
-            border-bottom: 1px solid var(--border-color);
+            align-items: flex-start;
+            padding: 24px 24px 16px 24px;
+            border-bottom: 1px solid var(--vscode-panel-border);
+            background-color: var(--vscode-editor-background);
+            flex-shrink: 0;
         }
 
-        .header h1 {
-            color: var(--heading-color);
-            font-size: 1.5rem;
+        .header-left {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .header h2 {
+            margin: 0 0 8px 0;
+            font-size: 18px;
             font-weight: 600;
+            color: var(--vscode-foreground);
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
-        .close-btn {
-            background: var(--code-bg);
-            border: 1px solid var(--border-color);
-            color: var(--text-color);
+        .header h2::before {
+            content: "📋";
+            font-size: 16px;
+        }
+
+        .actions {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .btn {
             padding: 8px 16px;
+            border: none;
             border-radius: 6px;
             cursor: pointer;
-            font-size: 14px;
-            transition: all 0.2s;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.15s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+            min-height: 32px;
         }
 
-        .close-btn:hover {
-            background: var(--border-color);
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-primary {
+            background-color: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: 1px solid var(--vscode-button-background);
+        }
+
+        .btn-primary:hover {
+            background-color: var(--vscode-button-hoverBackground);
+        }
+
+        .btn-secondary {
+            background-color: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
+            border: 1px solid var(--vscode-panel-border);
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--vscode-button-secondaryHoverBackground);
+        }
+
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+            border: 1px solid #28a745;
+        }
+
+        .btn-success:hover {
+            background-color: #218838;
+        }
+
+        .content-wrapper {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
 
         .content {
-            background: var(--code-bg);
-            border-radius: 8px;
+            flex: 1;
             padding: 24px;
-            border: 1px solid var(--border-color);
+            overflow-y: auto;
+            background-color: var(--vscode-editor-background);
         }
 
-        .content h1, .content h2, .content h3 {
-            color: var(--heading-color);
-            margin-top: 24px;
-            margin-bottom: 12px;
+        .content::-webkit-scrollbar {
+            width: 8px;
         }
 
-        .content h1:first-child, .content h2:first-child {
+        .content::-webkit-scrollbar-track {
+            background: var(--vscode-editor-background);
+        }
+
+        .content::-webkit-scrollbar-thumb {
+            background: var(--vscode-scrollbarSlider-background);
+            border-radius: 4px;
+        }
+
+        .content::-webkit-scrollbar-thumb:hover {
+            background: var(--vscode-scrollbarSlider-hoverBackground);
+        }
+
+        /* Enhanced markdown styles */
+        .content h1, .content h2, .content h3, .content h4, .content h5, .content h6 {
+            color: var(--vscode-foreground);
+            margin-top: 32px;
+            margin-bottom: 16px;
+            font-weight: 600;
+            line-height: 1.25;
+        }
+
+        .content h1:first-child,
+        .content h2:first-child,
+        .content h3:first-child {
             margin-top: 0;
         }
 
+        .content h1 {
+            font-size: 2em;
+            border-bottom: 2px solid var(--vscode-panel-border);
+            padding-bottom: 0.3em;
+        }
+        .content h2 {
+            font-size: 1.5em;
+            border-bottom: 1px solid var(--vscode-panel-border);
+            padding-bottom: 0.3em;
+        }
+        .content h3 { font-size: 1.25em; }
+        .content h4 { font-size: 1em; }
+        .content h5 { font-size: 0.875em; }
+        .content h6 { font-size: 0.85em; color: var(--vscode-descriptionForeground); }
+
         .content p {
             margin-bottom: 16px;
+            color: var(--vscode-editor-foreground);
         }
 
         .content ul, .content ol {
-            margin-left: 24px;
             margin-bottom: 16px;
+            padding-left: 2em;
         }
 
         .content li {
-            margin-bottom: 8px;
+            margin-bottom: 6px;
+            color: var(--vscode-editor-foreground);
+        }
+
+        .content blockquote {
+            margin: 0 0 16px 0;
+            padding: 16px 20px;
+            color: var(--vscode-descriptionForeground);
+            border-left: 4px solid var(--vscode-textBlockQuote-border);
+            background-color: var(--vscode-textBlockQuote-background);
+            border-radius: 0 6px 6px 0;
         }
 
         .content code {
-            background: var(--bg-color);
-            padding: 2px 6px;
+            background-color: var(--vscode-textCodeBlock-background);
+            color: var(--vscode-textCodeBlock-foreground);
+            padding: 0.2em 0.4em;
             border-radius: 4px;
-            font-family: 'Fira Code', 'Consolas', monospace;
-            font-size: 0.9em;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+            font-size: 0.85em;
+            border: 1px solid var(--vscode-panel-border);
         }
 
         .content pre {
-            background: var(--bg-color);
-            padding: 16px;
-            border-radius: 6px;
+            background-color: var(--vscode-textCodeBlock-background);
+            color: var(--vscode-textCodeBlock-foreground);
+            padding: 20px;
+            border-radius: 8px;
             overflow-x: auto;
-            margin-bottom: 16px;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+            font-size: 0.9em;
+            line-height: 1.5;
+            margin-bottom: 20px;
+            border: 1px solid var(--vscode-panel-border);
         }
 
         .content pre code {
             background: none;
             padding: 0;
+            font-size: inherit;
+            border: none;
         }
 
-        .content strong {
-            color: var(--heading-color);
+        .code-block-wrapper {
+            position: relative;
+            margin-bottom: 20px;
+        }
+
+        .code-block-wrapper .code-lang {
+            position: absolute;
+            top: 0;
+            right: 0;
+            background-color: var(--vscode-badge-background);
+            color: var(--vscode-badge-foreground);
+            padding: 4px 10px;
+            font-size: 11px;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+            border-radius: 0 8px 0 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 500;
+        }
+
+        .code-block-wrapper pre {
+            margin: 0;
         }
 
         .content a {
-            color: var(--link-color);
+            color: var(--vscode-textLink-foreground);
             text-decoration: none;
+            border-bottom: 1px solid transparent;
+            transition: border-color 0.15s ease;
         }
 
         .content a:hover {
-            text-decoration: underline;
+            border-bottom-color: var(--vscode-textLink-foreground);
+        }
+
+        .content hr {
+            height: 1px;
+            border: none;
+            background-color: var(--vscode-panel-border);
+            margin: 32px 0;
+        }
+
+        .changes-section {
+            margin: 24px;
+            padding: 20px;
+            background-color: var(--vscode-textBlockQuote-background);
+            border-left: 4px solid var(--vscode-button-background);
+            border-radius: 0 8px 8px 0;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .changes-section h3 {
+            margin: 0 0 16px 0;
+            color: var(--vscode-foreground);
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .changes-section textarea {
+            width: 100%;
+            min-height: 120px;
+            background-color: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            border: 2px solid var(--vscode-input-border);
+            border-radius: 6px;
+            padding: 12px;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+            font-size: 13px;
+            resize: vertical;
+            transition: border-color 0.15s ease;
+        }
+
+        .changes-section textarea:focus {
+            outline: none;
+            border-color: var(--vscode-focusBorder);
+        }
+
+        .changes-section .actions {
+            margin-top: 16px;
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>${title}</h1>
-        <button class="close-btn" onclick="closePreview()">Close</button>
+    <div class="container">
+        <div class="header">
+            <div class="header-left">
+                <h2>${title}</h2>
+            </div>
+            <div class="actions">
+                <button class="btn btn-secondary" onclick="requestChanges()">
+                    <span>✏️</span> Request Changes
+                </button>
+                <button class="btn btn-success" onclick="approveContent()">
+                    <span>✅</span> Approve
+                </button>
+                <button class="btn btn-secondary" onclick="closePreview()">
+                    <span>✕</span> Close
+                </button>
+            </div>
+        </div>
+
+        <div class="content-wrapper">
+            <div class="content">
+                ${processedContent}
+            </div>
+        </div>
+
+        <div class="changes-section" id="changesSection" style="display: none;">
+            <h3>What changes would you like?</h3>
+            <textarea id="changesTextarea" placeholder="Describe the changes you'd like to make..."></textarea>
+            <div class="actions">
+                <button class="btn btn-secondary" onclick="cancelChanges()">Cancel</button>
+                <button class="btn btn-primary" onclick="submitChanges()">Submit Changes</button>
+            </div>
+        </div>
     </div>
-    <div class="content" id="content"></div>
 
     <script>
         const vscode = acquireVsCodeApi();
 
-        // Render markdown content
-        const rawContent = ${JSON.stringify(escapedContent)};
-        // Unescape HTML entities for markdown parsing
-        const content = rawContent
-            .replace(/&amp;/g, '&')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&quot;/g, '"')
-            .replace(/&#039;/g, "'");
-
-        document.getElementById('content').innerHTML = marked.parse(content);
-
         function closePreview() {
             vscode.postMessage({ type: 'closePreview' });
+        }
+
+        function approveContent() {
+            vscode.postMessage({ type: 'approveContent' });
+            closePreview();
+        }
+
+        function requestChanges() {
+            document.getElementById('changesSection').style.display = 'block';
+            document.getElementById('changesTextarea').focus();
+        }
+
+        function submitChanges() {
+            const requestedChanges = document.getElementById('changesTextarea').value;
+            if (!requestedChanges.trim()) {
+                showNotification('Please describe the changes you would like to make.', 'warning');
+                return;
+            }
+
+            vscode.postMessage({
+                type: 'requestContentChanges',
+                requestedChanges: requestedChanges
+            });
+            closePreview();
+        }
+
+        function cancelChanges() {
+            document.getElementById('changesSection').style.display = 'none';
+            document.getElementById('changesTextarea').value = '';
+        }
+
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            const bgColor = type === 'warning' ? 'var(--vscode-inputValidation-warningBackground)' : 'var(--vscode-notifications-background)';
+            const textColor = type === 'warning' ? 'var(--vscode-inputValidation-warningForeground)' : 'var(--vscode-notifications-foreground)';
+            const borderColor = type === 'warning' ? 'var(--vscode-inputValidation-warningBorder)' : 'var(--vscode-notifications-border)';
+
+            notification.style.position = 'fixed';
+            notification.style.top = '20px';
+            notification.style.right = '20px';
+            notification.style.backgroundColor = bgColor;
+            notification.style.color = textColor;
+            notification.style.border = '1px solid ' + borderColor;
+            notification.style.borderRadius = '6px';
+            notification.style.padding = '12px 16px';
+            notification.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
+            notification.style.zIndex = '1000';
+            notification.style.maxWidth = '300px';
+            notification.style.fontSize = '13px';
+            notification.textContent = message;
+
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 3000);
+        }
+
+        // Handle keyboard shortcuts
+        document.addEventListener('keydown', function (e) {
+            if (e.ctrlKey || e.metaKey) {
+                switch (e.key) {
+                    case 'Enter':
+                        e.preventDefault();
+                        approveContent();
+                        break;
+                    case 'w':
+                        e.preventDefault();
+                        closePreview();
+                        break;
+                }
+            }
+
+            if (e.key === 'Escape') {
+                const changesSection = document.getElementById('changesSection');
+                if (changesSection.style.display !== 'none') {
+                    cancelChanges();
+                } else {
+                    closePreview();
+                }
+            }
+        });
+
+        // Auto-resize textarea
+        const textarea = document.getElementById('changesTextarea');
+        if (textarea) {
+            textarea.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = Math.max(120, this.scrollHeight) + 'px';
+            });
         }
     </script>
 </body>
 </html>`;
+    }
+
+    private _sendContentChangesToChat(title: string, content: string, requestedChanges?: string): void {
+        if (!requestedChanges) {
+            console.log('No changes requested');
+            return;
+        }
+
+        try {
+            // Get the chat service lazily to avoid circular dependency
+            const chatService = this._instantiationService.invokeFunction((accessor) => {
+                return accessor.get(IChatThreadService);
+            });
+
+            if (!chatService) {
+                console.error('Chat service not available');
+                return;
+            }
+
+            // Create a user message requesting changes
+            const changeRequest = `Please make the following changes to the plan "${title}":
+
+${requestedChanges}`;
+
+            // Get the current thread
+            const currentThreadId = chatService.state.currentThreadId;
+            const currentThread = chatService.state.allThreads[currentThreadId];
+
+            if (!currentThread) {
+                console.error('No current chat thread found');
+                return;
+            }
+
+            // Add the user message to the current thread and stream response
+            chatService.addUserMessageAndStreamResponse({
+                userMessage: changeRequest,
+                threadId: currentThreadId
+            });
+
+            console.log('Content change request sent to chat:', { title, requestedChanges });
+
+            // Track the interaction
+            this._metricsService.capture('Content Changes', {
+                action: 'changes_requested',
+                title,
+                hasContent: !!content
+            });
+
+        } catch (error) {
+            console.error('Failed to send content changes to chat:', error);
+            this._metricsService.capture('Content Changes', {
+                action: 'changes_request_failed',
+                title,
+                error: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
     }
 
     private _sendWalkthroughToChat(filePath: string, preview: string, requestedChanges?: string): void {

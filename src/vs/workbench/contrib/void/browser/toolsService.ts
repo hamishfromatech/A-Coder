@@ -530,6 +530,61 @@ export class ToolsService implements IToolsService {
 				return {};
 			},
 
+			// --- Teaching tools (Student Mode) ---
+			explain_code: (params: RawToolParamsObj) => {
+				const { code, language, level, focus } = params;
+				return {
+					code: validateStr('code', code),
+					language: validateStr('language', language),
+					level: validateStr('level', level) as 'beginner' | 'intermediate' | 'advanced',
+					focus: typeof focus === 'string' ? focus : undefined
+				};
+			},
+
+			teach_concept: (params: RawToolParamsObj) => {
+				const { concept, level, language, context } = params;
+				return {
+					concept: validateStr('concept', concept),
+					level: validateStr('level', level) as 'beginner' | 'intermediate' | 'advanced',
+					language: typeof language === 'string' ? language : undefined,
+					context: typeof context === 'string' ? context : undefined
+				};
+			},
+
+			create_exercise: (params: RawToolParamsObj) => {
+				const { topic, difficulty, language, type } = params;
+				return {
+					topic: validateStr('topic', topic),
+					difficulty: validateStr('difficulty', difficulty) as 'easy' | 'medium' | 'hard',
+					language: validateStr('language', language),
+					type: validateStr('type', type) as 'fill_blank' | 'fix_bug' | 'write_function' | 'extend_code'
+				};
+			},
+
+			check_answer: (params: RawToolParamsObj) => {
+				const { exercise_id, student_code } = params;
+				return {
+					exercise_id: validateStr('exercise_id', exercise_id),
+					student_code: validateStr('student_code', student_code)
+				};
+			},
+
+			give_hint: (params: RawToolParamsObj) => {
+				const { exercise_id } = params;
+				return {
+					exercise_id: validateStr('exercise_id', exercise_id)
+				};
+			},
+
+			create_lesson_plan: (params: RawToolParamsObj) => {
+				const { goal, level, time_available } = params;
+				return {
+					goal: validateStr('goal', goal),
+					level: validateStr('level', level) as 'beginner' | 'intermediate' | 'advanced',
+					time_available: typeof time_available === 'number' ? time_available : undefined
+				};
+			},
+
 		}
 
 
@@ -688,14 +743,36 @@ export class ToolsService implements IToolsService {
 
 			rewrite_file: async ({ uri, newContent }) => {
 				await voidModelService.initializeModel(uri)
+
+				// Check if file exists, if not create it (if within workspace)
+				const { model } = await voidModelService.getModelSafe(uri)
+				const isNewFile = model === null
+
+				if (isNewFile) {
+					// File doesn't exist - check if it's within the workspace
+					const workspaceFolders = workspaceContextService.getWorkspace().folders
+					const isInWorkspace = workspaceFolders.some(folder =>
+						uri.fsPath.startsWith(folder.uri.fsPath)
+					)
+
+					if (!isInWorkspace) {
+						throw new Error(`File does not exist and path is outside workspace. Use create_file_or_folder first, or ensure the path is within the workspace: ${uri.fsPath}`)
+					}
+
+					// Create the file (empty first, then we'll rewrite it)
+					await fileService.createFile(uri, VSBuffer.fromString(''))
+					// Re-initialize the model after creating
+					await voidModelService.initializeModel(uri)
+				}
+
 				if (this.commandBarService.getStreamState(uri) === 'streaming') {
 					throw new Error(`Another LLM is currently making changes to this file. Please stop streaming for now and ask the user to resume later.`)
 				}
 				await editCodeService.callBeforeApplyOrEdit(uri)
 
-				// Check if Morph Fast Apply is enabled for Chat feature
+				// Check if Morph Fast Apply is enabled for Chat feature (skip for new files)
 				const chatModelSelection = this.voidSettingsService.state.modelSelectionOfFeature['Chat'];
-				const useMorph = chatModelSelection
+				const useMorph = !isNewFile && chatModelSelection
 					? this.voidSettingsService.state.optionsOfModelSelection['Chat'][chatModelSelection.providerName]?.[chatModelSelection.modelName]?.morphFastApply
 					: false;
 
@@ -1002,6 +1079,223 @@ export class ToolsService implements IToolsService {
 				return { result: { planExists: true, summary } };
 			},
 
+			// --- Teaching tools (Student Mode) ---
+			explain_code: async ({ code, language, level, focus }) => {
+				const levelInstructions = {
+					beginner: 'Use simple language, no jargon. Explain like teaching a complete beginner. Use real-world analogies.',
+					intermediate: 'Use some technical terms but define them briefly. Assume basic programming knowledge.',
+					advanced: 'Use technical terminology freely. Discuss trade-offs, edge cases, and best practices.'
+				};
+
+				const template = `## Code Explanation Task
+
+**Code to explain:**
+\`\`\`${language}
+${code}
+\`\`\`
+
+**Student level:** ${level}
+**Instructions:** ${levelInstructions[level]}
+${focus ? `**Focus on:** ${focus}` : ''}
+
+**Your response must include:**
+
+### 📋 Summary
+(One sentence: what does this code do?)
+
+### 📖 Line-by-Line Breakdown
+(Explain each significant part)
+
+### 💡 Key Concepts
+(List 2-3 concepts this code demonstrates)
+
+### ⚠️ Common Mistakes
+(What do students often get wrong with this pattern?)
+
+### 🎯 Try It Yourself
+(Suggest a small modification the student could try)`;
+
+				return { result: { template } };
+			},
+
+			teach_concept: async ({ concept, level, language, context }) => {
+				const levelInstructions = {
+					beginner: 'Use simple language, no jargon. Use everyday analogies. Be very patient and encouraging.',
+					intermediate: 'Use some technical terms but explain them. Assume basic programming knowledge.',
+					advanced: 'Use technical terminology. Discuss nuances, trade-offs, and advanced patterns.'
+				};
+
+				const template = `## Teach Concept Task
+
+**Concept:** ${concept}
+**Level:** ${level}
+**Instructions:** ${levelInstructions[level]}
+${language ? `**Language:** Show examples in ${language}` : ''}
+${context ? `**Context:** Relate to: ${context}` : ''}
+
+**Your response must include:**
+
+### 📚 What is ${concept}?
+(Clear definition appropriate for ${level} level)
+
+### 🌍 Real-World Analogy
+(Relatable comparison to everyday life)
+
+### 💻 Code Example
+\`\`\`${language || 'javascript'}
+// Well-commented example demonstrating ${concept}
+\`\`\`
+
+### ⚠️ Common Pitfalls
+(2-3 mistakes students make with ${concept})
+
+### 🔗 Related Concepts
+(What to learn next)
+
+### 🎯 Quick Exercise
+(Simple practice problem to reinforce understanding)`;
+
+				return { result: { template } };
+			},
+
+			create_exercise: async ({ topic, difficulty, language, type }) => {
+				const exerciseId = `ex_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+				// Store exercise in thread state (we'll track this via the exercise ID in responses)
+				const typeDescriptions = {
+					fill_blank: 'Code with blanks (___) for student to fill in',
+					fix_bug: 'Code with intentional bugs for student to find and fix',
+					write_function: 'Function signature with description, student writes implementation',
+					extend_code: 'Working code that student needs to extend with new features'
+				};
+
+				const template = `## Create Exercise Task
+
+**Exercise ID:** ${exerciseId}
+**Topic:** ${topic}
+**Difficulty:** ${difficulty}
+**Language:** ${language}
+**Type:** ${type} - ${typeDescriptions[type]}
+
+**Generate an exercise with this structure:**
+
+### 🎯 Challenge: [Creative Title Related to ${topic}]
+
+**Problem:**
+(Clear description of what the student needs to do)
+
+**Starter Code:**
+\`\`\`${language}
+// Provide ${type} starter code for practicing ${topic}
+\`\`\`
+
+**Expected Output/Behavior:**
+(What the correct solution should produce)
+
+**Hints Available:** 3 (use give_hint tool if stuck)
+
+---
+*Exercise ID: ${exerciseId} - Student can use this with check_answer or give_hint*`;
+
+				return { result: { exerciseId, template } };
+			},
+
+			check_answer: async ({ exercise_id, student_code }) => {
+				const template = `## Validate Student Solution
+
+**Exercise ID:** ${exercise_id}
+
+**Student's Code:**
+\`\`\`
+${student_code}
+\`\`\`
+
+**Your task:**
+1. Analyze if this solution is correct
+2. Do NOT give the answer if wrong - guide them instead
+3. Be encouraging regardless of result
+
+**Response format:**
+
+### Result: ✅ Correct! / ❌ Not quite...
+
+### What Works Well
+(Positive feedback on their approach - find something good even if wrong)
+
+### Feedback
+(If correct: explain why it works and suggest optimizations. If wrong: give ONE specific hint without revealing the answer)
+
+### Next Step
+(If correct: suggest an extension challenge. If wrong: encourage retry or offer to use give_hint)`;
+
+				return { result: { template } };
+			},
+
+			give_hint: async ({ exercise_id }) => {
+				// For now, we'll track hint level in the response and let the LLM manage it
+				// In a full implementation, we'd track this in thread state
+				const hintLevel = 1; // Default to level 1, LLM should track progression
+
+				const hintInstructions: { [key: number]: string } = {
+					1: 'VAGUE hint - just point in the right direction, no specifics. Example: "Think about what data structure would help here..."',
+					2: 'MODERATE hint - mention the specific concept/method needed. Example: "You\'ll need to use a loop that checks each element..."',
+					3: 'STRONG hint - show the structure/pseudocode without exact syntax. Example: "The pattern is: for each item, if condition, then action..."',
+					4: 'SOLUTION - show the complete answer with full explanation of why it works.'
+				};
+
+				const template = `## Hint for Exercise: ${exercise_id}
+
+**Hint Level:** Check previous hints given for this exercise and advance to next level (1→2→3→4)
+
+**Hint Instructions by Level:**
+- Level 1: ${hintInstructions[1]}
+- Level 2: ${hintInstructions[2]}
+- Level 3: ${hintInstructions[3]}
+- Level 4: ${hintInstructions[4]}
+
+**Provide the appropriate level hint now.** Track which level you're on based on previous hints given in this conversation.`;
+
+				return { result: { hintLevel, template } };
+			},
+
+			create_lesson_plan: async ({ goal, level, time_available }) => {
+				const planId = `lesson_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+				const template = `## Create Lesson Plan
+
+**Plan ID:** ${planId}
+**Goal:** ${goal}
+**Student Level:** ${level}
+${time_available ? `**Time Available:** ${time_available} minutes` : ''}
+
+**Create a structured lesson plan with this format:**
+
+### 🎯 Learning Objectives
+(3-5 specific things student will learn by the end)
+
+### 📚 Prerequisites
+(What student should already know before starting)
+
+### 📋 Modules
+
+For each module include:
+1. **Module Title** (estimated time)
+   - Concepts covered
+   - Hands-on exercise (describe briefly)
+   - Checkpoint question to verify understanding
+
+### 🏆 Final Project
+(Capstone exercise that combines all learned concepts)
+
+### 📈 Success Criteria
+(How student knows they've mastered this topic)
+
+---
+*Lesson Plan ID: ${planId}*`;
+
+				return { result: { planId, template } };
+			},
+
 		}
 
 		// given to the LLM after the call for successful tool calls
@@ -1194,6 +1488,32 @@ export class ToolsService implements IToolsService {
 					return `❌ No active implementation plan.\n\n💡 Create a plan first using create_implementation_plan.`;
 				}
 				return `📊 Implementation Status\n\n${result.summary}`;
+			},
+
+			// --- Teaching tools (Student Mode) ---
+
+			explain_code: (params, result) => {
+				return `📚 Code Explanation\n\n${result.template}`;
+			},
+
+			teach_concept: (params, result) => {
+				return `📖 Teaching: ${params.concept}\n\n${result.template}`;
+			},
+
+			create_exercise: (params, result) => {
+				return `🎯 Exercise Created!\n\nExercise ID: ${result.exerciseId}\n\n${result.template}`;
+			},
+
+			check_answer: (params, result) => {
+				return `📝 Answer Check\n\n${result.template}`;
+			},
+
+			give_hint: (params, result) => {
+				return `💡 Hint (Level ${result.hintLevel})\n\n${result.template}`;
+			},
+
+			create_lesson_plan: (params, result) => {
+				return `📚 Lesson Plan Created!\n\nPlan ID: ${result.planId}\n\n${result.template}`;
 			},
 		}
 	}

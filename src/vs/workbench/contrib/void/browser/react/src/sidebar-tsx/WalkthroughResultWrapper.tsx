@@ -57,12 +57,9 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 			}
 		}
 
-		// Check immediately and then periodically
+		// Check on mount and when messages change
 		checkForUpdates()
-		const interval = setInterval(checkForUpdates, 2000)
-
-		return () => clearInterval(interval)
-	}, [threadId, toolMessage.id, chatThreadsService])
+	}, [threadId, toolMessage.id, chatThreadsService, chatThreadsService?.state?.allThreads?.[threadId]?.messages?.length])
 
 	const result = latestWalkthrough.result
 	if (!result) {

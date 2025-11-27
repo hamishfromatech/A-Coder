@@ -20,7 +20,7 @@ import { approvalTypeOfBuiltinToolName, BuiltinToolCallParams, ToolCallParams, T
 import { IToolsService } from './toolsService.js';
 import { CancellationToken } from '../../../../base/common/cancellation.js';
 import { ILanguageFeaturesService } from '../../../../editor/common/services/languageFeatures.js';
-import { ChatMessage, CheckpointEntry, CodespanLocationLink, StagingSelectionItem, ToolMessage, ImageAttachment } from '../common/chatThreadServiceTypes.js';
+import { ChatMessage, CheckpointEntry, CodespanLocationLink, StagingSelectionItem, ToolMessage, ImageAttachment, StudentSession, StudentExercise } from '../common/chatThreadServiceTypes.js';
 import { Position } from '../../../../editor/common/core/position.js';
 import { IMetricsService } from '../common/metricsService.js';
 import { shorten } from '../../../../base/common/labels.js';
@@ -48,6 +48,35 @@ const CHAT_RETRIES = 3 // Number of retries for LLM errors (including empty resp
 const RETRY_DELAY = 2000 // Delay between retries in milliseconds
 export const AUTO_CONTINUE_CHAR_THRESHOLD = 200; // Still used by UI auto-continue
 const MAX_AGENT_ITERATIONS = 50 // Maximum number of iterations in agent mode to prevent infinite loops
+
+// Detect when LLM is describing an action it intends to take (should continue) vs. when it's done
+const isDescribingIntendedAction = (text: string): boolean => {
+	const trimmed = text.trim().toLowerCase()
+
+	// Patterns that indicate the LLM is about to take action
+	const actionPatterns = [
+		/let me (read|check|look|see|examine|open|create|edit|write|search|find|run|execute)/i,
+		/i('ll| will| need to| should| can) (read|check|look|see|examine|open|create|edit|write|search|find|run|execute)/i,
+		/now i('ll| will| need to)/i,
+		/first,? (i('ll| will)|let me)/i,
+		/let's (read|check|look|see|examine|open|create|edit|write|search|find|run|execute)/i,
+		/i('ll| will) (now |then )?(read|check|look|see|examine|open|create|edit|write|search|find|run|execute)/i,
+	]
+
+	// Check if text matches action patterns
+	for (const pattern of actionPatterns) {
+		if (pattern.test(trimmed)) {
+			return true
+		}
+	}
+
+	// Check for trailing colon which often indicates "here's what I'll do:"
+	if (trimmed.endsWith(':')) {
+		return true
+	}
+
+	return false
+}
 
 const splitThinkTags = (input: string): { displayText: string; reasoningText: string } => {
 	if (!input) {
@@ -213,6 +242,9 @@ export type ThreadType = {
 
 
 		autoContinueEnabled: boolean;
+
+		// Student mode session state
+		studentSession?: StudentSession;
 	};
 }
 
@@ -361,7 +393,7 @@ export interface IChatThreadService {
 	editUserMessageAndStreamResponse({ userMessage, messageIdx, threadId }: { userMessage: string, messageIdx: number, threadId: string }): Promise<void>;
 
 	// call to add a message
-	addUserMessageAndStreamResponse({ userMessage, threadId, images }: { userMessage: string, threadId: string, images?: ImageAttachment[] }): Promise<void>;
+	addUserMessageAndStreamResponse({ userMessage, threadId, images, selections }: { userMessage: string, threadId: string, images?: ImageAttachment[], selections?: StagingSelectionItem[] }): Promise<void>;
 
 	// approve/reject
 	approveLatestToolRequest(threadId: string): void;
@@ -389,6 +421,14 @@ export interface IChatThreadService {
 	updateTaskStatus(threadId: string, taskId: string, status: TaskPlan['status']): void;
 	deleteTask(threadId: string, taskId: string): void;
 	clearTaskPlan(threadId: string): void;
+
+	// Student mode session
+	getStudentSession(threadId: string): StudentSession | undefined;
+	initStudentSession(threadId: string): StudentSession;
+	addExercise(threadId: string, exercise: Omit<StudentExercise, 'hintLevel' | 'status' | 'createdAt'>): StudentExercise;
+	updateExerciseHintLevel(threadId: string, exerciseId: string): number;
+	completeExercise(threadId: string, exerciseId: string): void;
+	addConceptLearned(threadId: string, concept: string): void;
 }
 
 export const IChatThreadService = createDecorator<IChatThreadService>('chatThreadService');
@@ -1202,13 +1242,18 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				}
 				// Auto-extract tasks from any LLM response with text content
 				else if (!isEmptyResponse && info.fullText.trim().length > 0) {
-					// In agent mode: Pure ReAct loop - if LLM responds with text and no tool call, it's done
+					// In agent mode: Check if LLM is describing an action it intends to take
 					if (chatMode === 'agent') {
-						// ReAct principle: LLM either calls a tool (action) or responds with text (done)
-						// No regex pattern matching needed - the LLM's behavior is the signal
-						console.log(`[chatThreadService] Agent mode: LLM responded with text, no tool call - task complete`)
-						shouldSendAnotherMessage = false
-						break
+						// If LLM says "Let me read the file..." but doesn't call a tool, continue the loop
+						if (isDescribingIntendedAction(info.fullText)) {
+							console.log(`[chatThreadService] Agent mode: LLM described intended action without tool call, continuing loop`)
+							shouldSendAnotherMessage = true
+						} else {
+							// LLM responded with text and no tool call, and not describing an action - task complete
+							console.log(`[chatThreadService] Agent mode: LLM responded with text, no tool call - task complete`)
+							shouldSendAnotherMessage = false
+							break
+						}
 					}
 
 				} // end while (attempts)
@@ -1620,7 +1665,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 	}
 
 
-	async addUserMessageAndStreamResponse({ userMessage, _chatSelections, images, threadId }: { userMessage: string, _chatSelections?: StagingSelectionItem[], images?: ImageAttachment[], threadId: string }) {
+	async addUserMessageAndStreamResponse({ userMessage, selections, images, threadId }: { userMessage: string, selections?: StagingSelectionItem[], images?: ImageAttachment[], threadId: string }) {
 		const thread = this.state.allThreads[threadId];
 		if (!thread) return
 
@@ -1630,12 +1675,12 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		// If the thread is running, queue the message instead of aborting
 		if (isRunning) {
 			console.log(`[chatThreadService] Thread ${threadId} is currently running. Queueing message.`);
-			this._queueMessage(threadId, { userMessage, selections: _chatSelections, images });
+			this._queueMessage(threadId, { userMessage, selections, images });
 			return;
 		}
 
 		// Now call the original method to add the user message and stream the response
-		await this._addUserMessageAndStreamResponse({ userMessage, _chatSelections, images, threadId });
+		await this._addUserMessageAndStreamResponse({ userMessage, _chatSelections: selections, images, threadId });
 	}
 
 	editUserMessageAndStreamResponse: IChatThreadService['editUserMessageAndStreamResponse'] = async ({ userMessage, messageIdx, threadId }) => {
@@ -2484,6 +2529,103 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		this.taskPlans[threadId] = []
 		this._onDidChangeCurrentThread.fire() // Notify UI of change
 		console.log(`[chatThreadService] Cleared task plan for thread ${threadId}`)
+	}
+
+	// ==================== Student Mode Session ====================
+
+	getStudentSession(threadId: string): StudentSession | undefined {
+		return this.state.allThreads[threadId]?.state.studentSession
+	}
+
+	initStudentSession(threadId: string): StudentSession {
+		const thread = this.state.allThreads[threadId]
+		if (!thread) {
+			throw new Error(`Thread ${threadId} not found`)
+		}
+
+		const session: StudentSession = {
+			activeExercises: {},
+			completedExerciseCount: 0,
+			conceptsLearned: []
+		}
+
+		thread.state.studentSession = session
+		this._onDidChangeCurrentThread.fire()
+		return session
+	}
+
+	addExercise(threadId: string, exercise: Omit<StudentExercise, 'hintLevel' | 'status' | 'createdAt'>): StudentExercise {
+		const thread = this.state.allThreads[threadId]
+		if (!thread) {
+			throw new Error(`Thread ${threadId} not found`)
+		}
+
+		// Initialize session if not exists
+		if (!thread.state.studentSession) {
+			this.initStudentSession(threadId)
+		}
+
+		const fullExercise: StudentExercise = {
+			...exercise,
+			hintLevel: 0,
+			status: 'active',
+			createdAt: Date.now()
+		}
+
+		thread.state.studentSession!.activeExercises[exercise.id] = fullExercise
+		this._onDidChangeCurrentThread.fire()
+		console.log(`[chatThreadService] Added exercise ${exercise.id} for thread ${threadId}`)
+		return fullExercise
+	}
+
+	updateExerciseHintLevel(threadId: string, exerciseId: string): number {
+		const thread = this.state.allThreads[threadId]
+		const exercise = thread?.state.studentSession?.activeExercises[exerciseId]
+
+		if (!exercise) {
+			console.warn(`[chatThreadService] Exercise ${exerciseId} not found in thread ${threadId}`)
+			return 1 // Default to level 1 if not found
+		}
+
+		// Increment hint level (max 4)
+		const newLevel = Math.min(exercise.hintLevel + 1, 4)
+		exercise.hintLevel = newLevel
+		this._onDidChangeCurrentThread.fire()
+		console.log(`[chatThreadService] Updated exercise ${exerciseId} to hint level ${newLevel}`)
+		return newLevel
+	}
+
+	completeExercise(threadId: string, exerciseId: string): void {
+		const thread = this.state.allThreads[threadId]
+		const session = thread?.state.studentSession
+		const exercise = session?.activeExercises[exerciseId]
+
+		if (!exercise || !session) {
+			console.warn(`[chatThreadService] Exercise ${exerciseId} not found in thread ${threadId}`)
+			return
+		}
+
+		exercise.status = 'completed'
+		session.completedExerciseCount++
+		this._onDidChangeCurrentThread.fire()
+		console.log(`[chatThreadService] Completed exercise ${exerciseId}. Total completed: ${session.completedExerciseCount}`)
+	}
+
+	addConceptLearned(threadId: string, concept: string): void {
+		const thread = this.state.allThreads[threadId]
+		if (!thread) return
+
+		// Initialize session if not exists
+		if (!thread.state.studentSession) {
+			this.initStudentSession(threadId)
+		}
+
+		const session = thread.state.studentSession!
+		if (!session.conceptsLearned.includes(concept)) {
+			session.conceptsLearned.push(concept)
+			this._onDidChangeCurrentThread.fire()
+			console.log(`[chatThreadService] Added concept learned: ${concept}`)
+		}
 	}
 
 	// gets `staging` and `setStaging` of the currently focused element, given the index of the currently selected message (or undefined if no message is selected)

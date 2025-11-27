@@ -58,12 +58,9 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 			}
 		}
 
-		// Check immediately and then periodically
+		// Check on mount and when messages change
 		checkForUpdates()
-		const interval = setInterval(checkForUpdates, 2000)
-
-		return () => clearInterval(interval)
-	}, [threadId, toolMessage.id, chatThreadsService])
+	}, [threadId, toolMessage.id, chatThreadsService, chatThreadsService?.state?.allThreads?.[threadId]?.messages?.length])
 
 	const result = latestPlan.result
 	if (!result) {
@@ -230,29 +227,63 @@ My requested changes:`
 		let markdown = `# ${planInfo.title}\n\n`
 
 		if (planInfo.planId) {
-			markdown += `**Plan ID:** ${planInfo.planId}\n\n`
+			markdown += `> **Plan ID:** \`${planInfo.planId}\`\n\n`
 		}
 
-		if (planInfo.summary) {
-			markdown += `## Summary\n\n${planInfo.summary}\n\n`
-		}
-
-		// Add steps if available
+		// Add steps if available - with visual progress
 		if (result.steps && Array.isArray(result.steps)) {
-			markdown += `## Steps\n\n`
+			const completedCount = result.steps.filter((s: any) => s.status === 'completed').length
+			const totalCount = result.steps.length
+
+			markdown += `## 📋 Steps (${completedCount}/${totalCount} complete)\n\n`
+
 			result.steps.forEach((step: any, index: number) => {
-				const status = step.status === 'completed' ? '✅' : step.status === 'in_progress' ? '🔄' : '⬜'
-				markdown += `${index + 1}. ${status} **${step.title || step.description || 'Step ' + (index + 1)}**\n`
+				const status = step.status || 'pending'
+				const statusIcon = status === 'completed' ? '✅' : status === 'in_progress' ? '🔄' : status === 'failed' ? '❌' : '⬜'
+				const statusBadge = status === 'completed' ? ' *(completed)*' :
+					status === 'in_progress' ? ' *(in progress)*' :
+					status === 'failed' ? ' *(failed)*' : ''
+
+				markdown += `### ${statusIcon} Step ${index + 1}: ${step.title || step.description || 'Untitled Step'}${statusBadge}\n\n`
+
 				if (step.description && step.title) {
-					markdown += `   ${step.description}\n`
+					markdown += `${step.description}\n\n`
 				}
-				markdown += '\n'
+
+				// Add any step-specific details
+				if (step.files && Array.isArray(step.files) && step.files.length > 0) {
+					markdown += `**Files involved:**\n`
+					step.files.forEach((file: string) => {
+						markdown += `- \`${file}\`\n`
+					})
+					markdown += '\n'
+				}
+
+				if (step.notes) {
+					markdown += `> 💡 ${step.notes}\n\n`
+				}
 			})
+		}
+
+		// Add summary section
+		if (planInfo.summary) {
+			markdown += `---\n\n## Summary\n\n${planInfo.summary}\n\n`
 		}
 
 		// Add any additional details
 		if (result.details) {
-			markdown += `## Details\n\n${result.details}\n\n`
+			markdown += `## Additional Details\n\n${result.details}\n\n`
+		}
+
+		// Add timestamps if available
+		if (result.createdAt || result.updatedAt) {
+			markdown += `---\n\n`
+			if (result.createdAt) {
+				markdown += `*Created: ${new Date(result.createdAt).toLocaleString()}*\n`
+			}
+			if (result.updatedAt) {
+				markdown += `*Last updated: ${new Date(result.updatedAt).toLocaleString()}*\n`
+			}
 		}
 
 		return markdown
@@ -311,18 +342,65 @@ My requested changes:`
 				<div className="border-t border-void-border-2">
 					{/* Plan Content */}
 					<div className="p-3">
+						{/* Render steps if available */}
+						{result.steps && Array.isArray(result.steps) && result.steps.length > 0 && (
+							<div className="mb-4">
+								<div className="text-sm font-medium text-void-fg-2 mb-2">Steps:</div>
+								<div className="space-y-2">
+									{result.steps.map((step: any, index: number) => {
+										const status = step.status || 'pending'
+										const statusIcon = status === 'completed' ? '✅' : status === 'in_progress' ? '🔄' : status === 'failed' ? '❌' : '⬜'
+										const statusColor = status === 'completed' ? 'text-green-400' : status === 'in_progress' ? 'text-blue-400' : status === 'failed' ? 'text-red-400' : 'text-void-fg-3'
+
+										return (
+											<div key={index} className="flex items-start gap-3 p-2 bg-void-bg-1 rounded-md border border-void-border-2">
+												<div className="flex-shrink-0 w-6 h-6 flex items-center justify-center">
+													<span className={statusColor}>{statusIcon}</span>
+												</div>
+												<div className="flex-1 min-w-0">
+													<div className="flex items-center gap-2">
+														<span className="text-xs text-void-fg-4 font-mono">Step {index + 1}</span>
+														{status !== 'pending' && (
+															<span className={`text-xs px-1.5 py-0.5 rounded ${
+																status === 'completed' ? 'bg-green-500/20 text-green-400' :
+																status === 'in_progress' ? 'bg-blue-500/20 text-blue-400' :
+																status === 'failed' ? 'bg-red-500/20 text-red-400' :
+																'bg-void-bg-2 text-void-fg-4'
+															}`}>
+																{status}
+															</span>
+														)}
+													</div>
+													<div className="text-sm text-void-fg-1 mt-1">
+														{step.title || step.description || `Step ${index + 1}`}
+													</div>
+													{step.description && step.title && (
+														<div className="text-xs text-void-fg-3 mt-1">
+															{step.description}
+														</div>
+													)}
+												</div>
+											</div>
+										)
+									})}
+								</div>
+							</div>
+						)}
+
+						{/* Render summary with markdown */}
 						{planInfo.summary && (
-							<div className="mb-3">
+							<div className="mb-3 prose prose-sm prose-invert max-w-none">
 								<ChatMarkdownRender
-									content={planInfo.summary}
-									messageIdx={messageIdx}
-									threadId={threadId}
+									string={planInfo.summary}
+									chatMessageLocation={{ threadId, messageIdx }}
+									isApplyEnabled={false}
+									isLinkDetectionEnabled={true}
 								/>
 							</div>
 						)}
 
 						{planInfo.planId && (
-							<div className="text-xs text-void-fg-4 mb-3">
+							<div className="text-xs text-void-fg-4 mb-3 font-mono bg-void-bg-1 px-2 py-1 rounded inline-block">
 								Plan ID: {planInfo.planId}
 							</div>
 						)}

@@ -252,6 +252,41 @@ const openAITools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | u
 }
 
 
+// Find the end of a JSON object, handling nested braces
+const findJsonObjectEnd = (str: string): number => {
+	let depth = 0
+	let inString = false
+	let escape = false
+
+	for (let i = 0; i < str.length; i++) {
+		const char = str[i]
+
+		if (escape) {
+			escape = false
+			continue
+		}
+
+		if (char === '\\' && inString) {
+			escape = true
+			continue
+		}
+
+		if (char === '"') {
+			inString = !inString
+			continue
+		}
+
+		if (inString) continue
+
+		if (char === '{') depth++
+		if (char === '}') {
+			depth--
+			if (depth === 0) return i
+		}
+	}
+	return -1
+}
+
 // convert LLM tool call to our tool format
 const rawToolCallObjOfParamsStr = (name: string, toolParamsStr: string, id: string): RawToolCallObj | null => {
 	if (!toolParamsStr) {
@@ -264,9 +299,24 @@ const rawToolCallObjOfParamsStr = (name: string, toolParamsStr: string, id: stri
 		input = JSON.parse(toolParamsStr)
 	}
 	catch (e) {
-		console.log(`[sendLLMMessage] ⚠️ Failed to parse tool parameters for "${name}":`, e)
-		console.log(`[sendLLMMessage] Raw params string:`, toolParamsStr.substring(0, 500))
-		return null
+		// Try to handle concatenated JSON objects like {"uri":"a"}{"uri":"b"}
+		// This happens when LLMs try to call multiple tools at once incorrectly
+		const firstObjectEnd = findJsonObjectEnd(toolParamsStr)
+		if (firstObjectEnd !== -1 && firstObjectEnd < toolParamsStr.length - 1) {
+			const firstObject = toolParamsStr.substring(0, firstObjectEnd + 1)
+			try {
+				input = JSON.parse(firstObject)
+				console.log(`[sendLLMMessage] ⚠️ LLM sent concatenated tool calls, extracting first one for "${name}"`)
+			} catch (e2) {
+				console.log(`[sendLLMMessage] ⚠️ Failed to parse tool parameters for "${name}":`, e)
+				console.log(`[sendLLMMessage] Raw params string:`, toolParamsStr.substring(0, 500))
+				return null
+			}
+		} else {
+			console.log(`[sendLLMMessage] ⚠️ Failed to parse tool parameters for "${name}":`, e)
+			console.log(`[sendLLMMessage] Raw params string:`, toolParamsStr.substring(0, 500))
+			return null
+		}
 	}
 
 	if (input === null) {
@@ -635,11 +685,84 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 			}
 		})
 		// when error/fail - this catches errors of both .create() and .then(for await)
-		.catch(error => {
+		.catch(async error => {
 			console.log(`[sendLLMMessage] Error caught:`, error)
 			console.log(`[sendLLMMessage] Error type:`, error?.constructor?.name)
 			console.log(`[sendLLMMessage] Error status:`, error?.status)
 			console.log(`[sendLLMMessage] Error message:`, error?.message)
+
+			// Retry on 500 errors (server-side issues) - wait 3 seconds and try once more
+			// Don't call onError yet - let the UI keep showing "thinking" state
+			if (error instanceof OpenAI.APIError && error.status === 500 && !(options as any)._isRetry) {
+				console.log(`[sendLLMMessage] ⏳ Server returned 500 error, retrying in 3 seconds...`)
+				await new Promise(resolve => setTimeout(resolve, 3000))
+				console.log(`[sendLLMMessage] 🔄 Retrying request...`)
+
+				// Retry the request with a flag to prevent infinite retries
+				const retryOptions = { ...options, _isRetry: true } as typeof options & { _isRetry: boolean }
+				openai.chat.completions
+					.create(retryOptions)
+					.then(async retryResponse => {
+						console.log(`[sendLLMMessage] ✅ Retry succeeded, processing response`)
+						_setAborter(() => (retryResponse as any).controller?.abort?.())
+
+						// Reset state for retry
+						fullTextSoFar = ''
+						fullReasoningSoFar = ''
+						toolName = ''
+						toolParamsStr = ''
+						toolId = ''
+
+						const { stripXMLBlocks } = await import('../../common/helpers/extractXMLTools.js')
+
+						let chunkCount = 0
+						for await (const chunk of retryResponse as any) {
+							chunkCount++
+							const choice = chunk.choices?.[0]
+							if (!choice) continue
+
+							if (choice.finish_reason && choice.finish_reason !== 'stop' && choice.finish_reason !== 'tool_calls') {
+								onError({ message: `Model ended response with finish_reason "${choice.finish_reason}"`, fullError: null })
+								return
+							}
+
+							const delta = choice.delta ?? {}
+							fullTextSoFar += toText(delta.content)
+
+							for (const toolDelta of delta.tool_calls ?? []) {
+								applyToolCall(toolDelta, { isFinal: false })
+							}
+							if (choice.finish_reason === 'tool_calls') {
+								applyToolCall({ function: { name: toolName, arguments: toolParamsStr }, id: toolId, index: 0 }, { isFinal: true })
+							}
+
+							if (nameOfReasoningFieldInDelta) {
+								const deltaAny = delta as any
+								const reasoningDelta = (deltaAny?.[nameOfReasoningFieldInDelta] || deltaAny?.reasoning || deltaAny?.thinking || '') + ''
+								fullReasoningSoFar += reasoningDelta
+							}
+
+							const displayText = !specialToolFormat ? stripXMLBlocks(fullTextSoFar) : fullTextSoFar
+							onText({
+								fullText: displayText,
+								fullReasoning: fullReasoningSoFar,
+								toolCall: !toolName ? undefined : { name: toolName, rawParams: {}, isDone: false, doneParams: [], id: toolId },
+								_rawTextBeforeStripping: !specialToolFormat ? fullTextSoFar : undefined,
+							})
+						}
+
+						console.log(`[sendLLMMessage] Retry stream completed. Chunks: ${chunkCount}`)
+						const toolCall = rawToolCallObjOfParamsStr(toolName, toolParamsStr, toolId)
+						const toolCallObj = toolCall ? { toolCall } : {}
+						onFinalMessage({ fullText: fullTextSoFar, fullReasoning: fullReasoningSoFar, anthropicReasoning: null, ...toolCallObj })
+					})
+					.catch(retryError => {
+						console.log(`[sendLLMMessage] ❌ Retry also failed:`, retryError?.message)
+						onError({ message: retryError + '', fullError: retryError })
+					})
+				return
+			}
+
 			if (error instanceof OpenAI.APIError && error.status === 401) { onError({ message: invalidApiKeyMessage(providerName), fullError: error }); }
 			else { onError({ message: error + '', fullError: error }); }
 		})

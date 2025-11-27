@@ -527,7 +527,11 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		const mcpTools = this.mcpService.getMCPTools()
 
 		const persistentTerminalIDs = this.terminalToolService.listPersistentTerminalIds()
-		const systemMessage = chat_systemMessage({ workspaceFolders, openedURIs, directoryStr, activeURI, persistentTerminalIDs, chatMode, mcpTools, specialToolFormat })
+
+		// Get student level for student mode
+		const studentLevel = chatMode === 'student' ? this.voidSettingsService.state.globalSettings.studentLevel : undefined
+
+		const systemMessage = chat_systemMessage({ workspaceFolders, openedURIs, directoryStr, activeURI, persistentTerminalIDs, chatMode, mcpTools, specialToolFormat, studentLevel })
 		return systemMessage
 	}
 

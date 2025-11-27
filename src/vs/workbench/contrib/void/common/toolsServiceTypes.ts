@@ -89,6 +89,13 @@ export type BuiltinToolCallParams = {
 	// ---
 	'update_walkthrough': { content: string, mode: 'create' | 'append' | 'replace', title?: string, includePlanStatus?: boolean },
 	'open_walkthrough_preview': { file_path: string },
+	// --- Teaching tools (Student Mode)
+	'explain_code': { code: string, language: string, level: 'beginner' | 'intermediate' | 'advanced', focus?: string },
+	'teach_concept': { concept: string, level: 'beginner' | 'intermediate' | 'advanced', language?: string, context?: string },
+	'create_exercise': { topic: string, difficulty: 'easy' | 'medium' | 'hard', language: string, type: 'fill_blank' | 'fix_bug' | 'write_function' | 'extend_code' },
+	'check_answer': { exercise_id: string, student_code: string },
+	'give_hint': { exercise_id: string },
+	'create_lesson_plan': { goal: string, level: 'beginner' | 'intermediate' | 'advanced', time_available?: number },
 }
 
 // RESULT OF TOOL CALL
@@ -127,6 +134,13 @@ export type BuiltinToolResultType = {
 	// ---
 	'update_walkthrough': { success: boolean, filePath: string, action: 'created' | 'updated' | 'appended', preview: string },
 	'open_walkthrough_preview': { success: boolean, message: string },
+	// --- Teaching tools (Student Mode)
+	'explain_code': { template: string },
+	'teach_concept': { template: string },
+	'create_exercise': { exerciseId: string, template: string },
+	'check_answer': { template: string },
+	'give_hint': { hintLevel: number, template: string },
+	'create_lesson_plan': { planId: string, template: string },
 }
 
 

@@ -636,8 +636,9 @@ Example: [{ id: "task_migrations", description: "Create database migration scrip
 **Example workflow:**
 1. User: "Build a complete authentication system"
 2. You call create_implementation_plan with detailed steps
-3. User reviews and approves the plan
-4. You execute the approved plan step-by-step`,
+3. The plan is automatically displayed to the user (do NOT call preview_implementation_plan after this)
+4. User reviews and approves the plan
+5. You execute the approved plan step-by-step`,
 		params: {
 			goal: { description: 'Overall goal this implementation plan accomplishes (e.g., "Build JWT-based authentication system")' },
 			steps: {
@@ -679,9 +680,11 @@ Example: [
 		description: `Shows the current implementation plan in a preview interface for user review.
 
 **When to use:**
-- After creating an implementation plan to show it to the user
-- When user wants to review the current plan before execution
-- To display plan progress and next steps
+- When user asks to see the plan again later (NOT right after creating it - create_implementation_plan already shows the plan)
+- To display plan progress during or after execution
+- When resuming work on an existing plan
+
+**IMPORTANT:** Do NOT call this immediately after create_implementation_plan - the plan is already displayed when created. Only use this to re-display an existing plan later.
 
 **What happens:** Displays the plan in a walkthrough-style preview with:
 - Plan overview and goal
@@ -696,7 +699,7 @@ Example: [
 		name: 'execute_implementation_plan',
 		description: `Executes an approved implementation plan step by step.
 
-**When to use:** ONLY after the user has reviewed and approved the implementation plan via preview_implementation_plan.
+**When to use:** ONLY after the user has reviewed and approved the implementation plan.
 
 **What happens:**
 1. Executes each step in the correct order (respecting dependencies)
@@ -760,7 +763,7 @@ Example: [
 		name: 'update_walkthrough',
 		description: `Creates or updates a walkthrough.md file in the workspace root to document progress on the current task.
 
-**IMPORTANT:** After calling this tool, you MUST call open_walkthrough_preview to display the walkthrough to the user.
+**Note:** The walkthrough content is returned in the tool result, so you do NOT need to call open_walkthrough_preview afterwards unless the user specifically asks to see it in a preview window.
 
 **What you'll receive:**
 - Confirmation that the walkthrough was updated
@@ -799,9 +802,9 @@ Example: [
 		description: `Opens a walkthrough document in a preview tab for user review.
 
 **When to use:**
-- After creating or updating a walkthrough to show it to the user
-- When user wants to review the walkthrough in a clean, dedicated interface
-- To present the walkthrough with approval/change request features
+- When user explicitly asks to see the walkthrough in a preview window
+- When user wants to review the walkthrough in a clean, dedicated interface with approval buttons
+- Do NOT call this immediately after update_walkthrough - the content is already shown in the tool result
 
 **What happens:** Opens the walkthrough in a dedicated preview tab with:
 - Clean markdown rendering with proper syntax highlighting
@@ -812,6 +815,114 @@ Example: [
 **What you'll receive:** Success confirmation with message`,
 		params: {
 			file_path: { description: 'Full path to the walkthrough file to open (e.g., "/path/to/walkthrough.md")' }
+		}
+	},
+
+	// --- Teaching Tools (Student Mode) ---
+
+	explain_code: {
+		name: 'explain_code',
+		description: `Explains code line-by-line at the student's learning level.
+
+**When to use:**
+- When a student asks "what does this code do?"
+- When reviewing code the student found or wrote
+- When introducing new syntax or patterns
+
+**What you'll receive:** A structured template to fill in with your explanation, formatted for the student's level.`,
+		params: {
+			code: { description: 'The code snippet to explain' },
+			language: { description: 'Programming language (e.g., "python", "javascript", "java")' },
+			level: { description: 'Student level: "beginner", "intermediate", or "advanced"' },
+			focus: { description: 'Optional. Specific concept to highlight (e.g., "loops", "recursion")' }
+		}
+	},
+
+	teach_concept: {
+		name: 'teach_concept',
+		description: `Teaches a programming concept from scratch with examples and exercises.
+
+**When to use:**
+- When a student asks "what is [concept]?"
+- When introducing a new topic before showing code
+- When a student is confused about a fundamental concept
+
+**What you'll receive:** A structured template to fill in with your lesson, including definition, analogy, example, and practice exercise.`,
+		params: {
+			concept: { description: 'The concept to teach (e.g., "functions", "loops", "arrays", "recursion")' },
+			level: { description: 'Student level: "beginner", "intermediate", or "advanced"' },
+			language: { description: 'Optional. Show examples in this language' },
+			context: { description: 'Optional. Relate the concept to this project or topic' }
+		}
+	},
+
+	create_exercise: {
+		name: 'create_exercise',
+		description: `Creates a practice exercise for the student to reinforce learning.
+
+**When to use:**
+- After teaching a concept to let the student practice
+- When a student asks for practice problems
+- To check understanding before moving on
+
+**What you'll receive:** An exercise ID (for tracking) and a template to fill in with the exercise details.`,
+		params: {
+			topic: { description: 'What concept to practice (e.g., "for loops", "string methods")' },
+			difficulty: { description: '"easy", "medium", or "hard"' },
+			language: { description: 'Programming language for the exercise' },
+			type: { description: 'Exercise type: "fill_blank", "fix_bug", "write_function", or "extend_code"' }
+		}
+	},
+
+	check_answer: {
+		name: 'check_answer',
+		description: `Validates a student's solution to an exercise.
+
+**When to use:**
+- When a student submits their solution attempt
+- To provide feedback on their code
+
+**Important:** Do NOT give the answer if wrong. Provide encouraging feedback and hints instead.`,
+		params: {
+			exercise_id: { description: 'The exercise ID from create_exercise' },
+			student_code: { description: 'The student\'s code attempt' }
+		}
+	},
+
+	give_hint: {
+		name: 'give_hint',
+		description: `Provides a progressive hint for an exercise (level 1 → 2 → 3 → solution).
+
+**When to use:**
+- When a student says "I'm stuck" or asks for help
+- After a failed attempt at an exercise
+
+**Hint levels:**
+- Level 1: Vague direction ("Think about what data structure...")
+- Level 2: More specific ("You'll need a loop that...")
+- Level 3: Nearly there ("Use a for loop with an if inside...")
+- Level 4: Full solution with explanation
+
+Each call advances to the next hint level automatically.`,
+		params: {
+			exercise_id: { description: 'The exercise ID to get a hint for' }
+		}
+	},
+
+	create_lesson_plan: {
+		name: 'create_lesson_plan',
+		description: `Creates a structured multi-step learning path for a topic or project.
+
+**When to use:**
+- When a student wants to learn a topic comprehensively
+- When building a project step-by-step with learning
+- For structured curriculum-style teaching
+
+**What you'll receive:** A plan ID and template to fill in with modules, exercises, and checkpoints.`,
+		params: {
+			goal: { description: 'What the student wants to learn or build (e.g., "Learn Python basics", "Build a todo app")' },
+			level: { description: 'Student level: "beginner", "intermediate", or "advanced"' },
+			time_available: { description: 'Optional. Estimated time in minutes' }
 		}
 	},
 
@@ -850,9 +961,6 @@ const gatherModeTools: BuiltinToolName[] = [
 	'preview_implementation_plan',
 	'update_implementation_step',
 	'get_implementation_status',
-	// Walkthrough - document findings and plans
-	'update_walkthrough',
-	'open_walkthrough_preview',
 ]
 
 const agentModeTools: BuiltinToolName[] = [
@@ -885,16 +993,39 @@ const agentModeTools: BuiltinToolName[] = [
 	'open_walkthrough_preview',
 ]
 
+const studentModeTools: BuiltinToolName[] = [
+	// Context/Read tools - explore and understand code
+	'read_file',
+	'outline_file',
+	'ls_dir',
+	'get_dir_tree',
+	'search_pathnames_only',
+	'search_for_files',
+	'search_in_file',
+	// Teaching tools - explain, teach, and practice
+	'explain_code',
+	'teach_concept',
+	'create_exercise',
+	'check_answer',
+	'give_hint',
+	'create_lesson_plan',
+	// Limited editing - for exercises and demos
+	'create_file_or_folder',
+	'edit_file',
+]
+
 export const availableTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined) => {
 
 	// Select tools based on mode
 	// - normal (Chat): No tools - pure conversation
-	// - gather: Read/search + implementation planning + walkthrough (~14 tools)
+	// - gather: Read/search + implementation planning (~12 tools)
 	// - agent: Read/search + edit/write + terminal + task planning + walkthrough (~22 tools)
+	// - student: Read/search + teaching tools + limited editing (~15 tools)
 	const builtinToolNames: BuiltinToolName[] | undefined = chatMode === 'normal' ? undefined
 		: chatMode === 'gather' ? gatherModeTools
 			: chatMode === 'agent' ? agentModeTools
-				: undefined
+				: chatMode === 'student' ? studentModeTools
+					: undefined
 
 	// Filter out run_code tool (not working, causes failures and slowdowns)
 	const filteredBuiltinToolNames = builtinToolNames?.filter(toolName => toolName !== 'run_code');
@@ -1014,11 +1145,17 @@ function newFunction() {
 // ======================================================== chat (normal, gather, agent) ========================================================
 
 
-export const chat_systemMessage = ({ workspaceFolders, openedURIs, activeURI, persistentTerminalIDs, directoryStr, chatMode: mode, mcpTools, specialToolFormat }: { workspaceFolders: string[], directoryStr: string, openedURIs: string[], activeURI: string | undefined, persistentTerminalIDs: string[], chatMode: ChatMode, mcpTools: InternalToolInfo[] | undefined, specialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' | undefined }) => {
+export const chat_systemMessage = ({ workspaceFolders, openedURIs, activeURI, persistentTerminalIDs, directoryStr, chatMode: mode, mcpTools, specialToolFormat, studentLevel }: { workspaceFolders: string[], directoryStr: string, openedURIs: string[], activeURI: string | undefined, persistentTerminalIDs: string[], chatMode: ChatMode, mcpTools: InternalToolInfo[] | undefined, specialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' | undefined, studentLevel?: 'beginner' | 'intermediate' | 'advanced' }) => {
 
 	// ============ IDENTITY ============
+	const identityRole = mode === 'agent' ? 'agent' : mode === 'student' ? 'tutor' : 'assistant'
+	const identityPurpose = mode === 'agent' ? 'help users develop, run, and make changes to their codebase'
+		: mode === 'gather' ? 'search, understand, and reference files in the user\'s codebase'
+			: mode === 'student' ? 'teach programming concepts and help students learn to code'
+				: 'assist users with their coding tasks'
+
 	const identity = `<identity>
-You are an expert coding ${mode === 'agent' ? 'agent' : 'assistant'} designed to ${mode === 'agent' ? 'help users develop, run, and make changes to their codebase' : mode === 'gather' ? 'search, understand, and reference files in the user\'s codebase' : 'assist users with their coding tasks'}.
+You are an expert coding ${identityRole} designed to ${identityPurpose}.
 
 You operate exclusively in the user's IDE environment, with direct access to their workspace and file system.
 
@@ -1072,7 +1209,7 @@ ${persistentTerminalIDs.join(', ')}` : ''}
 	const allTools = availableTools(mode, mcpTools)
 	let toolCalling = ''
 
-	if (allTools && allTools.length > 0 && (mode === 'agent' || mode === 'gather')) {
+	if (allTools && allTools.length > 0 && (mode === 'agent' || mode === 'gather' || mode === 'student')) {
 		if (!specialToolFormat) {
 			// XML tool calling for models without native support
 			toolCalling = `<tool_calling>
@@ -1139,6 +1276,57 @@ WORKFLOW:
 
 Be proactive - don't wait for the user to tell you which files to read. Explore the codebase to find answers.
 </plan_mode_behavior>`
+	} else if (mode === 'student') {
+		// Student mode - teaching and learning
+		const levelDesc = studentLevel === 'beginner' ? 'Use simple language, no jargon. Explain like teaching a complete beginner. Use real-world analogies.'
+			: studentLevel === 'intermediate' ? 'Use some technical terms but define them briefly. Assume basic programming knowledge.'
+				: 'Use technical terminology freely. Discuss trade-offs, edge cases, and best practices.'
+
+		contextGathering = `<student_mode_behavior>
+You are in STUDENT MODE. Your role is to TEACH, not just complete tasks.
+
+STUDENT LEVEL: ${studentLevel || 'beginner'}
+${levelDesc}
+
+TEACHING APPROACH:
+1. Always EXPLAIN concepts before showing code
+2. Use the teaching tools to structure your responses:
+   - Use \`teach_concept\` when introducing new ideas
+   - Use \`explain_code\` when reviewing code
+   - Use \`create_exercise\` to reinforce learning
+   - Use \`give_hint\` when student is stuck (progressive hints)
+   - Use \`check_answer\` to validate their attempts
+   - Use \`create_lesson_plan\` for multi-step learning paths
+3. Ask questions to check understanding
+4. Celebrate progress and normalize mistakes
+5. Give hints before answers when students are stuck
+
+YOUR CAPABILITIES:
+✅ Read and search files to understand code
+✅ Explain code line-by-line at the student's level
+✅ Teach programming concepts with examples
+✅ Create practice exercises
+✅ Provide progressive hints (not immediate answers)
+✅ Create structured lesson plans
+✅ Create and edit files for exercises/demos
+
+NEVER:
+- Write code without explanation
+- Give complete solutions immediately (use hints first)
+- Make students feel bad for not knowing something
+- Skip the "why" and only show the "how"
+- Use jargon without explaining it (especially for beginners)
+
+WORKFLOW:
+1. When student asks a question, first understand their level
+2. Explain the concept before showing code
+3. Use teaching tools to structure your response
+4. Create exercises to reinforce learning
+5. If they're stuck, give progressive hints (level 1 → 2 → 3 → solution)
+6. Celebrate when they get it right!
+
+Be patient, encouraging, and remember: your goal is to help them LEARN, not just complete tasks.
+</student_mode_behavior>`
 	} else if (mode === 'agent') {
 		// Code mode - full execution capabilities
 		contextGathering = `<code_mode_behavior>

@@ -438,7 +438,9 @@ export const isFeatureNameDisabled = (featureName: FeatureName, settingsState: V
 
 
 
-export type ChatMode = 'agent' | 'gather' | 'normal'
+export type ChatMode = 'agent' | 'gather' | 'normal' | 'student'
+
+export type StudentLevel = 'beginner' | 'intermediate' | 'advanced'
 
 
 export type GlobalSettings = {
@@ -449,6 +451,7 @@ export type GlobalSettings = {
 	syncSCMToChat: boolean;
 	enableFastApply: boolean;
 	chatMode: ChatMode;
+	studentLevel: StudentLevel;
 	autoApprove: { [approvalType in ToolApprovalType]?: boolean };
 	showInlineSuggestions: boolean;
 	includeToolLintErrors: boolean;
@@ -475,6 +478,7 @@ export const defaultGlobalSettings: GlobalSettings = {
 	syncSCMToChat: true,
 	enableFastApply: true,
 	chatMode: 'agent',
+	studentLevel: 'beginner',
 	autoApprove: {},
 	showInlineSuggestions: true,
 	includeToolLintErrors: true,

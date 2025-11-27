@@ -277,11 +277,14 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 		for (const k of modelOverrideKeys) { if (defaultModelCapabilities[k]) partialDefaults[k] = defaultModelCapabilities[k] as any; }
 
 		const key = `${providerName}:${modelName}`;
-		const savedValue = currentOverrides ? JSON.stringify(currentOverrides, null, 2) : '';
+		// Show current overrides if they exist, otherwise show the defaults so user can see and edit them
+		const displayValue = currentOverrides
+			? JSON.stringify(currentOverrides, null, 2)
+			: JSON.stringify(partialDefaults, null, 2);
 
 		// Initialize ref value if not set, or sync with saved value when card first opens
 		if (editingTextRef.current[key] === undefined) {
-			editingTextRef.current[key] = savedValue;
+			editingTextRef.current[key] = displayValue;
 		}
 
 		const handleSave = async () => {
@@ -336,14 +339,13 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 				</div>
 
 				<div className="text-xs text-void-fg-3 mb-2">
-					{currentOverrides ? '⚠️ Has custom overrides' : 'Using defaults (edit to override)'}
+					{currentOverrides ? '⚠️ Has custom overrides' : 'Showing defaults (edit to customize)'}
 				</div>
 
 				<textarea
 					defaultValue={editingTextRef.current[key]}
 					onChange={(e) => { editingTextRef.current[key] = e.target.value; }}
 					className="w-full h-40 p-2 font-mono text-xs bg-void-bg-1 border border-void-border-2 rounded resize-y"
-					placeholder={JSON.stringify(partialDefaults, null, 2)}
 				/>
 
 				{errorMsg && <div className="text-red-500 text-xs mt-1">{errorMsg}</div>}
