@@ -1144,7 +1144,9 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 				// Check for empty response and treat as error for retry
 				// Note: Tool calls with empty content are valid (especially for Ollama)
-				const isEmptyResponse = (!info.fullText || info.fullText.trim().length === 0) && !toolCall
+				// Also treat "(empty message)" placeholder as empty
+				const textContent = info.fullText?.trim() || ''
+				const isEmptyResponse = (textContent.length === 0 || textContent === '(empty message)') && !toolCall
 				if (isEmptyResponse) {
 					// In agent mode, silently continue the loop - the LLM may need another prompt
 					// Don't add empty message to thread, just continue
@@ -1221,7 +1223,8 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 					this._setStreamState(threadId, { isRunning: 'idle', interrupt: 'not_needed' }) // just decorative, for clarity
 				}
 				// Auto-extract tasks from any LLM response with text content
-				else if (!isEmptyResponse && info.fullText.trim().length > 0) {
+				// Use textContent which already excludes "(empty message)" placeholder
+				else if (!isEmptyResponse && textContent.length > 0 && textContent !== '(empty message)') {
 					// Pure ReAct pattern: if LLM responds with text and no tool call, it's done
 					// The LLM's behavior IS the signal - no regex pattern matching needed
 					if (chatMode === 'agent') {

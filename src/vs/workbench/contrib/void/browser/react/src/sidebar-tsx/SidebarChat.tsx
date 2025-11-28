@@ -573,48 +573,42 @@ const StudentOnboardingModal = ({ isOpen, onClose, onSelectLevel }: {
 
 	return (
 		<div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-			<div className="bg-void-bg-1 border border-void-border-1 rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+			<div className="bg-void-bg-1 border border-void-border-1 rounded-2xl shadow-2xl max-w-xl w-full max-h-[85vh] overflow-y-auto">
 				{/* Header */}
-				<div className="bg-gradient-to-r from-purple-600 to-blue-600 p-4 sm:p-6 text-white sticky top-0">
+				<div className="bg-gradient-to-r from-purple-600 to-blue-600 p-5 text-white rounded-t-2xl">
 					<div className="flex items-center gap-3 mb-2">
-						<span className="text-3xl sm:text-4xl">🎓</span>
-						<h2 className="text-xl sm:text-2xl font-bold">Welcome to Student Mode!</h2>
+						<span className="text-4xl">🎓</span>
+						<h2 className="text-2xl font-bold">Welcome to Student Mode!</h2>
 					</div>
-					<p className="text-white/90 text-sm sm:text-base">
+					<p className="text-white/90 text-sm">
 						A-Coder will now act as your personal coding tutor, explaining concepts and helping you learn.
 					</p>
 				</div>
 
 				{/* Content */}
-				<div className="p-4 sm:p-6">
-					<h3 className="text-base sm:text-lg font-semibold text-void-fg-1 mb-3 sm:mb-4">What's your coding experience?</h3>
+				<div className="p-4">
+					<h3 className="text-base font-semibold text-void-fg-1 mb-3">What's your coding experience?</h3>
 
-					<div className="space-y-2 sm:space-y-3">
+					{/* Horizontal level buttons */}
+					<div className="flex gap-2">
 						{(['beginner', 'intermediate', 'advanced'] as const).map((level) => (
 							<button
 								key={level}
 								onClick={() => onSelectLevel(level)}
-								className="w-full p-3 sm:p-4 text-left rounded-xl border border-void-border-2 bg-void-bg-2 hover:bg-void-bg-2-hover hover:border-void-accent transition-all group"
+								className="flex-1 p-3 text-center rounded-lg border border-void-border-2 bg-void-bg-2 hover:bg-void-bg-2-hover hover:border-void-accent transition-all group"
 							>
-								<div className="flex items-center gap-2 sm:gap-3">
-									<span className="text-xl sm:text-2xl">{nameOfStudentLevel[level].split(' ')[0]}</span>
-									<div>
-										<div className="font-medium text-void-fg-1 group-hover:text-void-accent text-sm sm:text-base">
-											{nameOfStudentLevel[level].split(' ').slice(1).join(' ')}
-										</div>
-										<div className="text-xs sm:text-sm text-void-fg-3">
-											{detailOfStudentLevel[level]}
-										</div>
-									</div>
+								<div className="text-xl mb-1">{nameOfStudentLevel[level].split(' ')[0]}</div>
+								<div className="text-xs font-medium text-void-fg-1 group-hover:text-void-accent">
+									{nameOfStudentLevel[level].split(' ').slice(1).join(' ')}
 								</div>
 							</button>
 						))}
 					</div>
 
 					{/* Features */}
-					<div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-void-bg-2 rounded-xl">
-						<h4 className="font-medium text-void-fg-1 mb-2 text-sm sm:text-base">What you'll get:</h4>
-						<ul className="text-xs sm:text-sm text-void-fg-3 space-y-1">
+					<div className="mt-4 p-3 bg-void-bg-2 rounded-lg">
+						<h4 className="font-medium text-void-fg-1 mb-2 text-sm">What you'll get:</h4>
+						<ul className="text-xs text-void-fg-3 space-y-1">
 							<li>✅ Line-by-line code explanations</li>
 							<li>✅ Concept teaching with real-world analogies</li>
 							<li>✅ Practice exercises with hints</li>
@@ -625,10 +619,10 @@ const StudentOnboardingModal = ({ isOpen, onClose, onSelectLevel }: {
 				</div>
 
 				{/* Footer */}
-				<div className="px-4 sm:px-6 pb-4 sm:pb-6">
+				<div className="px-5 pb-5">
 					<button
 						onClick={onClose}
-						className="text-xs sm:text-sm text-void-fg-3 hover:text-void-fg-1 transition-colors"
+						className="text-sm text-void-fg-3 hover:text-void-fg-1 transition-colors"
 					>
 						Skip for now (defaults to Beginner)
 					</button>
@@ -1999,12 +1993,13 @@ const loadingTitleWrapper = (item: React.ReactNode): React.ReactNode => {
 }
 
 const titleOfBuiltinToolName = {
-	'read_file': { done: 'Read file', proposed: 'Read file', running: loadingTitleWrapper('Reading file') },
-	'outline_file': { done: 'File outline', proposed: 'File outline', running: loadingTitleWrapper('Getting file outline') },
-	'ls_dir': { done: 'Inspected folder', proposed: 'Inspect folder', running: loadingTitleWrapper('Inspecting folder') },
-	'get_dir_tree': { done: 'Inspected folder tree', proposed: 'Inspect folder tree', running: loadingTitleWrapper('Inspecting folder tree') },
-	'search_pathnames_only': { done: 'Searched by file name', proposed: 'Search by file name', running: loadingTitleWrapper('Searching by file name') },
-	'search_for_files': { done: 'Searched', proposed: 'Search', running: loadingTitleWrapper('Searching') },
+	// Read/search tools - no loading animation (fast operations)
+	'read_file': { done: 'Read file', proposed: 'Read file', running: 'Reading file' },
+	'outline_file': { done: 'File outline', proposed: 'File outline', running: 'Getting file outline' },
+	'ls_dir': { done: 'Inspected folder', proposed: 'Inspect folder', running: 'Inspecting folder' },
+	'get_dir_tree': { done: 'Inspected folder tree', proposed: 'Inspect folder tree', running: 'Inspecting folder tree' },
+	'search_pathnames_only': { done: 'Searched by file name', proposed: 'Search by file name', running: 'Searching by file name' },
+	'search_for_files': { done: 'Searched', proposed: 'Search', running: 'Searching' },
 	'create_file_or_folder': { done: `Created`, proposed: `Create`, running: loadingTitleWrapper(`Creating`) },
 	'delete_file_or_folder': { done: `Deleted`, proposed: `Delete`, running: loadingTitleWrapper(`Deleting`) },
 	'edit_file': { done: `Edited file`, proposed: 'Edit file', running: loadingTitleWrapper('Editing file') },
@@ -2015,8 +2010,8 @@ const titleOfBuiltinToolName = {
 	'open_persistent_terminal': { done: `Opened terminal`, proposed: 'Open terminal', running: loadingTitleWrapper('Opening terminal') },
 	'kill_persistent_terminal': { done: `Killed terminal`, proposed: 'Kill terminal', running: loadingTitleWrapper('Killing terminal') },
 
-	'read_lint_errors': { done: `Read lint errors`, proposed: 'Read lint errors', running: loadingTitleWrapper('Reading lint errors') },
-	'search_in_file': { done: 'Searched in file', proposed: 'Search in file', running: loadingTitleWrapper('Searching in file') },
+	'read_lint_errors': { done: `Read lint errors`, proposed: 'Read lint errors', running: 'Reading lint errors' },
+	'search_in_file': { done: 'Searched in file', proposed: 'Search in file', running: 'Searching in file' },
 
 	'run_code': { done: 'Executed code', proposed: 'Execute code', running: loadingTitleWrapper('Executing code') },
 
@@ -3962,6 +3957,9 @@ const EditToolSoFar = ({ toolCallSoFar, }: { toolCallSoFar: RawToolCallObj }) =>
 							toolCallSoFar.name === 'outline_file' ? 'Reading outline...' :
 								'Processing...';
 
+	// Fast tools that don't need loading animation
+	const isQuickTool = toolCallSoFar.name === 'read_file' || toolCallSoFar.name === 'outline_file'
+
 	const desc1 = <span className='flex items-center gap-1.5'>
 		{uriDone ? (
 			<>
@@ -3973,10 +3971,13 @@ const EditToolSoFar = ({ toolCallSoFar, }: { toolCallSoFar: RawToolCallObj }) =>
 					</span>
 				)}
 			</>
+		) : isQuickTool ? (
+			// Quick tools: just show the message without animation
+			<span className='text-void-fg-3'>{loadingMessage}</span>
 		) : (
 			<span className='text-void-accent font-medium animate-pulse'>{loadingMessage}</span>
 		)}
-		{!uriDone && <IconLoading />}
+		{!uriDone && !isQuickTool && <IconLoading />}
 	</span>
 
 	const desc1OnClick = () => { uri && voidOpenFileFn(uri, accessor) }
@@ -4245,41 +4246,53 @@ export const SidebarChat = () => {
 	const handleAutoContinueToggle = useCallback((value: boolean) => {
 		setAutoContinueEnabled(value)
 		chatThreadsService.setAutoContinuePreference(threadId, value)
-	}, [chatThreadsService, threadId])
+
+		// If enabling auto-continue and not currently running, send continue immediately
+		if (value && !isRunning) {
+			const lastNonCheckpointMessage = currentThread?.messages?.slice().reverse().find(msg => msg.role !== 'checkpoint')
+			if (lastNonCheckpointMessage?.role === 'assistant') {
+				console.log(`[AutoContinue] Enabled - sending continue immediately`)
+				onSubmit('continue')
+			}
+		}
+	}, [chatThreadsService, threadId, isRunning, currentThread?.messages, onSubmit])
 
 	// Auto-continue effect: automatically send "continue" when enabled and LLM finishes
-	// Track message count to detect when a new assistant message is added
-	const prevMessageCountRef = useRef(currentThread?.messages?.length || 0)
-	const autoContinueTriggeredRef = useRef(false)
+	// Track the last message ID we triggered for to prevent duplicate triggers
+	const lastTriggeredMessageIdRef = useRef<string | null>(null)
 
 	useEffect(() => {
-		const messageCount = currentThread?.messages?.length || 0
-		const prevCount = prevMessageCountRef.current
-		prevMessageCountRef.current = messageCount
-
-		// Reset trigger flag when a new message is added
-		if (messageCount !== prevCount) {
-			autoContinueTriggeredRef.current = false
-		}
-
-		// Don't trigger if already triggered for this message
-		if (autoContinueTriggeredRef.current) return
-
 		// Don't trigger while running
-		if (isRunning) return
+		if (isRunning) {
+			console.log(`[AutoContinue] Skipping - still running: ${isRunning}`)
+			return
+		}
 
 		// Check if auto-continue is enabled
 		if (!autoContinueEnabled) return
 
 		// Check if last message is from assistant
 		const lastNonCheckpointMessage = currentThread?.messages?.slice().reverse().find(msg => msg.role !== 'checkpoint')
-		if (lastNonCheckpointMessage?.role !== 'assistant') return
+		if (lastNonCheckpointMessage?.role !== 'assistant') {
+			console.log(`[AutoContinue] Skipping - last message not from assistant`)
+			return
+		}
 
-		// Mark as triggered to prevent duplicate triggers
-		autoContinueTriggeredRef.current = true
+		// Get the message ID to track if we've already triggered for this message
+		const messageId = (lastNonCheckpointMessage as any).id || `${currentThread?.messages?.length}`
+
+		// Don't trigger if we already triggered for this exact message
+		if (lastTriggeredMessageIdRef.current === messageId) {
+			console.log(`[AutoContinue] Skipping - already triggered for message ${messageId}`)
+			return
+		}
+
+		// Mark as triggered for this message
+		lastTriggeredMessageIdRef.current = messageId
 
 		const responseLength = lastNonCheckpointMessage.displayContent?.trim().length || 0
-		console.log(`[AutoContinue] Triggering auto-continue (${responseLength} chars)`)
+		console.log(`[AutoContinue] Triggering auto-continue for message ${messageId} (${responseLength} chars)`)
+
 		// Small delay to let UI settle
 		const timer = setTimeout(() => {
 			onSubmit('continue')
@@ -4358,14 +4371,25 @@ export const SidebarChat = () => {
 	const activeToolName = toolCallSoFar?.name || currThreadStreamState?.toolInfo?.toolName;
 	const activeToolParams = toolCallSoFar?.rawParams || currThreadStreamState?.toolInfo?.rawParams;
 
-	// Helper to check if tool should show EditToolSoFar component
+	// Helper to check if tool should show EditToolSoFar component (streaming UI)
+	// Only show for tools that modify files - NOT for read/search tools
 	const isFileRelatedTool = (name: string | undefined) => {
 		return name === 'edit_file' ||
 			name === 'rewrite_file' ||
-			name === 'read_file' ||
 			name === 'create_file_or_folder' ||
-			name === 'delete_file_or_folder' ||
-			name === 'outline_file';
+			name === 'delete_file_or_folder';
+	};
+
+	// Quick tools that should NOT show any loading UI - just wait for completed result
+	const isQuickTool = (name: string | undefined) => {
+		return name === 'read_file' ||
+			name === 'outline_file' ||
+			name === 'ls_dir' ||
+			name === 'get_dir_tree' ||
+			name === 'search_pathnames_only' ||
+			name === 'search_for_files' ||
+			name === 'search_in_file' ||
+			name === 'read_lint_errors';
 	};
 
 	// ReAct Phase Indicator - show when we have a detected ReAct phase
@@ -4382,6 +4406,7 @@ export const SidebarChat = () => {
 
 	// Show tool UI using the SAME logic as the status indicator (which works correctly)
 	// This matches the threadStatus logic at lines 3755-3761
+	// BUT skip quick tools (read/search) - they don't need loading UI
 	const shouldShowToolUI = (
 		// Tool is executing (isRunning === 'tool')
 		isRunning === 'tool' ||
@@ -4389,11 +4414,11 @@ export const SidebarChat = () => {
 		isAnyToolActivity ||
 		// ReAct action phase
 		isReActActionPhase
-	) && !lastMessageIsTool;
+	) && !lastMessageIsTool && !isQuickTool(activeToolName);
 
 	const generatingTool = shouldShowToolUI && (activeToolName || isReActActionPhase) ? (
 		<>
-			{/* Show EditToolSoFar for ALL file-related tools */}
+			{/* Show EditToolSoFar for file-modifying tools */}
 			{isFileRelatedTool(activeToolName) ? (
 				<EditToolSoFar
 					key={'curr-streaming-tool'}
