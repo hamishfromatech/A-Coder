@@ -4,9 +4,10 @@
  *--------------------------------------------------------------------------------------*/
 
 import { SendLLMMessageParams, OnText, OnFinalMessage, OnError } from '../../common/sendLLMMessageTypes.js';
-import { IMetricsService } from '../../common/metricsService.js';
+import { IMetricsService, LLMGenerationEvent } from '../../common/metricsService.js';
 import { displayInfoOfProviderName } from '../../common/voidSettingsTypes.js';
 import { sendLLMMessageToProviderImplementation } from './sendLLMMessage.impl.js';
+import { generateUuid } from '../../../../../base/common/uuid.js';
 
 
 export const sendLLMMessage = async ({
@@ -52,15 +53,47 @@ export const sendLLMMessage = async ({
 		})
 	}
 	const submit_time = new Date()
+	const traceId = generateUuid() // Unique ID for this LLM generation
 
 	let _fullTextSoFar = ''
 	let _aborter: (() => void) | null = null
 	let _setAborter = (fn: () => void) => { _aborter = fn }
 	let _didAbort = false
+	let _firstTokenTime: Date | null = null
+
+	// Helper to capture LLM generation event for observability
+	const captureLLMGeneration = (status: LLMGenerationEvent['status'], extras?: Partial<LLMGenerationEvent>) => {
+		const endTime = new Date()
+		const latencyMs = endTime.getTime() - submit_time.getTime()
+		const firstTokenLatencyMs = _firstTokenTime ? _firstTokenTime.getTime() - submit_time.getTime() : undefined
+
+		const event: LLMGenerationEvent = {
+			traceId,
+			providerName,
+			modelName,
+			latencyMs,
+			firstTokenLatencyMs,
+			status,
+			feature: loggingName,
+			chatMode: chatMode ?? undefined,
+			...messagesType === 'chatMessages' ? {
+				messageCount: messages_?.length,
+			} : {},
+			...extras,
+		}
+
+		metricsService.captureLLMGeneration(event)
+	}
 
 	const onText: OnText = (params) => {
 		const { fullText } = params
 		if (_didAbort) return
+
+		// Track time to first token
+		if (!_firstTokenTime && fullText.length > 0) {
+			_firstTokenTime = new Date()
+		}
+
 		onText_(params)
 		_fullTextSoFar = fullText
 	}
@@ -68,7 +101,18 @@ export const sendLLMMessage = async ({
 	const onFinalMessage: OnFinalMessage = (params) => {
 		const { fullText, fullReasoning, toolCall } = params
 		if (_didAbort) return
+
+		// Legacy event capture (for backwards compatibility)
 		captureLLMEvent(`${loggingName} - Received Full Message`, { messageLength: fullText.length, reasoningLength: fullReasoning?.length, duration: new Date().getMilliseconds() - submit_time.getMilliseconds(), toolCallName: toolCall?.name })
+
+		// LLM Observability capture
+		captureLLMGeneration('success', {
+			responseLength: fullText.length,
+			reasoningLength: fullReasoning?.length,
+			hasToolCall: !!toolCall,
+			toolCallName: toolCall?.name,
+		})
+
 		onFinalMessage_(params)
 	}
 
@@ -80,13 +124,27 @@ export const sendLLMMessage = async ({
 		if (errorMessage === 'TypeError: fetch failed')
 			errorMessage = `Failed to fetch from ${displayInfoOfProviderName(providerName).title}. This likely means you specified the wrong endpoint in A-Coder's Settings, or your local model provider like Ollama is powered off.`
 
+		// Legacy event capture
 		captureLLMEvent(`${loggingName} - Error`, { error: errorMessage })
+
+		// LLM Observability capture
+		captureLLMGeneration('error', {
+			errorMessage,
+			responseLength: _fullTextSoFar.length,
+		})
+
 		onError_({ message: errorMessage, fullError })
 	}
 
 	// we should NEVER call onAbort internally, only from the outside
 	const onAbort = () => {
 		captureLLMEvent(`${loggingName} - Abort`, { messageLengthSoFar: _fullTextSoFar.length })
+
+		// LLM Observability capture
+		captureLLMGeneration('aborted', {
+			responseLength: _fullTextSoFar.length,
+		})
+
 		try { _aborter?.() } // aborter sometimes automatically throws an error
 		catch (e) { }
 		_didAbort = true

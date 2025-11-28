@@ -177,7 +177,7 @@ registerAction2(class extends Action2 {
 		super({
 			f1: true,
 			id: 'void.voidCheckUpdate',
-			title: localize2('voidCheckUpdate', 'Void: Check for Updates'),
+			title: localize2('voidCheckUpdate', 'A-Coder: Check for Updates'),
 		});
 	}
 	async run(accessor: ServicesAccessor): Promise<void> {

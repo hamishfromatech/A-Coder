@@ -11,7 +11,7 @@ import { IProductService } from '../../../../platform/product/common/productServ
 import { StorageTarget, StorageScope } from '../../../../platform/storage/common/storage.js';
 import { IApplicationStorageMainService } from '../../../../platform/storage/electron-main/storageMainService.js';
 
-import { IMetricsService } from '../common/metricsService.js';
+import { IMetricsService, LLMGenerationEvent } from '../common/metricsService.js';
 import { PostHog } from 'posthog-node'
 import { OPT_OUT_KEY } from '../common/storageKeys.js';
 
@@ -125,7 +125,7 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 
 		const didOptOut = this._appStorage.getBoolean(OPT_OUT_KEY, StorageScope.APPLICATION, false)
 
-		console.log('User is opted out of basic Void metrics?', didOptOut)
+		console.log('User is opted out of basic A-Coder metrics?', didOptOut)
 		if (didOptOut) {
 			this.client.optOut()
 		}
@@ -135,13 +135,57 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 		}
 
 
-		console.log('Void posthog metrics info:', JSON.stringify(identifyMessage, null, 2))
+		console.log('A-Coder posthog metrics info:', JSON.stringify(identifyMessage, null, 2))
 	}
 
 
 	capture: IMetricsService['capture'] = (event, params) => {
 		const capture = { distinctId: this.distinctId, event, properties: params } as const
 		// console.log('full capture:', this.distinctId)
+		this.client.capture(capture)
+	}
+
+	// LLM Observability - captures generation events in PostHog AI format
+	// This follows the PostHog AI SDK event structure for LLM analytics
+	captureLLMGeneration: IMetricsService['captureLLMGeneration'] = (event: LLMGenerationEvent) => {
+		// Use PostHog's recommended event name for LLM observability
+		// See: https://posthog.com/docs/ai-engineering/observability
+		const capture = {
+			distinctId: this.distinctId,
+			event: '$ai_generation',
+			properties: {
+				// PostHog AI standard properties
+				$ai_provider: event.providerName,
+				$ai_model: event.modelName,
+				$ai_trace_id: event.traceId,
+				$ai_latency: event.latencyMs,
+				$ai_input_tokens: event.inputTokens,
+				$ai_output_tokens: event.outputTokens,
+				$ai_total_tokens: event.totalTokens,
+
+				// Custom A-Coder properties
+				first_token_latency_ms: event.firstTokenLatencyMs,
+				message_count: event.messageCount,
+				has_tools: event.hasTools,
+				tool_count: event.toolCount,
+				chat_mode: event.chatMode,
+				has_tool_call: event.hasToolCall,
+				tool_call_name: event.toolCallName,
+				response_length: event.responseLength,
+				reasoning_length: event.reasoningLength,
+				status: event.status,
+				error_message: event.errorMessage,
+				feature: event.feature,
+			}
+		} as const
+
+		console.log('[PostHog] Capturing $ai_generation event:', JSON.stringify({
+			provider: event.providerName,
+			model: event.modelName,
+			status: event.status,
+			latencyMs: event.latencyMs,
+			feature: event.feature,
+		}))
 		this.client.capture(capture)
 	}
 

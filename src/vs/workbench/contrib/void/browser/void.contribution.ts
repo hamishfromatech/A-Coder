@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------*/
 
 
-console.log('[Void] Loading void.contribution.ts');
+console.log('[A-Coder] Loading void.contribution.ts');
 
 // register inline diffs
 import './editCodeService.js'
