@@ -736,11 +736,13 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 			ref={divRef}
 			className={`
 					flex flex-col p-3 relative input text-left shrink-0 w-full
-					rounded-xl border border-void-border-2
+					rounded-2xl border border-void-border-2
 					transition-all duration-200
-					focus-within:border-void-accent hover:border-void-border-1
+					focus-within:border-void-accent/50 focus-within:shadow-md focus-within:ring-1 focus-within:ring-void-accent/20
+					hover:border-void-border-1
 					max-h-[80vh] overflow-visible
-					bg-void-bg-2
+					bg-void-bg-1
+					shadow-sm
 					${className}
 				`}
 			onClick={(e) => {
@@ -774,7 +776,7 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 			</div>
 
 			{/* Bottom row */}
-			<div className='flex flex-row justify-between items-center gap-3 mt-2 pt-2'>
+			<div className='flex flex-row justify-between items-center gap-3 mt-2 pt-2 border-t border-void-border-2/50'>
 				{showModelDropdown && (
 					<div className='flex flex-col gap-y-1'>
 						<ReasoningOptionSlider featureName={featureName} />
@@ -1311,10 +1313,10 @@ const ToolHeaderWrapper = ({
 
 	// Apply different styles based on tool type
 	const containerClasses = `
-		w-full rounded-xl overflow-hidden shadow-sm hover:shadow-md
-		${isReadingTool ? 'border border-void-border-2 bg-void-bg-2' : ''}
-		${isCodingTool ? 'border-l-4 border-l-void-accent border border-void-border-2 bg-void-bg-2' : ''}
-		${!isReadingTool && !isCodingTool ? 'border border-void-border-2 bg-void-bg-2' : ''}
+		w-full rounded-lg overflow-hidden transition-all duration-200
+		${isReadingTool ? 'border border-void-border-2 bg-void-bg-1/50' : ''}
+		${isCodingTool ? 'border-l-2 border-l-void-accent border-y border-r border-void-border-2 bg-void-bg-1/50' : ''}
+		${!isReadingTool && !isCodingTool ? 'border border-void-border-2 bg-void-bg-1/50' : ''}
 		${className}
 	`
 
@@ -1331,19 +1333,19 @@ const ToolHeaderWrapper = ({
 		} : {}}
 	>{desc1}</span>
 
-	return (<div className=''>
+	return (<div className='my-2'>
 		<div className={containerClasses}>
 			{/* header */}
-			<div className={`select-none flex items-center ${isReadingTool ? 'min-h-[20px]' : 'min-h-[24px]'} ${isReadingTool ? 'px-3 py-1.5' : 'px-3 py-2'}`}>
-				<div className={`flex items-center w-full gap-x-2 overflow-hidden justify-between ${isRejected ? 'line-through' : ''}`}>
+			<div className={`select-none flex items-center ${isReadingTool ? 'min-h-[28px]' : 'min-h-[32px]'} ${isReadingTool ? 'px-3 py-1' : 'px-3 py-1.5'}`}>
+				<div className={`flex items-center w-full gap-x-2 overflow-hidden justify-between ${isRejected ? 'line-through opacity-60' : ''}`}>
 					{/* left */}
 					<div // container for if desc1 is clickable
-						className='ml-1 flex items-center overflow-hidden'
+						className='flex items-center overflow-hidden min-w-0'
 					>
 						{/* title eg "> Edited File" */}
 						<div className={`
-							flex items-center min-w-0 overflow-hidden grow
-							${isClickable ? 'cursor-pointer hover:brightness-125 transition-all duration-150' : ''}
+							flex items-center min-w-0 overflow-hidden
+							${isClickable ? 'cursor-pointer hover:opacity-80 transition-opacity duration-150' : ''}
 						`}
 							onClick={() => {
 								if (isDropdown) { setIsOpen(v => !v); }
@@ -1352,7 +1354,7 @@ const ToolHeaderWrapper = ({
 						>
 							{isDropdown && (<ChevronRight
 								className={`
-								text-void-fg-3 mr-0.5 h-4 w-4 flex-shrink-0 transition-transform duration-100 ease-[cubic-bezier(0.4,0,0.2,1)]
+								text-void-fg-3 mr-1.5 h-3.5 w-3.5 flex-shrink-0 transition-transform duration-200 ease-out
 								${isExpanded ? 'rotate-90' : ''}
 							`}
 							/>)}
@@ -1367,10 +1369,10 @@ const ToolHeaderWrapper = ({
 					</div>
 
 					{/* right */}
-					<div className="flex items-center gap-x-2 flex-shrink-0">
+					<div className="flex items-center gap-x-2 flex-shrink-0 ml-2">
 
 						{info && <CircleEllipsis
-							className='ml-2 text-void-fg-4 opacity-60 flex-shrink-0'
+							className='ml-2 text-void-fg-4 opacity-60 flex-shrink-0 hover:opacity-100 transition-opacity'
 							size={14}
 							data-tooltip-id='void-tooltip'
 							data-tooltip-content={info}
@@ -1395,8 +1397,8 @@ const ToolHeaderWrapper = ({
 							{desc2}
 						</span>}
 						{numResults !== undefined && (
-							<span className="text-void-fg-4 text-xs ml-auto mr-1">
-								{`${numResults}${hasNextPage ? '+' : ''} result${numResults !== 1 ? 's' : ''}`}
+							<span className="text-void-fg-4 text-xs ml-auto mr-1 bg-void-bg-2 px-1.5 py-0.5 rounded-full border border-void-border-1">
+								{`${numResults}${hasNextPage ? '+' : ''}`}
 							</span>
 						)}
 					</div>
@@ -1404,9 +1406,9 @@ const ToolHeaderWrapper = ({
 			</div>
 			{/* children */}
 			{<div
-				className={`overflow-hidden ${isExpanded ? '' : 'max-h-0 hidden'}
-				${isReadingTool ? 'py-1 px-3' : 'py-2 px-3'}
-				text-void-fg-4 rounded-sm overflow-x-auto
+				className={`overflow-hidden transition-all duration-300 ease-in-out ${isExpanded ? 'opacity-100 max-h-[1000px]' : 'max-h-0 opacity-0'}
+				${isReadingTool ? 'px-3 pb-2' : 'px-3 pb-3'}
+				text-void-fg-4 rounded-b-lg overflow-x-auto
 			  `}
 			//    bg-black bg-opacity-10 border border-void-border-4 border-opacity-50
 			>
@@ -1672,7 +1674,7 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 					))}
 				</div>
 			)}
-			<span className='px-0.5'>{chatMessage.displayContent}</span>
+			<span className='px-1'>{chatMessage.displayContent}</span>
 		</>
 	}
 	else if (mode === 'edit') {
@@ -1759,7 +1761,7 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 		className={`
 		relative group
 		${mode === 'edit' ? 'w-full max-w-full'
-				: mode === 'display' ? 'self-end w-fit max-w-full whitespace-pre-wrap' : '' // user words should be pre
+				: mode === 'display' ? 'self-end w-fit max-w-[90%] whitespace-pre-wrap' : '' // user words should be pre
 			}
 
         ${isCheckpointGhost && !isMsgAfterCheckpoint ? 'opacity-50' : ''}
@@ -1772,7 +1774,7 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 			className={`
             text-left rounded-xl max-w-full transition-colors duration-200
             ${mode === 'edit' ? ''
-					: mode === 'display' ? 'p-3 flex flex-col bg-void-bg-2 border border-void-border-2 text-void-fg-1 overflow-x-auto cursor-pointer hover:bg-void-bg-3' : ''
+					: mode === 'display' ? 'p-3 flex flex-col bg-void-bg-3 border border-void-border-2 text-void-fg-1 overflow-x-auto cursor-pointer hover:bg-void-bg-2 shadow-sm' : ''
 				}
         `}
 			onClick={() => { if (mode === 'display') { onOpenEdit() } }}
@@ -1893,10 +1895,6 @@ const ProseWrapper = ({ children }: { children: React.ReactNode }) => {
 	prose-ul:leading-relaxed
 
 	max-w-none
-
-	px-4 py-3
-	rounded-xl
-	bg-void-bg-2
 	'>
 		{children}
 	</div>
@@ -1920,10 +1918,10 @@ const AssistantMessageComponent = ({ chatMessage, isCheckpointGhost, isCommitted
 	const isEmpty = !chatMessage.displayContent && !chatMessage.reasoning
 	if (isEmpty) return null
 
-	return <>
+	return <div className={`flex flex-col gap-2 ${isCheckpointGhost ? 'opacity-50' : ''}`}>
 		{/* reasoning token */}
 		{hasReasoning &&
-			<div className={`${isCheckpointGhost ? 'opacity-50' : ''}`}>
+			<div className="w-full">
 				<ReasoningWrapper isDoneReasoning={isDoneReasoning} isStreaming={!isCommitted}>
 					<SmallProseWrapper>
 						<ChatMarkdownRender
@@ -1939,7 +1937,7 @@ const AssistantMessageComponent = ({ chatMessage, isCheckpointGhost, isCommitted
 
 		{/* assistant message */}
 		{chatMessage.displayContent &&
-			<div className={`${isCheckpointGhost ? 'opacity-50' : ''}`}>
+			<div className="w-full">
 				<ProseWrapper>
 					<ChatMarkdownRender
 						string={chatMessage.displayContent || ''}
@@ -1950,7 +1948,7 @@ const AssistantMessageComponent = ({ chatMessage, isCheckpointGhost, isCommitted
 				</ProseWrapper>
 			</div>
 		}
-	</>
+	</div>
 
 }
 
@@ -1966,18 +1964,26 @@ const ReasoningWrapper = ({ isDoneReasoning, isStreaming, children }: { isDoneRe
 
 	const statusText = isWriting ? 'Thinking...' : 'Thought process'
 
-	return <ToolHeaderWrapper
-		title='Reasoning'
-		desc1={isWriting ? <IconLoading /> : <span className="text-void-fg-4 text-xs">({statusText})</span>}
-		isOpen={isOpen}
-		onClick={() => setIsOpen(v => !v)}
-	>
-		<ToolChildrenWrapper>
-			<div className='!select-text cursor-auto'>
+	return <div className="border-l-2 border-void-border-2 pl-3 ml-1 my-2">
+		<div
+			className="flex items-center gap-2 cursor-pointer select-none text-void-fg-3 hover:text-void-fg-1 transition-colors"
+			onClick={() => setIsOpen(v => !v)}
+		>
+			<div className={`transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>
+				<ChevronRight size={14} />
+			</div>
+			{isWriting ? <IconLoading className="text-void-accent" /> : <div className="text-xs font-medium uppercase tracking-wide opacity-80">{statusText}</div>}
+		</div>
+
+		<div className={`
+            overflow-hidden transition-all duration-300 ease-in-out
+            ${isOpen ? 'max-h-[500px] opacity-100 mt-2' : 'max-h-0 opacity-0'}
+        `}>
+			<div className='!select-text cursor-auto text-void-fg-3'>
 				{children}
 			</div>
-		</ToolChildrenWrapper>
-	</ToolHeaderWrapper>
+		</div>
+	</div>
 }
 
 
@@ -4643,7 +4649,7 @@ export const SidebarChat = () => {
 		scrollContainerRef={scrollContainerRef}
 		className={`
 			flex flex-col
-			px-4 py-4 space-y-4
+			px-4 py-6 space-y-8
 			w-full h-full
 			overflow-x-hidden
 			overflow-y-auto
