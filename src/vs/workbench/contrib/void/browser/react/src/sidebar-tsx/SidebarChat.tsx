@@ -731,6 +731,7 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 	featureName,
 	loadingIcon,
 }) => {
+	const isDark = useIsDark();
 	return (
 		<div
 			ref={divRef}
@@ -741,7 +742,7 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 					focus-within:border-void-accent/50 focus-within:shadow-md focus-within:ring-1 focus-within:ring-void-accent/20
 					hover:border-void-border-1
 					max-h-[80vh] overflow-visible
-					bg-void-bg-1
+					${isDark ? 'bg-[#181818]' : 'bg-void-bg-1'}
 					shadow-sm
 					${className}
 				`}
