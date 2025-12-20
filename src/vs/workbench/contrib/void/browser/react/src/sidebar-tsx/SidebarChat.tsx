@@ -1488,7 +1488,7 @@ const EditTool = ({ toolMessage, threadId, messageIdx, content }: Parameters<Res
 			);
 		}
 
-		componentParams.children = <ToolChildrenWrapper className='bg-void-bg-3'>
+		componentParams.children = <ToolChildrenWrapper>
 			<EditToolChildren
 				uri={params.uri}
 				code={content}
@@ -1513,7 +1513,7 @@ const EditTool = ({ toolMessage, threadId, messageIdx, content }: Parameters<Res
 		/>
 
 		// add children
-		componentParams.children = <ToolChildrenWrapper className='bg-void-bg-3'>
+		componentParams.children = <ToolChildrenWrapper>
 			<EditToolChildren
 				uri={params.uri}
 				code={content}
@@ -2416,14 +2416,15 @@ const ToolRequestAcceptRejectButtons = ({ toolName }: { toolName: ToolName }) =>
 }
 
 export const ToolChildrenWrapper = ({ children, className }: { children: React.ReactNode, className?: string }) => {
-	return <div className={`${className ? className : ''} cursor-default select-none`}>
+	return <div className={`${className ? className : ''} cursor-default select-none border-t border-void-border-2/50`}>
 		<div className='px-2 min-w-full overflow-hidden'>
 			{children}
 		</div>
 	</div>
 }
 export const CodeChildren = ({ children, className }: { children: React.ReactNode, className?: string }) => {
-	return <div className={`${className ?? ''} p-3 rounded-lg overflow-auto text-sm font-mono bg-void-bg-2 border border-void-border-2`}>
+	const isDark = useIsDark()
+	return <div className={`${className ?? ''} p-3 rounded-md overflow-auto text-xs font-mono border border-void-border-1 ${isDark ? 'bg-[#181818]' : 'bg-void-bg-3'}`}>
 		<div className='!select-text cursor-auto'>
 			{children}
 		</div>
@@ -2517,7 +2518,7 @@ const InvalidTool = ({ toolName, message, mcpServerName }: { toolName: ToolName,
 	const componentParams: ToolHeaderParams = { title, desc1, isError, icon }
 
 	componentParams.children = <ToolChildrenWrapper>
-		<CodeChildren className='bg-void-bg-3'>
+		<CodeChildren>
 			{message}
 		</CodeChildren>
 	</ToolChildrenWrapper>
@@ -3175,7 +3176,7 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 				componentParams.numResults = result.lines.length;
 				componentParams.children = result.lines.length === 0 ? undefined :
 					<ToolChildrenWrapper>
-						<CodeChildren className='bg-void-bg-3'>
+						<CodeChildren>
 							<pre className='font-mono whitespace-pre'>
 								{toolsService.stringOfResult['search_in_file'](params, result)}
 							</pre>
@@ -4163,7 +4164,7 @@ const EditToolSoFar = ({ toolCallSoFar, }: { toolCallSoFar: RawToolCallObj }) =>
 		desc2={desc2}
 	>
 		{shouldShowEditor && (
-			<ToolChildrenWrapper className='bg-void-bg-3'>
+			<ToolChildrenWrapper>
 				<EditToolChildren
 					uri={uri}
 					code={content}
