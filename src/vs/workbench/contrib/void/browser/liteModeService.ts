@@ -349,7 +349,7 @@ export class LiteModeService extends Disposable implements ILiteModeService {
         }
 
         .header h2::before {
-            content: "📋";
+            content: "\u{1F4CB}";
             font-size: 16px;
         }
 
@@ -1010,7 +1010,7 @@ ${requestedChanges}`;
                         }
 
                         .header h2::before {
-                            content: "📋";
+                            content: "\u{1F4CB}";
                             font-size: 16px;
                         }
 

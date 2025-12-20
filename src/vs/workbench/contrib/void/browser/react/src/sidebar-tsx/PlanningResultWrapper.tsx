@@ -32,7 +32,7 @@ const parseMarkdownTasks = (markdown: string): { tasks: TaskItem[], goal: string
 
 	for (const line of lines) {
 		// Extract goal from header like "## 📋 Build feature"
-		const goalMatch = line.match(/^##\s*📋?\s*(.+)$/)
+		const goalMatch = line.match(/^##\s*\u{1F4CB}?\s*(.+)$/u)
 		if (goalMatch) {
 			goal = goalMatch[1].trim()
 			continue
@@ -192,7 +192,7 @@ const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 
 		try {
 			// Format the plan as markdown for preview
-			let planMarkdown = `# 📋 Task Plan\n\n`
+			let planMarkdown = `# \u{1F4CB} Task Plan\n\n`
 			if (goal) {
 				planMarkdown += `## Goal\n${goal}\n\n`
 			}

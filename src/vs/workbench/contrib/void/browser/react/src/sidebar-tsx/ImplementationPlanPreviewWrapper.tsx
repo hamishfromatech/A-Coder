@@ -121,7 +121,7 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 
 	const getToolIcon = () => {
 		switch (toolMessage.name) {
-			case 'create_implementation_plan': return '📋'
+			case 'create_implementation_plan': return '\u{1F4CB}'
 			case 'preview_implementation_plan': return '👁️'
 			case 'execute_implementation_plan': return '▶️'
 			case 'update_implementation_step': return '✅'
@@ -249,7 +249,7 @@ My requested changes:`
 			const completedCount = result.steps.filter((s: any) => s.status === 'completed').length
 			const totalCount = result.steps.length
 
-			markdown += `## 📋 Steps (${completedCount}/${totalCount} complete)\n\n`
+			markdown += `## \u{1F4CB} Steps (${completedCount}/${totalCount} complete)\n\n`
 
 			result.steps.forEach((step: any, index: number) => {
 				const status = step.status || 'pending'

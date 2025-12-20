@@ -1486,14 +1486,14 @@ For each module include:
 			// --- Implementation Planning tools ---
 
 			create_implementation_plan: (params, result) => {
-				return `📋 Implementation plan created!\n\nPlan ID: ${result.planId}\n\n${result.summary}\n\n💡 Next: Use preview_implementation_plan to review the plan before execution.`;
+				return `\u{1F4CB} Implementation plan created!\n\nPlan ID: ${result.planId}\n\n${result.summary}\n\n💡 Next: Use preview_implementation_plan to review the plan before execution.`;
 			},
 
 			preview_implementation_plan: (params, result) => {
 				if (!result.planId) {
 					return `❌ No active implementation plan to preview.\n\n💡 Create a plan first using create_implementation_plan.`;
 				}
-				return `📋 Implementation Plan Preview\n\n${result.summary}\n\n💡 To approve this plan for execution, use execute_implementation_plan.`;
+				return `\u{1F4CB} Implementation Plan Preview\n\n${result.summary}\n\n💡 To approve this plan for execution, use execute_implementation_plan.`;
 			},
 
 			execute_implementation_plan: (params, result) => {
@@ -1548,7 +1548,7 @@ For each module include:
 		const total = steps.length;
 		const progress = Math.round((completed / total) * 100);
 
-		let output = `📋 Implementation Plan: \"${plan.goal}\"\n`;
+		let output = `\u{1F4CB} Implementation Plan: \"${plan.goal}\"\n`;
 		output += `Progress: ${completed}/${total} steps (${progress}%)\n\n`;
 
 		// Group steps by status
