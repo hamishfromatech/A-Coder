@@ -11,9 +11,7 @@ import { ButtonStop, ButtonSubmit, IconX, VoidChatArea } from '../sidebar-tsx/Si
 import { VOID_CTRL_K_ACTION_ID } from '../../../actionIDs.js';
 import { useRefState } from '../util/helpers.js';
 import { isFeatureNameDisabled } from '../../../../../../../workbench/contrib/void/common/voidSettingsTypes.js';
-
-
-
+import { Loader2 } from 'lucide-react';
 
 export const QuickEditChat = ({
 	diffareaid,
@@ -56,9 +54,7 @@ export const QuickEditChat = ({
 		setIsStreamingRef(isStreaming)
 	}, [diffareaid, setIsStreamingRef]))
 
-	const loadingIcon = <div
-		className="@@codicon @@codicon-loading @@codicon-modifier-spin @@codicon-no-default-spin text-void-fg-3"
-	/>
+	const loadingIcon = <Loader2 className="w-4 h-4 animate-spin text-void-accent" />
 
 	const onSubmit = useCallback(async () => {
 		if (isDisabled) return

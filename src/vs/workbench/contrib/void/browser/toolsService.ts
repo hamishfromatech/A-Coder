@@ -30,7 +30,7 @@ import { LiteModeService } from './liteModeService.js'
 
 // tool use for AI
 type ValidateBuiltinParams = { [T in BuiltinToolName]: (p: RawToolParamsObj) => BuiltinToolCallParams[T] }
-type CallBuiltinTool = { [T in BuiltinToolName]: (p: BuiltinToolCallParams[T]) => Promise<{ result: BuiltinToolResultType[T] | Promise<BuiltinToolResultType[T]>, interruptTool?: () => void }> }
+type CallBuiltinTool = { [T in BuiltinToolName]: (p: BuiltinToolCallParams[T], opts?: { onData?: (data: string) => void }) => Promise<{ result: BuiltinToolResultType[T] | Promise<BuiltinToolResultType[T]>, interruptTool?: () => void }> }
 type BuiltinToolResultToString = { [T in BuiltinToolName]: (p: BuiltinToolCallParams[T], result: Awaited<BuiltinToolResultType[T]>) => string }
 
 
@@ -316,10 +316,11 @@ export class ToolsService implements IToolsService {
 			},
 
 			edit_file: (params: RawToolParamsObj) => {
-				const { uri: uriStr, search_replace_blocks: searchReplaceBlocksUnknown } = params
+				const { uri: uriStr, search_replace_blocks: searchReplaceBlocksUnknown, try_fuzzy_matching: tryFuzzyMatchingUnknown } = params
 				const uri = validateURI(uriStr)
 				const searchReplaceBlocks = validateStr('searchReplaceBlocks', searchReplaceBlocksUnknown)
-				return { uri, searchReplaceBlocks }
+				const tryFuzzyMatching = validateBoolean(tryFuzzyMatchingUnknown, { default: false })
+				return { uri, searchReplaceBlocks, tryFuzzyMatching }
 			},
 
 			// ---
@@ -618,8 +619,7 @@ export class ToolsService implements IToolsService {
 				if (model === null) { throw new Error(`No contents; File does not exist.`) }
 
 				const totalNumLines = model.getLineCount()
-				const fullContents = model.getValue(EndOfLinePreference.LF)
-				const totalFileLen = fullContents.length
+				const totalFileLen = model.getValueLength(EndOfLinePreference.LF)
 
 				// Helper to add line numbers to content
 				const addLineNumbers = (content: string, startLineNum: number): string => {
@@ -646,10 +646,32 @@ export class ToolsService implements IToolsService {
 				// Full file - apply pagination
 				const fromIdx = MAX_FILE_CHARS_PAGE * (pageNumber - 1)
 				const toIdx = Math.min(MAX_FILE_CHARS_PAGE * pageNumber, totalFileLen)
-				const rawContents = fullContents.slice(fromIdx, toIdx)
+				
+				// Optimization: If we need a page, we still need to find which lines it corresponds to
+				// for the line numbers. This is still slightly inefficient but better than loading the whole string.
+				// However, model.getValueInRange uses line numbers.
+				// To use characters, we'd need to convert character offsets to line numbers.
+				
+				// For now, let's at least avoid the full model.getValue() call.
+				// We can get the full contents only for the paginated part if we really have to, 
+				// but let's try to be smarter.
+				
+				// If we use pagination by characters, we can use model.getValueInRange with offsets if supported,
+				// but standard ITextModel doesn't have offset-based getValue.
+				// It has getOffsetAtPos and getPositionAt(offset).
+				
+				const startPos = model.getPositionAt(fromIdx)
+				const endPos = model.getPositionAt(toIdx)
+				
+				const rawContents = model.getValueInRange({
+					startLineNumber: startPos.lineNumber,
+					startColumn: startPos.column,
+					endLineNumber: endPos.lineNumber,
+					endColumn: endPos.column
+				}, EndOfLinePreference.LF)
 
 				// Calculate line number for the start of this page
-				const linesBeforePage = fullContents.slice(0, fromIdx).split('\n').length
+				const linesBeforePage = startPos.lineNumber
 				const fileContents = addLineNumbers(rawContents, linesBeforePage)
 
 				const hasNextPage = toIdx < totalFileLen
@@ -727,18 +749,19 @@ export class ToolsService implements IToolsService {
 				await voidModelService.initializeModel(uri);
 				const { model } = await voidModelService.getModelSafe(uri);
 				if (model === null) { throw new Error(`No contents; File does not exist.`); }
-				const contents = model.getValue(EndOfLinePreference.LF);
-				const contentOfLine = contents.split('\n');
-				const totalLines = contentOfLine.length;
-				const regex = isRegex ? new RegExp(query) : null;
-				const lines: number[] = []
-				for (let i = 0; i < totalLines; i++) {
-					const line = contentOfLine[i];
-					if ((isRegex && regex!.test(line)) || (!isRegex && line.includes(query))) {
-						const matchLine = i + 1;
-						lines.push(matchLine);
-					}
-				}
+				
+				const matches = model.findMatches(
+					query,
+					false, // searchOnlyEditableRange
+					isRegex,
+					false, // matchCase (default to false for broader search)
+					null,  // wordSeparators
+					false  // captureMatches
+				);
+				
+				// Get unique line numbers
+				const lines = [...new Set(matches.map(m => m.range.startLineNumber))].sort((a, b) => a - b);
+				
 				return { result: { lines } };
 			},
 
@@ -764,7 +787,7 @@ export class ToolsService implements IToolsService {
 				return { result: {} }
 			},
 
-			rewrite_file: async ({ uri, newContent }) => {
+			rewrite_file: async ({ uri, newContent }, opts) => {
 				await voidModelService.initializeModel(uri)
 
 				// Check if file exists, if not create it (if within workspace)
@@ -808,10 +831,10 @@ export class ToolsService implements IToolsService {
 						originalCode: originalContent,
 						updatedCode: newContent
 					});
-					editCodeService.instantlyRewriteFile({ uri, newContent: appliedCode });
+					editCodeService.instantlyRewriteFile({ uri, newContent: appliedCode, onProgress: opts?.onData });
 				} else {
 					// Use standard rewrite
-					editCodeService.instantlyRewriteFile({ uri, newContent });
+					editCodeService.instantlyRewriteFile({ uri, newContent, onProgress: opts?.onData });
 				}
 
 				// at end, get lint errors
@@ -823,7 +846,7 @@ export class ToolsService implements IToolsService {
 				return { result: lintErrorsPromise }
 			},
 
-			edit_file: async ({ uri, searchReplaceBlocks }) => {
+			edit_file: async ({ uri, searchReplaceBlocks, tryFuzzyMatching }, opts) => {
 				await voidModelService.initializeModel(uri)
 				if (this.commandBarService.getStreamState(uri) === 'streaming') {
 					throw new Error(`Another LLM is currently making changes to this file. Please stop streaming for now and ask the user to resume later.`)
@@ -845,10 +868,10 @@ export class ToolsService implements IToolsService {
 						originalCode: originalContent,
 						updatedCode: searchReplaceBlocks // Morph expects code with // ... existing code ... format
 					});
-					editCodeService.instantlyRewriteFile({ uri, newContent: appliedCode });
+					editCodeService.instantlyRewriteFile({ uri, newContent: appliedCode, onProgress: opts?.onData });
 				} else {
 					// Use standard search/replace
-					await editCodeService.instantlyApplySearchReplaceBlocks({ uri, searchReplaceBlocks });
+					await editCodeService.instantlyApplySearchReplaceBlocks({ uri, searchReplaceBlocks, tryFuzzyMatching, onProgress: opts?.onData });
 				}
 
 				// at end, get lint errors
@@ -882,12 +905,12 @@ export class ToolsService implements IToolsService {
 					disposable.dispose();
 				}
 			},
-			run_command: async ({ command, cwd, terminalId }) => {
-				const { resPromise, interrupt } = await this.terminalToolService.runCommand(command, { type: 'temporary', cwd, terminalId })
+			run_command: async ({ command, cwd, terminalId }, opts) => {
+				const { resPromise, interrupt } = await this.terminalToolService.runCommand(command, { type: 'temporary', cwd, terminalId, onData: opts?.onData })
 				return { result: resPromise, interruptTool: interrupt }
 			},
-			run_persistent_command: async ({ command, persistentTerminalId }) => {
-				const { resPromise, interrupt } = await this.terminalToolService.runCommand(command, { type: 'persistent', persistentTerminalId })
+			run_persistent_command: async ({ command, persistentTerminalId }, opts) => {
+				const { resPromise, interrupt } = await this.terminalToolService.runCommand(command, { type: 'persistent', persistentTerminalId, onData: opts?.onData })
 				return { result: resPromise, interruptTool: interrupt }
 			},
 			open_persistent_terminal: async ({ cwd }) => {

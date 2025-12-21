@@ -114,11 +114,6 @@
 	to { transform: rotate(360deg); }
 }
 
-@keyframes pulse-gentle {
-	0%, 100% { opacity: 1; }
-	50% { opacity: 0.6; }
-}
-
 @keyframes slide-up {
 	from { opacity: 0; transform: translateY(10px); }
 	to { opacity: 1; transform: translateY(0); }
@@ -127,12 +122,6 @@
 @keyframes fade-in-scale {
 	from { opacity: 0; transform: scale(0.97); }
 	to { opacity: 1; transform: scale(1); }
-}
-
-/* Text shimmer for typing indicator - smooth continuous loop */
-@keyframes text-shimmer {
-	0% { background-position: 200% 50%; }
-	100% { background-position: -200% 50%; }
 }
 
 .animate-shimmer {
@@ -145,43 +134,7 @@
 	will-change: transform;
 }
 
-.animate-pulse-gentle {
-	animation: pulse-gentle 1.5s ease-in-out infinite;
-	will-change: opacity;
-}
-
-/* Text shimmer effect - KITT scanner style sweep */
-/* Dark mode: muted gray base with subtle silver shine */
-/* Note: Use void-text-shimmer prefix since scope-tailwind doesn't prefix custom classes */
-.void-text-shimmer {
-	background-image: linear-gradient(90deg,
-		#52525b 0%,
-		#52525b 44%,
-		#71717a 47%,
-		#a1a1aa 50%,
-		#71717a 53%,
-		#52525b 56%,
-		#52525b 100%);
-	background-size: 300% 100%;
-	-webkit-background-clip: text;
-	background-clip: text;
-	color: transparent;
-	animation: text-shimmer 3.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-	will-change: background-position;
-}
-
-/* Light mode: smokey black base with silver shine */
-.vscode-light .void-text-shimmer,
-.vscode-high-contrast-light .void-text-shimmer {
-	background-image: linear-gradient(90deg,
-		#3f3f46 0%,
-		#3f3f46 44%,
-		#52525b 47%,
-		#71717a 50%,
-		#52525b 53%,
-		#3f3f46 56%,
-		#3f3f46 100%);
-}
+/* No mode-specific overrides needed as we use variables */
 
 /* Smooth message transitions */
 .message-enter {

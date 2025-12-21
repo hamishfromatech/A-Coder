@@ -382,21 +382,25 @@ Line 200: export async function processData(input: string): Promise<Result>
 - uri: The FULL file path to edit (e.g., "/Users/username/project/src/file.ts")
 - search_replace_blocks: SEARCH/REPLACE blocks with the changes
 
+**OPTIONAL PARAMETERS:**
+- try_fuzzy_matching: (Boolean) If true, uses fuzzy matching if exact matching fails. Useful when you don't have the exact content or whitespace. Use with caution.
+
 **WORKFLOW:**
 1. ALWAYS read the file with read_file first to get exact content
 2. Use edit_file with precise ORIGINAL blocks that match the file exactly
-3. Include surrounding context with "// ... existing code ..." comments
+3. Include surrounding context with "// ... existing code ..." comments (these are used as anchors for matching)
 4. Verify changes worked by reading the file again or checking lint errors
 
 **ERROR RECOVERY:**
 If edit_file fails, follow these steps:
-1. **"Not found" error:** Read the file again - you may have stale content. Ensure your ORIGINAL block matches exactly, including all whitespace and indentation.
+1. **"Not found" error:** Read the file again - you may have stale content. Ensure your ORIGINAL block matches exactly, including all whitespace and indentation. Try setting try_fuzzy_matching to true.
 2. **"Not unique" error:** Add more surrounding context to your ORIGINAL block to make it unique in the file.
 3. **"Has overlap" error:** Combine your SEARCH/REPLACE blocks into a single larger block.
 4. **Still failing:** Use rewrite_file instead - it's more reliable for complex changes or when you don't have exact content.`,
 		params: {
 			...uriParam('file'),
-			search_replace_blocks: { description: replaceTool_description }
+			search_replace_blocks: { description: replaceTool_description },
+			try_fuzzy_matching: { description: 'Optional. If true, use fuzzy matching if exact match fails.' }
 		},
 	},
 

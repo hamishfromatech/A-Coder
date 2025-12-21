@@ -40,7 +40,7 @@ class VoidSettingsInput extends EditorInput {
 	})
 	readonly resource = VoidSettingsInput.RESOURCE;
 
-	constructor() {
+	constructor(public readonly initialTab?: string) {
 		super();
 	}
 
@@ -62,7 +62,7 @@ class VoidSettingsInput extends EditorInput {
 class VoidSettingsPane extends EditorPane {
 	static readonly ID = 'workbench.test.myCustomPane';
 
-	// private _scrollbar: DomScrollableElement | undefined;
+	private _mountResult: { rerender: (props?: any) => void; dispose: () => void } | undefined;
 
 	constructor(
 		group: IEditorGroup,
@@ -84,19 +84,18 @@ class VoidSettingsPane extends EditorPane {
 
 		parent.appendChild(settingsElt);
 
-		// this._scrollbar = this._register(new DomScrollableElement(scrollableContent, {}));
-		// parent.appendChild(this._scrollbar.getDomNode());
-		// this._scrollbar.scanDomNode();
-
 		// Mount React into the scrollable content
 		this.instantiationService.invokeFunction(accessor => {
-			const disposeFn = mountVoidSettings(settingsElt, accessor)?.dispose;
-			this._register(toDisposable(() => disposeFn?.()))
-
-			// setTimeout(() => { // this is a complete hack and I don't really understand how scrollbar works here
-			// 	this._scrollbar?.scanDomNode();
-			// }, 1000)
+			this._mountResult = mountVoidSettings(settingsElt, accessor, { initialTab: (this.input as VoidSettingsInput)?.initialTab });
+			this._register(toDisposable(() => this._mountResult?.dispose()));
 		});
+	}
+
+	override async setInput(input: VoidSettingsInput, options: any, context: any, token: any): Promise<void> {
+		await super.setInput(input, options, context, token);
+		if (this._mountResult && input instanceof VoidSettingsInput) {
+			this._mountResult.rerender({ initialTab: input.initialTab });
+		}
 	}
 
 	layout(dimension: Dimension): void {
@@ -139,27 +138,34 @@ registerAction2(class extends Action2 {
 		});
 	}
 
-	async run(accessor: ServicesAccessor): Promise<void> {
+	async run(accessor: ServicesAccessor, args?: { tab?: string }): Promise<void> {
 		const editorService = accessor.get(IEditorService);
 		const editorGroupService = accessor.get(IEditorGroupsService);
 
 		const instantiationService = accessor.get(IInstantiationService);
 
-		// if is open, close it
+		const initialTab = args?.tab;
+
+		// if is open, focus it or switch tab
 		const openEditors = editorService.findEditors(VoidSettingsInput.RESOURCE); // should only have 0 or 1 elements...
 		if (openEditors.length !== 0) {
 			const openEditor = openEditors[0].editor
 			const isCurrentlyOpen = editorService.activeEditor?.resource?.fsPath === openEditor.resource?.fsPath
-			if (isCurrentlyOpen)
+			
+			if (isCurrentlyOpen && !initialTab) {
 				await editorService.closeEditors(openEditors)
-			else
-				await editorGroupService.activeGroup.openEditor(openEditor)
+			} else {
+				// If it's already open but we want a specific tab, we need a way to tell the pane.
+				// We can re-open it with the new input containing the tab.
+				const input = instantiationService.createInstance(VoidSettingsInput, initialTab);
+				await editorGroupService.activeGroup.openEditor(input);
+			}
 			return;
 		}
 
 
 		// else open it
-		const input = instantiationService.createInstance(VoidSettingsInput);
+		const input = instantiationService.createInstance(VoidSettingsInput, initialTab);
 
 		await editorGroupService.activeGroup.openEditor(input);
 	}
@@ -177,9 +183,11 @@ registerAction2(class extends Action2 {
 			icon: Codicon.settingsGear,
 		});
 	}
-	async run(accessor: ServicesAccessor): Promise<void> {
+	async run(accessor: ServicesAccessor, args?: { tab?: string }): Promise<void> {
 		const editorService = accessor.get(IEditorService);
 		const instantiationService = accessor.get(IInstantiationService);
+
+		const initialTab = args?.tab;
 
 		// close all instances if found
 		const openEditors = editorService.findEditors(VoidSettingsInput.RESOURCE);
@@ -188,7 +196,7 @@ registerAction2(class extends Action2 {
 		}
 
 		// then, open one single editor
-		const input = instantiationService.createInstance(VoidSettingsInput);
+		const input = instantiationService.createInstance(VoidSettingsInput, initialTab);
 		await editorService.openEditor(input);
 	}
 })

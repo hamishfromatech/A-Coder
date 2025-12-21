@@ -463,6 +463,7 @@ export type GlobalSettings = {
 	morphApiKey: string; // API key for Morph Fast Apply
 	morphModel: 'morph-v3-fast' | 'morph-v3-large' | 'auto'; // Morph model to use
 	enableToolResultTOON: boolean;
+	maxAgentIterations: number; // Maximum number of iterations in agent mode
 	// Mobile API settings
 	apiEnabled: boolean; // Enable/disable the Mobile API server
 	apiPort: number; // Port for the API server (default: 3737)
@@ -490,6 +491,7 @@ export const defaultGlobalSettings: GlobalSettings = {
 	morphApiKey: '',
 	morphModel: 'auto',
 	enableToolResultTOON: false,
+	maxAgentIterations: 50,
 	// Mobile API defaults
 	apiEnabled: false, // Disabled by default for security
 	apiPort: 3737, // Default port

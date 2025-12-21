@@ -8,7 +8,9 @@ import { RawToolCallObj, RawToolParamsObj } from '../common/sendLLMMessageTypes.
 export interface ReActPhase {
 	type: 'thought' | 'action' | 'observation' | 'idle';
 	content?: string;
+	immersionHint?: string; // Short "flavor text" for UX
 	detectedAt: number;
+	lastTransitionAt?: number;
 }
 
 export interface StreamingReActResult {
@@ -46,10 +48,13 @@ export class StreamingXMLParser {
 		if (!this.hasDetectedAction) {
 			const thoughtMatch = this.buffer.match(/^Thought:\s*(.*)$/m);
 			if (thoughtMatch) {
+				const prevType = this.currentPhase.type;
 				this.currentPhase = {
 					type: 'thought',
 					content: thoughtMatch[1]?.trim() || '',
-					detectedAt: Date.now()
+					immersionHint: 'Analyzing the request...',
+					detectedAt: Date.now(),
+					lastTransitionAt: prevType !== 'thought' ? Date.now() : this.currentPhase.lastTransitionAt
 				};
 				this.thoughtContent = this.currentPhase.content || '';
 
@@ -61,10 +66,13 @@ export class StreamingXMLParser {
 		if (!this.hasDetectedAction) {
 			const actionStartMatch = this.buffer.match(/<function_calls>/);
 			if (actionStartMatch) {
+				const prevType = this.currentPhase.type;
 				this.currentPhase = {
 					type: 'action',
 					content: 'Starting tool execution...',
-					detectedAt: Date.now()
+					immersionHint: 'Preparing to take action...',
+					detectedAt: Date.now(),
+					lastTransitionAt: prevType !== 'action' ? Date.now() : this.currentPhase.lastTransitionAt
 				};
 				this.hasDetectedAction = true;
 

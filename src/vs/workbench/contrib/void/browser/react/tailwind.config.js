@@ -7,10 +7,23 @@
 module.exports = {
 	darkMode: 'selector', // '{prefix-}dark' className is used to identify `dark:`
 	content: ['./src2/**/*.{jsx,tsx}'], // uses these files to decide how to transform the css file
-	theme: {
-		extend: {
-			typography: theme => ({
-				DEFAULT: {
+				theme: {
+					extend: {
+						keyframes: {
+							'text-shimmer': {
+								'0%': { backgroundPosition: '100% 50%' },
+								'100%': { backgroundPosition: '-100% 50%' },
+							},
+							'pulse-gentle': {
+								'0%, 100%': { opacity: '1' },
+								'50%': { opacity: '0.6' },
+							},
+						},
+						animation: {
+							'text-shimmer': 'text-shimmer 1.5s linear infinite',
+							'pulse-gentle': 'pulse-gentle 1.5s ease-in-out infinite',
+						},
+						typography: theme => ({				DEFAULT: {
 					css: {
 						'--tw-prose-body': 'var(--void-fg-1)',
 						'--tw-prose-headings': 'var(--void-fg-1)',
@@ -194,7 +207,18 @@ module.exports = {
 		},
 	},
 	plugins: [
-		require('@tailwindcss/typography')
+		require('@tailwindcss/typography'),
+		({ addUtilities }) => {
+			addUtilities({
+				'.text-shimmer': {
+					'background-image': 'linear-gradient(90deg, var(--void-fg-3) 0%, var(--void-fg-3) 35%, var(--void-fg-1) 50%, var(--void-fg-3) 65%, var(--void-fg-3) 100%)',
+					'background-size': '200% 100%',
+					'-webkit-background-clip': 'text',
+					'background-clip': 'text',
+					'color': 'transparent',
+				},
+			})
+		}
 	],
 	prefix: 'void-'
 }

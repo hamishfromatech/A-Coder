@@ -46,36 +46,44 @@ export const VoidTooltip = () => {
 			<style>
 				{`
 				#void-tooltip, #void-tooltip-orange, #void-tooltip-green, #void-tooltip-ollama-settings, #void-tooltip-provider-info {
-					font-size: 12px;
-					padding: 0px 8px;
-					border-radius: 6px;
+					font-size: 11px;
+					font-weight: 500;
+					padding: 8px 12px;
+					border-radius: 8px;
 					z-index: 999999;
 					max-width: 300px;
 					word-wrap: break-word;
+					box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+					backdrop-filter: blur(12px);
 				}
 
 				#void-tooltip {
-					background-color: var(--vscode-editor-background);
-					color: var(--vscode-input-foreground);
+					background-color: ${isDark ? 'rgba(30, 30, 30, 0.98)' : 'rgba(250, 255, 255, 0.98)'};
+					color: var(--void-fg-1);
+					border: 1px solid var(--void-border-1) !important;
 				}
 
 				#void-tooltip-orange {
-					background-color: #F6762A;
+					background-color: rgba(246, 118, 42, 0.98);
 					color: white;
+					border: 1px solid rgba(255,255,255,0.2) !important;
 				}
 
 				#void-tooltip-green {
-					background-color: #228B22;
+					background-color: rgba(34, 139, 34, 0.98);
 					color: white;
+					border: 1px solid rgba(255,255,255,0.2) !important;
 				}
 
 				#void-tooltip-ollama-settings, #void-tooltip-provider-info {
-					background-color: var(--vscode-editor-background);
-					color: var(--vscode-input-foreground);
+					background-color: ${isDark ? 'rgba(30, 30, 30, 0.98)' : 'rgba(250, 255, 255, 0.98)'};
+					color: var(--void-fg-1);
+					border: 1px solid var(--void-border-1) !important;
 				}
 
 				.react-tooltip-arrow {
-					z-index: -1 !important; /* Keep arrow behind content (somehow this isnt done automatically) */
+					z-index: -1 !important;
+					opacity: 0.98 !important;
 				}
 				`}
 			</style>

@@ -3,9 +3,10 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import { Disposable } from '../../../../base/common/lifecycle.js';
+import { Disposable, IDisposable } from '../../../../base/common/lifecycle.js';
 import { registerSingleton, InstantiationType } from '../../../../platform/instantiation/common/extensions.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
+import { IModelService } from '../../../../editor/common/services/model.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 
 import { URI } from '../../../../base/common/uri.js';
@@ -47,7 +48,6 @@ import { StreamingXMLParser, ReActPhase } from './streamingXMLParser.js';
 const CHAT_RETRIES = 3 // Number of retries for LLM errors (including empty responses)
 const RETRY_DELAY = 2000 // Delay between retries in milliseconds
 export const AUTO_CONTINUE_CHAR_THRESHOLD = 200; // Still used by UI auto-continue
-const MAX_AGENT_ITERATIONS = 50 // Maximum number of iterations in agent mode to prevent infinite loops
 
 const splitThinkTags = (input: string): { displayText: string; reasoningText: string } => {
 	if (!input) {
@@ -423,6 +423,9 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 	// Task planning: stores task plans per thread
 	private readonly taskPlans: { [threadId: string]: TaskPlan[] } = {}
 
+	// PERFORMANCE: Debounce timer for storage
+	private _storeThreadsDebounceTimer: any = null;
+
 	// used in checkpointing
 	// private readonly _userModifiedFilesToCheckInCheckpoints = new LRUCache<string, null>(50)
 
@@ -444,6 +447,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		@IFileService private readonly _fileService: IFileService,
 		@IMCPService private readonly _mcpService: IMCPService,
 		@IVisionService private readonly _visionService: IVisionService,
+		@IModelService private readonly _modelService: IModelService,
 	) {
 		super()
 		this.state = { allThreads: {}, currentThreadId: null as unknown as string } // default state
@@ -461,20 +465,44 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 
 		// keep track of user-modified files
-		// const disposablesOfModelId: { [modelId: string]: IDisposable[] } = {}
-		// this._register(
-		// 	this._modelService.onModelAdded(e => {
-		// 		if (!(e.id in disposablesOfModelId)) disposablesOfModelId[e.id] = []
-		// 		disposablesOfModelId[e.id].push(
-		// 			e.onDidChangeContent(() => { this._userModifiedFilesToCheckInCheckpoints.set(e.uri.fsPath, null) })
-		// 		)
-		// 	})
-		// )
-		// this._register(this._modelService.onModelRemoved(e => {
-		// 	if (!(e.id in disposablesOfModelId)) return
-		// 	disposablesOfModelId[e.id].forEach(d => d.dispose())
-		// }))
+		const disposablesOfModelId: { [modelId: string]: IDisposable[] } = {}
+		this._register(
+			this._modelService.onModelAdded(e => {
+				const uri = e.uri
+				if (!(uri.toString() in disposablesOfModelId)) disposablesOfModelId[uri.toString()] = []
+				disposablesOfModelId[uri.toString()].push(
+					e.onDidChangeContent(() => {
+						const threadId = this.state.currentThreadId
+						const thread = this.state.allThreads[threadId]
+						if (thread) {
+							thread.filesWithUserChanges.add(uri.fsPath)
+						}
+					})
+				)
+			})
+		)
+		this._register(this._modelService.onModelRemoved(e => {
+			const uri = e.uri
+			if (!(uri.toString() in disposablesOfModelId)) return
+			disposablesOfModelId[uri.toString()].forEach(d => d.dispose())
+			delete disposablesOfModelId[uri.toString()]
+		}))
 
+	}
+
+	private _clearUserChanges(threadId: string) {
+		const thread = this.state.allThreads[threadId]
+		if (thread) {
+			thread.filesWithUserChanges.clear()
+		}
+	}
+
+	override dispose() {
+		if (this._storeThreadsDebounceTimer) {
+			clearTimeout(this._storeThreadsDebounceTimer);
+			this._storeAllThreadsNow(this.state.allThreads);
+		}
+		super.dispose();
 	}
 
 	async focusCurrentChat() {
@@ -530,8 +558,29 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 	}
 
 	private _storeAllThreads(threads: ChatThreads) {
+		if (this._storeThreadsDebounceTimer) {
+			clearTimeout(this._storeThreadsDebounceTimer);
+		}
+
+		this._storeThreadsDebounceTimer = setTimeout(() => {
+			this._storeAllThreadsNow(threads);
+			this._storeThreadsDebounceTimer = null;
+		}, 1000); // 1 second debounce
+	}
+
+	private _storeAllThreadsNow(threads: ChatThreads) {
 		const normalizedThreads = this._ensureThreadStateDefaults(threads)
-		const serializedThreads = JSON.stringify(normalizedThreads);
+		
+		// Convert Sets to Arrays for JSON serialization
+		const serializableThreads: any = { ...normalizedThreads };
+		for (const threadId in serializableThreads) {
+			const thread = serializableThreads[threadId];
+			if (thread && thread.filesWithUserChanges instanceof Set) {
+				thread.filesWithUserChanges = Array.from(thread.filesWithUserChanges);
+			}
+		}
+
+		const serializedThreads = JSON.stringify(serializableThreads);
 		this._storageService.store(
 			THREAD_STORAGE_KEY,
 			serializedThreads,
@@ -549,6 +598,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 			}
 			nextThreads[threadId] = {
 				...thread,
+				filesWithUserChanges: new Set(Array.isArray(thread.filesWithUserChanges) ? thread.filesWithUserChanges : []),
 				state: {
 					...thread.state,
 					autoContinueEnabled: thread.state?.autoContinueEnabled ?? false,
@@ -744,8 +794,6 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 			// do nothing
 		}
 
-		this._addUserCheckpoint({ threadId })
-
 		// interrupt any effects
 		const interrupt = await this.streamState[threadId]?.interrupt
 		if (typeof interrupt === 'function')
@@ -767,6 +815,25 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 	// private readonly _currentlyRunningToolInterruptor: { [threadId: string]: (() => void) | undefined } = {}
 
 
+	// Track tool call history for loop detection
+	private toolCallHistory: { [threadId: string]: Array<{ name: string, params: any, result: any, type: string }> } = {};
+
+	// Predictive progress messages based on tool name
+	private getPredictiveProgressMessage(toolName: string, params: any): string {
+		switch (toolName) {
+			case 'ls_dir': return `Exploring directory: ${params.uri?.fsPath || '...'}`;
+			case 'read_file': return `Reading file: ${params.uri?.fsPath || '...'}`;
+			case 'search_for_files': return `Searching codebase for: "${params.query}"`;
+			case 'run_command': return `Executing command: "${params.command}"`;
+			case 'edit_file': return `Applying edits to: ${params.uri?.fsPath || '...'}`;
+			case 'rewrite_file': return `Rewriting file: ${params.uri?.fsPath || '...'}`;
+			case 'get_dir_tree': return `Analyzing project structure...`;
+			case 'search_pathnames_only': return `Locating files matching: "${params.query}"`;
+			case 'create_plan': return `Architecting implementation plan...`;
+			default: return `Executing ${toolName}...`;
+		}
+	}
+
 	// returns true when the tool call is waiting for user approval
 	private _runToolCall = async (
 		threadId: string,
@@ -776,17 +843,14 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		opts: { preapproved: true, unvalidatedToolParams: RawToolParamsObj, validatedParams: ToolCallParams<ToolName> } | { preapproved: false, unvalidatedToolParams: RawToolParamsObj },
 	): Promise<{ awaitingUserApproval?: boolean, interrupted?: boolean }> => {
 
-		// compute these below
+		// ... internal vars ...
 		let toolParams: ToolCallParams<ToolName>
 		let toolResult: ToolResult<ToolName>
 		let toolResultStr: string
 
-		// Check if it's a built-in tool
 		const isBuiltInTool = isABuiltinToolName(toolName)
 
-
-		if (!opts.preapproved) { // skip this if pre-approved
-			// 1. validate tool params
+		if (!opts.preapproved) {
 			try {
 				if (isBuiltInTool) {
 					const params = this._toolsService.validateParams[toolName](opts.unvalidatedToolParams)
@@ -801,16 +865,22 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				this._addMessageToThread(threadId, { role: 'tool', type: 'invalid_params', rawParams: opts.unvalidatedToolParams, result: null, name: toolName, content: errorMessage, id: toolId, mcpServerName })
 				return {}
 			}
-			// once validated, add checkpoint for edit
+
+			// LOOP DETECTION: Check if we've tried this exact failing call recently
+			const history = this.toolCallHistory[threadId] || [];
+			const lastCall = history[history.length - 1];
+			if (lastCall && lastCall.name === toolName && JSON.stringify(lastCall.params) === JSON.stringify(toolParams) && lastCall.type !== 'success') {
+				// We are repeating a failing call. Add a note to help the agent break out.
+				console.warn(`[chatThreadService] Loop detected for tool ${toolName}.`);
+				// We don't block it here, but we will ensure the result contains a hint for the agent.
+			}
+
 			if (toolName === 'edit_file') { this._addToolEditCheckpoint({ threadId, uri: (toolParams as BuiltinToolCallParams['edit_file']).uri }) }
 			if (toolName === 'rewrite_file') { this._addToolEditCheckpoint({ threadId, uri: (toolParams as BuiltinToolCallParams['rewrite_file']).uri }) }
-
-			// 2. if tool requires approval, break from the loop, awaiting approval
 
 			const approvalType = isBuiltInTool ? approvalTypeOfBuiltinToolName[toolName] : 'MCP tools'
 			if (approvalType) {
 				const autoApprove = this._settingsService.state.globalSettings.autoApprove[approvalType]
-				// add a tool_request because we use it for UI if a tool is loading (this should be improved in the future)
 				this._addMessageToThread(threadId, { role: 'tool', type: 'tool_request', content: '(Awaiting user permission...)', result: null, name: toolName, params: toolParams, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName })
 				if (!autoApprove) {
 					return { awaitingUserApproval: true }
@@ -821,27 +891,36 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 			toolParams = opts.validatedParams
 		}
 
-
-
-
-
-
-		// 3. call the tool
-		// this._setStreamState(threadId, { isRunning: 'tool' }, 'merge')
-		const runningTool = { role: 'tool', type: 'running_now', name: toolName, params: toolParams, content: '(value not received yet...)', result: null, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName } as const
+		// Use predictive progress message
+		const progressMessage = this.getPredictiveProgressMessage(toolName, toolParams);
+		const runningTool = { role: 'tool', type: 'running_now', name: toolName, params: toolParams, content: progressMessage, result: null, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName } as const
 		this._updateLatestTool(threadId, runningTool)
-
 
 		let interrupted = false
 		let resolveInterruptor: (r: () => void) => void = () => { }
 		const interruptorPromise = new Promise<() => void>(res => { resolveInterruptor = res })
 		try {
 
-			// set stream state
-			this._setStreamState(threadId, { isRunning: 'tool', interrupt: interruptorPromise, toolInfo: { toolName, toolParams, id: toolId, content: 'interrupted...', rawParams: opts.unvalidatedToolParams, mcpServerName } })
+			this._setStreamState(threadId, { isRunning: 'tool', interrupt: interruptorPromise, toolInfo: { toolName, toolParams, id: toolId, content: progressMessage, rawParams: opts.unvalidatedToolParams, mcpServerName } })
 
 			if (isBuiltInTool) {
-				const { result, interruptTool } = await this._toolsService.callTool[toolName](toolParams as any)
+				const { result, interruptTool } = await this._toolsService.callTool[toolName](toolParams as any, {
+					onData: (data) => {
+						// Stream partial results to the UI for immersion
+						const currentStreamState = this.streamState[threadId];
+						if (currentStreamState?.isRunning === 'tool') {
+							// Update the content with the latest data (keep it brief)
+							const truncatedData = data.length > 500 ? data.slice(-500) : data;
+							this._setStreamState(threadId, {
+								...currentStreamState,
+								toolInfo: {
+									...currentStreamState.toolInfo,
+									content: truncatedData
+								}
+							});
+						}
+					}
+				})
 				const interruptor = () => { interrupted = true; interruptTool?.() }
 				resolveInterruptor(interruptor)
 
@@ -882,9 +961,21 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 			else {
 				toolResultStr = this._mcpService.stringifyResult(toolResult as RawMCPToolCall)
 			}
+
+			// LOOP DETECTION HINT: If we are repeating a failing call, add a hint for the agent
+			const history = this.toolCallHistory[threadId] || [];
+			const isRepeat = history.some(h => h.name === toolName && JSON.stringify(h.params) === JSON.stringify(toolParams) && h.type !== 'success');
+			if (isRepeat) {
+				toolResultStr += "\n\nNOTE: I've noticed you've tried this exact call before with a similar result. Please consider if you need to change your parameters, try a different tool, or ask the user for more information if you are stuck.";
+			}
 		} catch (error) {
 			const errorMessage = this.toolErrMsgs.errWhenStringifying(error)
-			this._updateLatestTool(threadId, { role: 'tool', type: 'tool_error', params: toolParams, result: errorMessage, name: toolName, content: errorMessage, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName })
+			const fullErrorStr = `${errorMessage}\n\nNOTE: If you've tried this before, consider a different approach.`;
+			this._updateLatestTool(threadId, { role: 'tool', type: 'tool_error', params: toolParams, result: errorMessage, name: toolName, content: fullErrorStr, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName })
+
+			// Update history
+			if (!this.toolCallHistory[threadId]) this.toolCallHistory[threadId] = [];
+			this.toolCallHistory[threadId].push({ name: toolName, params: toolParams, result: errorMessage, type: 'error' });
 
 			// Auto-update task status when tools fail
 			this._updateTaskStatusFromToolExecution(threadId, toolName, 'error')
@@ -894,6 +985,10 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 		// 5. add to history and keep going
 		this._updateLatestTool(threadId, { role: 'tool', type: 'success', params: toolParams, result: toolResult, name: toolName, content: toolResultStr, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName })
+
+		// Update history
+		if (!this.toolCallHistory[threadId]) this.toolCallHistory[threadId] = [];
+		this.toolCallHistory[threadId].push({ name: toolName, params: toolParams, result: toolResult, type: 'success' });
 
 		// Auto-update task status when tools complete successfully
 		this._updateTaskStatusFromToolExecution(threadId, toolName, 'success')
@@ -942,11 +1037,14 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		this._setStreamState(threadId, { isRunning: 'idle', interrupt: 'not_needed' })  // just decorative, for clarity
 
 
+		let lastYieldTime = Date.now()
+
 		// tool use loop
 		while (shouldSendAnotherMessage) {
-			// PERFORMANCE: Yield to event loop periodically to prevent UI freezing
-			if (nMessagesSent > 0 && nMessagesSent % 3 === 0) {
+			// PERFORMANCE: Yield to event loop if we've spent more than 16ms to prevent UI freezing
+			if (Date.now() - lastYieldTime > 16) {
 				await new Promise(resolve => setTimeout(resolve, 0));
+				lastYieldTime = Date.now();
 			}
 
 			// false by default each iteration
@@ -955,12 +1053,13 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 			nMessagesSent += 1
 
 			// Safety check: prevent infinite loops in agent mode
-			if (chatMode === 'agent' && nMessagesSent > MAX_AGENT_ITERATIONS) {
-				console.warn(`[chatThreadService] Agent mode exceeded maximum iterations (${MAX_AGENT_ITERATIONS}), stopping loop`)
+			const maxAgentIterations = this._settingsService.state.globalSettings.maxAgentIterations || 50
+			if (chatMode === 'agent' && nMessagesSent > maxAgentIterations) {
+				console.warn(`[chatThreadService] Agent mode exceeded maximum iterations (${maxAgentIterations}), stopping loop`)
 				this._setStreamState(threadId, {
 					isRunning: undefined,
 					error: {
-						message: `Agent exceeded maximum iterations (${MAX_AGENT_ITERATIONS}). The task may be too complex or the AI may be stuck in a loop.`,
+						message: `Agent exceeded maximum iterations (${maxAgentIterations}). The task may be too complex or the AI may be stuck in a loop.`,
 						fullError: null
 					}
 				})
@@ -1158,7 +1257,6 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 						if (toolCallSoFar) this._addMessageToThread(threadId, { role: 'interrupted_streaming_tool', name: toolCallSoFar.name, mcpServerName: this._computeMCPServerOfToolName(toolCallSoFar.name) })
 
 						this._setStreamState(threadId, { isRunning: undefined, error })
-						this._addUserCheckpoint({ threadId })
 						return
 					}
 				}
@@ -1179,26 +1277,17 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				const textContent = info.fullText?.trim() || ''
 				const isEmptyResponse = (textContent.length === 0 || textContent === '(empty message)') && !toolCall
 				if (isEmptyResponse) {
-					// In agent mode, silently continue the loop - the LLM may need another prompt
-					// Don't add empty message to thread, just continue
-					if (chatMode === 'agent') {
-						console.log(`[chatThreadService] Agent mode: Empty response, silently continuing loop`)
-						shouldSendAnotherMessage = true
-						continue
-					}
-
-					// In chat mode, retry with delay
-					console.warn(`[chatThreadService] LLM returned empty response, treating as error for retry`)
-					// Don't add empty message to thread
-					// Continue to retry logic below by setting shouldRetryLLM
+					// In both modes, retry with delay if we haven't exhausted attempts
 					if (nAttempts < CHAT_RETRIES) {
 						shouldRetryLLM = true
-						console.log(`[chatThreadService] Empty response, retrying (attempt ${nAttempts}/${CHAT_RETRIES})...`)
+						console.warn(`[chatThreadService] LLM returned empty response, retrying (attempt ${nAttempts}/${CHAT_RETRIES})...`)
+						
 						// Show retry message briefly
 						this._setStreamState(threadId, {
 							isRunning: undefined,
 							error: { message: `Empty response, retrying... (attempt ${nAttempts}/${CHAT_RETRIES})`, fullError: null }
 						})
+						
 						await timeout(RETRY_DELAY)
 						if (interruptedWhenIdle) {
 							this._setStreamState(threadId, undefined)
@@ -1207,12 +1296,33 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 						else {
 							// Clear error before retry
 							this._setStreamState(threadId, { isRunning: 'idle', interrupt: idleInterruptor })
-							continue // retry
+							continue // retry current turn
 						}
 					}
 					// Empty response but too many attempts
 					else {
 						console.error(`[chatThreadService] LLM returned empty response after ${CHAT_RETRIES} attempts, giving up`)
+						
+						if (chatMode === 'agent') {
+							// In agent mode, instead of just breaking, try adding a "poke" message to break the cycle
+							// Only do this once to avoid infinite poking
+							const messages = this.state.allThreads[threadId]?.messages || []
+							const lastPokeIdx = findLastIdx(messages, m => m.role === 'user' && m.content.includes('I received an empty response'))
+							
+							if (lastPokeIdx === -1 || messages.length - lastPokeIdx > 2) {
+								console.log('[chatThreadService] Agent mode: Adding poke message after empty responses')
+								this._addMessageToThread(threadId, { 
+									role: 'user', 
+									content: 'I received an empty response from you. If you are stuck, please try a different approach or ask me for clarification. Otherwise, please continue with the task.',
+									displayContent: 'Continuing after empty response...',
+									selections: null,
+									state: defaultMessageState
+								})
+								shouldSendAnotherMessage = true
+								break // Exit retry loop to start a new turn with the poke message
+							}
+						}
+
 						this._setStreamState(threadId, {
 							isRunning: undefined,
 							error: {
@@ -1220,7 +1330,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 								fullError: null
 							}
 						})
-						break
+						break // Exit retry loop
 					}
 				}
 
@@ -1334,31 +1444,30 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 		const voidFileSnapshotOfURI: { [fsPath: string]: VoidFileSnapshot | undefined } = {}
 
-		// add a change for all the URIs in the checkpoint history
-		const { lastIdxOfURI } = this._getCheckpointsBetween({ threadId, loIdx: 0, hiIdx: lastCheckpointIdx, }) ?? {}
-		for (const fsPath in lastIdxOfURI ?? {}) {
+		// Only process files that have actually changed to save compute
+		for (const fsPath of thread.filesWithUserChanges) {
 			const { model } = this._voidModelService.getModelFromFsPath(fsPath)
 			if (!model) continue
-			const checkpoint2 = thread.messages[lastIdxOfURI[fsPath]] || null
-			if (!checkpoint2) continue
-			if (checkpoint2.role !== 'checkpoint') continue
-			const res = this._getCheckpointInfo(checkpoint2, fsPath, { includeUserModifiedChanges: false })
-			if (!res) continue
-			const { voidFileSnapshot: oldVoidFileSnapshot } = res
-
-			// if there was any change to the str or diffAreaSnapshot, update. rough approximation of equality, oldDiffAreasSnapshot === diffAreasSnapshot is not perfect
-			const voidFileSnapshot = this._editCodeService.getVoidFileSnapshot(URI.file(fsPath))
-			if (oldVoidFileSnapshot === voidFileSnapshot) continue
-			voidFileSnapshotOfURI[fsPath] = voidFileSnapshot
+			
+			// Find the last checkpoint for this specific file to compare
+			const { lastIdxOfURI } = this._getCheckpointsBetween({ threadId, loIdx: 0, hiIdx: lastCheckpointIdx })
+			const lastCheckpointIdxForFile = lastIdxOfURI[fsPath]
+			
+			if (lastCheckpointIdxForFile !== undefined) {
+				const lastCheckpoint = thread.messages[lastCheckpointIdxForFile]
+				if (lastCheckpoint.role === 'checkpoint') {
+					const res = this._getCheckpointInfo(lastCheckpoint, fsPath, { includeUserModifiedChanges: false })
+					const oldSnapshot = res?.voidFileSnapshot
+					const newSnapshot = this._editCodeService.getVoidFileSnapshot(URI.file(fsPath))
+					
+					if (oldSnapshot === newSnapshot) continue
+					voidFileSnapshotOfURI[fsPath] = newSnapshot
+				}
+			} else {
+				// New file in history
+				voidFileSnapshotOfURI[fsPath] = this._editCodeService.getVoidFileSnapshot(URI.file(fsPath))
+			}
 		}
-
-		// // add a change for all user-edited files (that aren't in the history)
-		// for (const fsPath of this._userModifiedFilesToCheckInCheckpoints.keys()) {
-		// 	if (fsPath in lastIdxOfURI) continue // if already visisted, don't visit again
-		// 	const { model } = this._voidModelService.getModelFromFsPath(fsPath)
-		// 	if (!model) continue
-		// 	currStrOfFsPath[fsPath] = model.getValue(EndOfLinePreference.LF)
-		// }
 
 		return { voidFileSnapshotOfURI }
 	}
@@ -1366,12 +1475,19 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 	private _addUserCheckpoint({ threadId }: { threadId: string }) {
 		const { voidFileSnapshotOfURI } = this._computeNewCheckpointInfo({ threadId }) ?? {}
-		this._addCheckpoint(threadId, {
-			role: 'checkpoint',
-			type: 'user_edit',
-			voidFileSnapshotOfURI: voidFileSnapshotOfURI ?? {},
-			userModifications: { voidFileSnapshotOfURI: {}, },
-		})
+		
+		// Only add checkpoint if there are actual changes
+		if (voidFileSnapshotOfURI && Object.keys(voidFileSnapshotOfURI).length > 0) {
+			this._addCheckpoint(threadId, {
+				role: 'checkpoint',
+				type: 'user_edit',
+				voidFileSnapshotOfURI: voidFileSnapshotOfURI ?? {},
+				userModifications: { voidFileSnapshotOfURI: {}, },
+			})
+		}
+		
+		// Clear tracking after checkpointing (even if no changes found, we've processed them)
+		this._clearUserChanges(threadId)
 	}
 	// call this right after LLM edits a file
 	private _addToolEditCheckpoint({ threadId, uri, }: { threadId: string, uri: URI }) {

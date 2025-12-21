@@ -159,11 +159,16 @@ const fastSimilarityScore = (str1: string, str2: string): number => {
 	const ngrams1 = getNgrams(str1, ngramSize);
 	const ngrams2 = getNgrams(str2, ngramSize);
 
-	// Calculate Jaccard similarity
-	const intersection = new Set([...ngrams1].filter(x => ngrams2.has(x)));
-	const union = new Set([...ngrams1, ...ngrams2]);
+	// Calculate Jaccard similarity more efficiently
+	let intersectionSize = 0;
+	for (const ngram of ngrams1) {
+		if (ngrams2.has(ngram)) {
+			intersectionSize++;
+		}
+	}
+	const unionSize = ngrams1.size + ngrams2.size - intersectionSize;
 
-	const jaccardSimilarity = union.size > 0 ? intersection.size / union.size : 0;
+	const jaccardSimilarity = unionSize > 0 ? intersectionSize / unionSize : 0;
 
 	// Adjust for length difference
 	const lengthFactor = 1 - Math.abs(len1 - len2) / maxLen;
@@ -175,6 +180,8 @@ const fastSimilarityScore = (str1: string, str2: string): number => {
 const findBestFuzzyMatch = (searchText: string, fileContents: string, startLine?: number): { idx: number, score: number } | null => {
 	const searchNorm = normalizeWhitespace(searchText);
 	const fileLines = fileContents.split('\n');
+	// Pre-normalize lines for Strategy 4
+	const normalizedFileLines = fileLines.map(line => line.trim().replace(/\s+/g, ' '));
 	const searchLines = searchText.split('\n');
 	const searchLen = searchLines.length;
 
@@ -192,8 +199,8 @@ const findBestFuzzyMatch = (searchText: string, fileContents: string, startLine?
 		const indices = offset === 0 ? [startIdx] : [startIdx + offset, startIdx - offset].filter(i => i >= 0 && i + searchLen <= fileLines.length);
 
 		for (const i of indices) {
-			const candidate = fileLines.slice(i, i + searchLen).join('\n');
-			const candidateNorm = normalizeWhitespace(candidate);
+			// Optimization: Use pre-normalized lines
+			const candidateNorm = normalizedFileLines.slice(i, i + searchLen).join('\n');
 
 			const similarity = fastSimilarityScore(searchNorm, candidateNorm);
 
@@ -264,6 +271,44 @@ const findTextInCode = (text: string, fileContents: string, canFallbackToRemoveW
 	let idx = fileContents.indexOf(text, startIdx)
 	if (idx !== -1) {
 		return returnAns(fileContents, idx, text)
+	}
+
+	// Strategy 2: Anchor-based matching (handles "// ... existing code ..." placeholders)
+	// This allows LLMs to omit parts of the file to save tokens/time
+	const anchorPlaceholder = /\/\/ \.\.\. (?:existing|original) code \.\.\./gi
+	if (text.match(anchorPlaceholder)) {
+		const anchors = text.split(anchorPlaceholder).map(a => a.trim()).filter(a => a.length > 0)
+		if (anchors.length >= 2) {
+			let currentSearchIdx = startIdx
+			let firstAnchorIdx = -1
+			let lastAnchorIdx = -1
+			let lastAnchorLen = 0
+			let allFound = true
+
+			for (let i = 0; i < anchors.length; i++) {
+				const anchor = anchors[i]
+				const foundIdx = fileContents.indexOf(anchor, currentSearchIdx)
+				if (foundIdx === -1) {
+					allFound = false
+					break
+				}
+				if (i === 0) firstAnchorIdx = foundIdx
+				lastAnchorIdx = foundIdx
+				lastAnchorLen = anchor.length
+				currentSearchIdx = foundIdx + lastAnchorLen
+			}
+
+			if (allFound) {
+				// Verify uniqueness - try to find another first anchor
+				const secondFirstAnchorIdx = fileContents.indexOf(anchors[0], firstAnchorIdx + 1)
+				if (secondFirstAnchorIdx === -1) {
+					// Unique match found via anchors
+					const matchedText = fileContents.substring(firstAnchorIdx, lastAnchorIdx + lastAnchorLen)
+					return returnAns(fileContents, firstAnchorIdx, matchedText)
+				}
+				// If not unique, we could return 'Not unique', but we'll fall through to see if other strategies work
+			}
+		}
 	}
 
 	// Only use fuzzy matching if explicitly allowed
@@ -1377,7 +1422,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 	}
 
 
-	public async instantlyApplySearchReplaceBlocks({ uri, searchReplaceBlocks }: { uri: URI, searchReplaceBlocks: string }) {
+	public async instantlyApplySearchReplaceBlocks({ uri, searchReplaceBlocks, tryFuzzyMatching, onProgress }: { uri: URI, searchReplaceBlocks: string, tryFuzzyMatching?: boolean, onProgress?: (data: string) => void }) {
 		console.log('[editCodeService] instantlyApplySearchReplaceBlocks called');
 		console.log('[editCodeService] Morph enabled:', this._settingsService.state.globalSettings.enableMorphFastApply);
 		console.log('[editCodeService] Morph API key present:', !!this._settingsService.state.globalSettings.morphApiKey);
@@ -1418,19 +1463,23 @@ class EditCodeService extends Disposable implements IEditCodeService {
 			// Try Morph Fast Apply if enabled
 			if (this._settingsService.state.globalSettings.enableMorphFastApply &&
 				this._settingsService.state.globalSettings.morphApiKey) {
+				onProgress?.('Attempting to use Morph Fast Apply...');
 				console.log('[editCodeService] Attempting to use Morph Fast Apply...');
 				try {
 					await this._applyWithMorph(uri, searchReplaceBlocks);
+					onProgress?.('Successfully applied changes using Morph Fast Apply');
 					console.log('[editCodeService] Successfully applied changes using Morph Fast Apply');
 				} catch (morphError) {
 					// Fall back to standard apply if Morph fails
+					onProgress?.(`Morph Fast Apply failed, falling back to standard apply: ${morphError}`);
 					console.warn('[editCodeService] Morph Fast Apply failed, falling back to standard apply:', morphError);
-					this._instantlyApplySRBlocks(uri, searchReplaceBlocks);
+					await this._instantlyApplySRBlocks(uri, searchReplaceBlocks, tryFuzzyMatching, onProgress);
 				}
 			} else {
+				onProgress?.('Using standard search/replace apply...');
 				console.log('[editCodeService] Using standard apply (Morph disabled or no API key)');
 				// Standard apply logic
-				this._instantlyApplySRBlocks(uri, searchReplaceBlocks);
+				await this._instantlyApplySRBlocks(uri, searchReplaceBlocks, tryFuzzyMatching, onProgress);
 			}
 		}
 		catch (e) {
@@ -1441,7 +1490,8 @@ class EditCodeService extends Disposable implements IEditCodeService {
 	}
 
 
-	public instantlyRewriteFile({ uri, newContent }: { uri: URI, newContent: string }) {
+	public instantlyRewriteFile({ uri, newContent, onProgress }: { uri: URI, newContent: string, onProgress?: (data: string) => void }) {
+		onProgress?.(`Starting rewrite of: ${uri.fsPath}...`);
 		// start diffzone
 		const res = this._startStreamingDiffZone({
 			uri,
@@ -1466,7 +1516,9 @@ class EditCodeService extends Disposable implements IEditCodeService {
 			}
 		}
 
+		onProgress?.(`Applying new content to: ${uri.fsPath}...`);
 		this._writeURIText(uri, newContent, 'wholeFileRange', { shouldRealignDiffAreas: true })
+		onProgress?.(`Successfully rewrote: ${uri.fsPath}`);
 		onDone()
 	}
 
@@ -1899,7 +1951,8 @@ ${problematicCode}
 	}
 
 
-	private _instantlyApplySRBlocks(uri: URI, blocksStr: string) {
+	private async _instantlyApplySRBlocks(uri: URI, blocksStr: string, tryFuzzyMatching: boolean = false, onProgress?: (data: string) => void) {
+		onProgress?.(`Extracting search/replace blocks...`);
 		const blocks = extractSearchReplaceBlocks(blocksStr)
 		if (blocks.length === 0) throw new Error(`No Search/Replace blocks were received!`)
 
@@ -1914,17 +1967,25 @@ ${problematicCode}
 		const modelStrLines = modelStr.split('\n')
 
 
-
-
 		const replacements: { origStart: number; origEnd: number; block: ExtractedSearchReplaceBlock }[] = []
-		for (const b of blocks) {
-			const res = findTextInCode(b.orig, modelStr, true, { returnType: 'lines' })
+		let lastYieldTime = Date.now()
+		for (let i = 0; i < blocks.length; i++) {
+			const b = blocks[i];
+			onProgress?.(`Processing block ${i + 1} of ${blocks.length}...`);
+			// PERFORMANCE: Yield to event loop if we've spent more than 16ms to prevent UI freezing
+			if (Date.now() - lastYieldTime > 16) {
+				await new Promise(resolve => setTimeout(resolve, 0));
+				lastYieldTime = Date.now();
+			}
+
+			const res = findTextInCode(b.orig, modelStr, tryFuzzyMatching, { returnType: 'lines' })
 			if (typeof res === 'string') {
 				console.error(`[editCodeService] Search/Replace failed: ${res}`)
 				console.error(`[editCodeService] Searching for:\n${b.orig}`)
 				throw new Error(this._errContentOfInvalidStr(res, b.orig, modelStr))
 			}
 			let [startLine, endLine] = res
+			onProgress?.(`Found match for block ${i + 1} at lines ${startLine}-${endLine}.`);
 			startLine -= 1 // 0-index
 			endLine -= 1
 
@@ -1938,6 +1999,8 @@ ${problematicCode}
 
 			replacements.push({ origStart, origEnd, block: b });
 		}
+		
+		onProgress?.(`Applying all ${replacements.length} replacements...`);
 		// sort in increasing order
 		replacements.sort((a, b) => a.origStart - b.origStart)
 
@@ -1959,6 +2022,7 @@ ${problematicCode}
 			'wholeFileRange',
 			{ shouldRealignDiffAreas: true }
 		)
+		onProgress?.(`Successfully applied all blocks to: ${uri.fsPath}`);
 	}
 
 	private async _applyWithMorph(uri: URI, searchReplaceBlocks: string): Promise<void> {
@@ -2304,7 +2368,7 @@ ${problematicCode}
 
 
 						try {
-							this._instantlyApplySRBlocks(uri, fullText)
+							await this._instantlyApplySRBlocks(uri, fullText)
 							onDone()
 							resMessageDonePromise()
 						}

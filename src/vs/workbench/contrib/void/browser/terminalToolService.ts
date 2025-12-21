@@ -23,9 +23,8 @@ export interface ITerminalToolService {
 
 	listPersistentTerminalIds(): string[];
 	runCommand(command: string, opts:
-		| { type: 'persistent', persistentTerminalId: string }
-		| { type: 'temporary', cwd: string | null, terminalId: string }
-		// | { type: 'apply', terminalId: string }
+		| { type: 'persistent', persistentTerminalId: string, onData?: (data: string) => void }
+		| { type: 'temporary', cwd: string | null, terminalId: string, onData?: (data: string) => void }
 	): Promise<{ interrupt: () => void; resPromise: Promise<{ result: string, resolveReason: TerminalResolveReason }> }>;
 
 	focusPersistentTerminal(terminalId: string): Promise<void>
@@ -224,8 +223,9 @@ export class TerminalToolService extends Disposable implements ITerminalToolServ
 		// Collect lines from the buffer iterator (oldest to newest)
 		const lines: string[] = [];
 		for (const line of terminal.xterm.getBufferReverseIterator()) {
-			lines.unshift(line);
+			lines.push(line);
 		}
+		lines.reverse();
 
 		let result = removeAnsiEscapeCodes(lines.join('\n'));
 
@@ -302,6 +302,13 @@ export class TerminalToolService extends Disposable implements ITerminalToolServ
 			// Prefer the structured command-detection capability when available
 
 			const waitUntilDone = new Promise<void>(resolve => {
+				if (params.onData) {
+					const d = terminal.onData(data => {
+						params.onData?.(removeAnsiEscapeCodes(data));
+					});
+					disposables.push(d);
+				}
+
 				if (!cmdCap) return
 				const l = cmdCap.onCommandFinished(cmd => {
 					if (resolveReason) return // already resolved

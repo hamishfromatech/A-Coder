@@ -5,10 +5,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useAccessor, useIsDark, useSettingsState } from '../util/services.js';
-import { Brain, Check, ChevronRight, DollarSign, ExternalLink, Lock, X } from 'lucide-react';
+import { Brain, Check, ChevronLeft, ChevronRight, DollarSign, ExternalLink, Lock, X } from 'lucide-react';
 import { displayInfoOfProviderName, ProviderName, providerNames, localProviderNames, featureNames, FeatureName, isFeatureNameDisabled } from '../../../../common/voidSettingsTypes.js';
 import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js';
-import { OllamaSetupInstructions, OneClickSwitchButton, SettingsForProvider, ModelDump } from '../void-settings-tsx/Settings.js';
+import { OllamaSetupInstructions, OneClickSwitchButton, SettingsForProvider, ModelDump, SettingBox, SettingRow, SettingCard } from '../void-settings-tsx/Settings.js';
 import { ColorScheme } from '../../../../../../../platform/theme/common/theme.js';
 import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js';
 import { isLinux } from '../../../../../../../base/common/platform.js';
@@ -27,12 +27,23 @@ export const VoidOnboarding = () => {
 			<div
 				className={`
 					fixed inset-0 z-[99999]
-					bg-void-bg-3/95 backdrop-blur-md
+					bg-void-bg-1/40 backdrop-blur-[32px]
 					overflow-y-auto
 					transition-all duration-1000 ${isOnboardingComplete ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'}
 				`}
-				style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+				style={{ 
+					minHeight: '100vh', 
+					display: 'flex', 
+					alignItems: 'center', 
+					justifyContent: 'center',
+					background: isDark 
+						? 'radial-gradient(circle at center, rgba(30, 30, 30, 0.7) 0%, rgba(15, 15, 15, 0.9) 100%)' 
+						: 'radial-gradient(circle at center, rgba(255, 255, 255, 0.7) 0%, rgba(240, 240, 240, 0.9) 100%)'
+				}}
 			>
+				{/* Sophisticated Vignette */}
+				<div className="fixed inset-0 pointer-events-none shadow-[inset_0_0_150px_rgba(0,0,0,0.3)] z-[-1]" />
+				
 				<ErrorBoundary>
 					<VoidOnboardingContent />
 				</ErrorBoundary>
@@ -132,6 +143,7 @@ const AddProvidersPage = ({ pageIndex, setPageIndex }: { pageIndex: number, setP
 	const [currentTab, setCurrentTab] = useState<TabName>('Free');
 	const settingsState = useSettingsState();
 	const [errorMessage, setErrorMessage] = useState<string | null>(null);
+	const isDark = useIsDark();
 
 	// Clear error message after 5 seconds
 	useEffect(() => {
@@ -151,125 +163,147 @@ const AddProvidersPage = ({ pageIndex, setPageIndex }: { pageIndex: number, setP
 		};
 	}, [errorMessage]);
 
-	return (<div className="flex flex-col md:flex-row w-full min-h-[60vh] gap-6 max-w-[900px] mx-auto relative">
-		{/* Left Column */}
-		<div className="md:w-1/4 w-full flex flex-col gap-6 p-4 md:p-6 border-none border-void-border-2 h-full overflow-y-auto md:border-r md:border-void-border-2/60">
-			{/* Tab Selector */}
-			<div className="flex md:flex-col gap-2">
-				{[...tabNames, 'Cloud/Other'].map(tab => (
-					<button
-						key={tab}
-						className={`py-2 px-4 rounded-lg text-left border transition-all duration-200
-								${currentTab === tab
-								? 'bg-void-bg-3 text-void-fg-0 border-void-border-2 shadow-sm'
-								: 'bg-transparent text-void-fg-3 border-transparent hover:bg-void-bg-2-hover'}
-							`}
-						onClick={() => {
-							setCurrentTab(tab as TabName);
-							setErrorMessage(null); // Reset error message when changing tabs
-						}}
-					>
-						{tab}
-					</button>
-				))}
-			</div>
+	return (
+		<div className="w-full max-w-5xl mx-auto px-4">
+			<div className="flex flex-col gap-8">
+				<div className="text-center space-y-2">
+					<h1 className="text-4xl font-bold text-void-fg-1 tracking-tight">Add a Provider</h1>
+					<p className="text-void-fg-3 text-lg">Choose how you want to power your AI assistant.</p>
+				</div>
 
-			{/* Feature Checklist */}
-			<div className="flex flex-col gap-1 mt-4 text-sm opacity-80">
-				{featureNameMap.map(({ display, featureName }) => {
-					const hasModel = settingsState.modelSelectionOfFeature[featureName] !== null;
-					return (
-						<div key={featureName} className="flex items-center gap-2">
-							{hasModel ? (
-								<Check className="w-4 h-4 text-emerald-500" />
-							) : (
-								<div className="w-3 h-3 rounded-full flex items-center justify-center">
-									<div className="w-1 h-1 rounded-full bg-white/70"></div>
+				<div className="flex flex-col md:flex-row gap-8">
+					{/* Left Column - Navigation */}
+					<div className="md:w-1/4 flex flex-col gap-6">
+						<div className="bg-void-bg-2/50 p-2 rounded-xl border border-void-border-2 space-y-1">
+							{[...tabNames, 'Cloud/Other'].map(tab => (
+								<button
+									key={tab}
+									className={`w-full py-2.5 px-4 rounded-lg text-left text-sm font-medium transition-all duration-200
+										${currentTab === tab
+											? 'bg-void-accent/10 text-void-accent shadow-sm'
+											: 'text-void-fg-3 hover:bg-void-bg-2 hover:text-void-fg-1'}
+									`}
+									onClick={() => {
+										setCurrentTab(tab as TabName);
+										setErrorMessage(null);
+									}}
+								>
+									{tab}
+								</button>
+							))}
+						</div>
+
+						{/* Feature Checklist Card */}
+						<SettingCard title="Features Enabled" isDark={isDark} className="p-4">
+							<div className="space-y-3">
+								{featureNameMap.map(({ display, featureName }) => {
+									const hasModel = settingsState.modelSelectionOfFeature[featureName] !== null;
+									return (
+										<div key={featureName} className="flex items-center justify-between text-xs">
+											<span className="text-void-fg-2">{display}</span>
+											{hasModel ? (
+												<div className="bg-emerald-500/10 p-0.5 rounded-full">
+													<Check className="w-3 h-3 text-emerald-500" />
+												</div>
+											) : (
+												<div className="w-2 h-2 rounded-full bg-void-bg-3 border border-void-border-2"></div>
+											)}
+										</div>
+									);
+								})}
+							</div>
+						</SettingCard>
+					</div>
+
+					{/* Right Column - Content */}
+					<div className="flex-1 space-y-6">
+						<SettingCard 
+							isDark={isDark}
+							title={currentTab}
+							description={descriptionOfTab[currentTab]}
+						>
+							<div className="space-y-8">
+								{providerNamesOfTab[currentTab].map((providerName) => (
+									<SettingBox key={providerName} className="space-y-4">
+										<div className="flex items-center justify-between">
+											<h3 className="text-lg font-semibold text-void-fg-1">
+												{displayInfoOfProviderName(providerName).title}
+												{providerName === 'gemini' && (
+													<span
+														data-tooltip-id="void-tooltip-provider-info"
+														data-tooltip-content="Gemini 2.5 Pro offers 25 free messages a day, and Gemini 2.5 Flash offers 500. We recommend using models down the line as you run out of free credits."
+														data-tooltip-place="right"
+														className="ml-1 text-xs align-top text-blue-400 cursor-help"
+													>*</span>
+												)}
+												{providerName === 'openRouter' && (
+													<span
+														data-tooltip-id="void-tooltip-provider-info"
+														data-tooltip-content="OpenRouter offers 50 free messages a day, and 1000 if you deposit $10. Only applies to models labeled ':free'."
+														data-tooltip-place="right"
+														className="ml-1 text-xs align-top text-blue-400 cursor-help"
+													>*</span>
+												)}
+											</h3>
+										</div>
+										
+										<div className="bg-void-bg-1 p-4 rounded-lg border border-void-border-2">
+											<SettingsForProvider providerName={providerName} showProviderTitle={false} showProviderSuggestions={true} />
+										</div>
+										
+										{providerName === 'ollama' && (
+											<div className="mt-4 p-4 bg-void-bg-2/30 rounded-lg border border-dashed border-void-border-2">
+												<OllamaSetupInstructions />
+											</div>
+										)}
+									</SettingBox>
+								))}
+
+								{(currentTab === 'Local' || currentTab === 'Cloud/Other') && (
+									<SettingBox>
+										<div className="flex items-center gap-2 mb-4">
+											<div className="text-lg font-semibold text-void-fg-1">Models</div>
+										</div>
+
+										{currentTab === 'Local' && (
+											<p className="text-sm text-void-fg-3 mb-4">Local models should be detected automatically. You can add custom models below.</p>
+										)}
+
+										<div className="bg-void-bg-1 rounded-lg border border-void-border-2 overflow-hidden">
+											<ModelDump filteredProviders={currentTab === 'Local' ? localProviderNames : cloudProviders} />
+										</div>
+									</SettingBox>
+								)}
+							</div>
+						</SettingCard>
+
+						{/* Navigation */}
+						<div className="flex flex-col items-end gap-4 pt-4">
+							{errorMessage && (
+								<div className="bg-amber-500/10 text-amber-500 px-4 py-2 rounded-lg text-sm border border-amber-500/20 animate-in fade-in slide-in-from-top-1">
+									{errorMessage}
 								</div>
 							)}
-							<span>{display}</span>
+							<div className="flex items-center gap-3">
+								<PreviousButton onClick={() => setPageIndex(pageIndex - 1)} />
+								<NextButton
+									onClick={() => {
+										const isDisabled = isFeatureNameDisabled('Chat', settingsState)
+
+										if (!isDisabled) {
+											setPageIndex(pageIndex + 1);
+											setErrorMessage(null);
+										} else {
+											setErrorMessage("Please set up at least one Chat model before moving on.");
+										}
+									}}
+								/>
+							</div>
 						</div>
-					);
-				})}
-			</div>
-		</div>
-
-		{/* Right Column */}
-		<div className="flex-1 flex flex-col items-center justify-start p-6 h-full overflow-y-auto">
-			<h1 className="text-4xl font-semibold text-void-fg-1 mb-6 text-center w-full">Add a Provider</h1>
-
-			<div className="w-full max-w-xl mt-2 mb-8">
-				<h2 className="text-2xl font-medium text-void-fg-1 my-3 w-full">{currentTab}</h2>
-				<p className="text-sm text-void-fg-3 my-2 w-full">{descriptionOfTab[currentTab]}</p>
-			</div>
-
-			{providerNamesOfTab[currentTab].map((providerName) => (
-				<div key={providerName} className="w-full max-w-xl mb-10">
-					<div className="text-xl mb-2">
-						Add {displayInfoOfProviderName(providerName).title}
-						{providerName === 'gemini' && (
-							<span
-								data-tooltip-id="void-tooltip-provider-info"
-								data-tooltip-content="Gemini 2.5 Pro offers 25 free messages a day, and Gemini 2.5 Flash offers 500. We recommend using models down the line as you run out of free credits."
-								data-tooltip-place="right"
-								className="ml-1 text-xs align-top text-blue-400"
-							>*</span>
-						)}
-						{providerName === 'openRouter' && (
-							<span
-								data-tooltip-id="void-tooltip-provider-info"
-								data-tooltip-content="OpenRouter offers 50 free messages a day, and 1000 if you deposit $10. Only applies to models labeled ':free'."
-								data-tooltip-place="right"
-								className="ml-1 text-xs align-top text-blue-400"
-							>*</span>
-						)}
 					</div>
-					<div>
-						<SettingsForProvider providerName={providerName} showProviderTitle={false} showProviderSuggestions={true} />
-					</div>
-					{providerName === 'ollama' && <OllamaSetupInstructions />}
-				</div>
-			))}
-
-			{(currentTab === 'Local' || currentTab === 'Cloud/Other') && (
-				<div className="w-full max-w-xl mt-8 bg-void-bg-2/50 rounded-lg p-6 border border-void-border-4">
-					<div className="flex items-center gap-2 mb-4">
-						<div className="text-xl font-medium">Models</div>
-					</div>
-
-					{currentTab === 'Local' && (
-						<div className="text-sm opacity-80 text-void-fg-3 my-4 w-full">Local models should be detected automatically. You can add custom models below.</div>
-					)}
-
-					{currentTab === 'Local' && <ModelDump filteredProviders={localProviderNames} />}
-					{currentTab === 'Cloud/Other' && <ModelDump filteredProviders={cloudProviders} />}
-				</div>
-			)}
-
-			{/* Navigation buttons in right column */}
-			<div className="flex flex-col items-end w-full mt-auto pt-8">
-				{errorMessage && (
-					<div className="text-amber-400 mb-2 text-sm opacity-80 transition-opacity duration-300">{errorMessage}</div>
-				)}
-				<div className="flex items-center gap-2">
-					<PreviousButton onClick={() => setPageIndex(pageIndex - 1)} />
-					<NextButton
-						onClick={() => {
-							const isDisabled = isFeatureNameDisabled('Chat', settingsState)
-
-							if (!isDisabled) {
-								setPageIndex(pageIndex + 1);
-								setErrorMessage(null);
-							} else {
-								// Show error message
-								setErrorMessage("Please set up at least one Chat model before moving on.");
-							}
-						}}
-					/>
 				</div>
 			</div>
 		</div>
-	</div>
 	);
 }
 
@@ -279,26 +313,26 @@ const AddProvidersPage = ({ pageIndex, setPageIndex }: { pageIndex: number, setP
 
 const NextButton = ({ onClick, ...props }: { onClick: () => void } & React.ButtonHTMLAttributes<HTMLButtonElement>) => {
 
-	// Create a new props object without the disabled attribute
 	const { disabled, ...buttonProps } = props;
 
 	return (
 		<button
 			onClick={disabled ? undefined : onClick}
 			onDoubleClick={onClick}
-			className={`px-6 py-2 bg-zinc-100 ${disabled
-				? 'bg-zinc-100/40 cursor-not-allowed'
-				: 'hover:bg-zinc-100'
-				} rounded text-black duration-600 transition-all
+			className={`px-8 py-2.5 bg-void-fg-1 text-void-bg-1 font-semibold rounded-lg transition-all duration-200 flex items-center justify-center gap-2
+				${disabled
+					? 'opacity-40 cursor-not-allowed'
+					: 'hover:scale-[1.02] active:scale-[0.98] hover:shadow-lg shadow-sm'}
 			`}
 			{...disabled && {
 				'data-tooltip-id': 'void-tooltip',
-				"data-tooltip-content": 'Please enter all required fields or choose another provider', // (double-click to proceed anyway, can come back in Settings)
+				"data-tooltip-content": 'Please enter all required fields or choose another provider',
 				"data-tooltip-place": 'top',
 			}}
 			{...buttonProps}
 		>
-			Next
+			<span>Next</span>
+			<ChevronRight size={18} strokeWidth={2.5} />
 		</button>
 	)
 }
@@ -307,10 +341,11 @@ const PreviousButton = ({ onClick, ...props }: { onClick: () => void } & React.B
 	return (
 		<button
 			onClick={onClick}
-			className="px-6 py-2 rounded text-void-fg-3 opacity-80 hover:brightness-115 duration-600 transition-all"
+			className="px-6 py-2.5 rounded-lg text-void-fg-3 font-medium border border-void-border-2 hover:bg-void-bg-2 hover:text-void-fg-1 transition-all duration-200 flex items-center justify-center gap-2 active:scale-[0.98]"
 			{...props}
 		>
-			Back
+			<ChevronLeft size={18} strokeWidth={2.5} />
+			<span>Back</span>
 		</button>
 	)
 }
@@ -384,31 +419,17 @@ const abbreviateNumber = (num: number): string => {
 
 
 
-const PrimaryActionButton = ({ children, className, ringSize, ...props }: { children: React.ReactNode, ringSize?: undefined | 'xl' | 'screen' } & React.ButtonHTMLAttributes<HTMLButtonElement>) => {
-
-
+const PrimaryActionButton = ({ children, className, ...props }: { children: React.ReactNode } & React.ButtonHTMLAttributes<HTMLButtonElement>) => {
 	return (
 		<button
 			type='button'
 			className={`
-				flex items-center justify-center
-
-				text-white dark:text-black
-				bg-black/90 dark:bg-white/90
-
-				${ringSize === 'xl' ? `
-					gap-2 px-16 py-8
-					transition-all duration-300 ease-in-out
-					`
-					: ringSize === 'screen' ? `
-					gap-2 px-16 py-8
-					transition-all duration-1000 ease-in-out
-					`: ringSize === undefined ? `
-					gap-1 px-4 py-2
-					transition-all duration-300 ease-in-out
-				`: ''}
-
-				rounded-lg
+				flex items-center justify-center gap-2
+				px-8 py-3 rounded-xl
+				bg-void-accent text-white font-bold
+				shadow-lg shadow-void-accent/20
+				hover:bg-void-accent/90 hover:scale-[1.02] active:scale-[0.98]
+				transition-all duration-200
 				group
 				${className}
 			`}
@@ -416,13 +437,7 @@ const PrimaryActionButton = ({ children, className, ringSize, ...props }: { chil
 		>
 			{children}
 			<ChevronRight
-				className={`
-					transition-all duration-300 ease-in-out
-
-					transform
-					group-hover:translate-x-1
-					group-active:translate-x-1
-				`}
+				className="w-5 h-5 transition-transform duration-200 group-hover:translate-x-1"
 			/>
 		</button>
 	)
@@ -441,7 +456,6 @@ const MatrixRain = () => {
 		const ctx = canvas.getContext('2d');
 		if (!ctx) return;
 
-		// Set canvas size
 		const resize = () => {
 			canvas.width = window.innerWidth;
 			canvas.height = window.innerHeight;
@@ -449,43 +463,66 @@ const MatrixRain = () => {
 		resize();
 		window.addEventListener('resize', resize);
 
-		// Get theme colors
 		const styles = getComputedStyle(document.documentElement);
-		const fgColor = styles.getPropertyValue('--vscode-editor-foreground') || '#00FF00';
+		const fgColor = styles.getPropertyValue('--void-accent') || styles.getPropertyValue('--vscode-editor-foreground') || '#007ACC';
 		const bgColor = styles.getPropertyValue('--vscode-editor-background') || '#000000';
 
-		// Matrix characters
-		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%^&*()';
-		const fontSize = 16;
-		const columns = Math.ceil(canvas.width / fontSize);
-		const drops: number[] = Array(columns).fill(1);
+		// More professional character set: hex, binary, and a few technical symbols
+		const chars = '0123456789ABCDEF<>{}[]();:+-*/%&|^!~';
+		
+		// Create multiple layers for depth
+		const layers = [
+			{ fontSize: 10, speed: 0.5, opacity: 0.1, charSet: '01' },       // Distant/Background
+			{ fontSize: 14, speed: 1.2, opacity: 0.25, charSet: chars },    // Mid-ground
+			{ fontSize: 18, speed: 2.5, opacity: 0.45, charSet: chars },    // Foreground
+		];
+
+		const columns = layers.map(layer => {
+			const count = Math.ceil(canvas.width / layer.fontSize);
+			return {
+				...layer,
+				drops: Array(count).fill(0).map(() => Math.random() * -100) // Start off-screen
+			};
+		});
 
 		let animationId: number;
 
 		const draw = () => {
-			// Fade out previous frame using theme background with low opacity
-			ctx.globalAlpha = 0.05;
+			// Transparent fade for smooth trails
+			ctx.globalAlpha = 0.15;
 			ctx.fillStyle = bgColor;
 			ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-			// Draw new characters
-			ctx.globalAlpha = 1.0;
-			ctx.fillStyle = fgColor;
-			ctx.font = `${fontSize}px monospace`;
+			columns.forEach(layer => {
+				ctx.font = `${layer.fontSize}px "JetBrains Mono", "Fira Code", monospace`;
+				
+				for (let i = 0; i < layer.drops.length; i++) {
+					const text = layer.charSet[Math.floor(Math.random() * layer.charSet.length)];
+					const x = i * layer.fontSize;
+					const y = layer.drops[i] * layer.fontSize;
 
-			for (let i = 0; i < drops.length; i++) {
-				const text = chars[Math.floor(Math.random() * chars.length)];
-				const x = i * fontSize;
-				const y = drops[i] * fontSize;
+					if (y > 0) {
+						// Head character (brightest)
+						ctx.globalAlpha = layer.opacity * 1.5;
+						ctx.fillStyle = '#FFFFFF';
+						ctx.fillText(text, x, y);
 
-				ctx.fillText(text, x, y);
+						// Trail characters
+						ctx.globalAlpha = layer.opacity;
+						ctx.fillStyle = fgColor;
+						ctx.fillText(text, x, y - layer.fontSize);
+					}
 
-				// Reset drop to top randomly
-				if (y > canvas.height && Math.random() > 0.975) {
-					drops[i] = 0;
+					// Increment drop position
+					layer.drops[i] += layer.speed;
+
+					// Reset drop to top randomly
+					if (layer.drops[i] * layer.fontSize > canvas.height && Math.random() > 0.985) {
+						layer.drops[i] = 0;
+					}
 				}
-				drops[i]++;
-			}
+			});
+
 			animationId = requestAnimationFrame(draw);
 		};
 
@@ -500,11 +537,74 @@ const MatrixRain = () => {
 	return (
 		<canvas
 			ref={canvasRef}
-			className="fixed inset-0 z-[100000] pointer-events-none animate-in fade-in duration-300"
-		// background removed to be transparent (shows theme background from parent)
+			className="fixed inset-0 z-[100000] pointer-events-none"
 		/>
 	);
 };
+
+const EnterpriseOverlay = () => {
+	const isDark = useIsDark();
+	return (
+		<>
+			<style>
+				{`
+				@keyframes cinematic-zoom {
+					0% { transform: scale(0.8); opacity: 0; filter: blur(20px); }
+					30% { opacity: 1; filter: blur(0px); }
+					100% { transform: scale(1); opacity: 1; }
+				}
+				@keyframes tracking-expand {
+					0% { letter-spacing: -0.5em; opacity: 0; }
+					100% { letter-spacing: 0.4em; opacity: 0.7; }
+				}
+				@keyframes line-grow {
+					0% { width: 0; opacity: 0; }
+					100% { width: 120px; opacity: 0.5; }
+				}
+				.animate-cinematic {
+					animation: cinematic-zoom 2500ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+				}
+				.animate-tracking-expand {
+					animation: tracking-expand 3000ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+				}
+				.animate-line-grow {
+					animation: line-grow 2000ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+				}
+				`}
+			</style>
+			<div className={`fixed inset-0 z-[100001] flex flex-col items-center justify-center pointer-events-none backdrop-blur-[8px]
+				${isDark 
+					? 'bg-gradient-to-b from-black/40 via-black/20 to-black/60' 
+					: 'bg-gradient-to-b from-white/40 via-white/20 to-white/60'}
+			`}>
+				<div className="flex flex-col items-center gap-10 animate-cinematic">
+					{/* Top decorative line */}
+					<div className="h-px bg-gradient-to-r from-transparent via-void-accent to-transparent animate-line-grow" />
+					
+					<div className="flex flex-col items-center text-center">
+						<span className="text-[11px] uppercase font-bold text-void-fg-3 mb-4 animate-tracking-expand">
+							Neural Interface Initialized
+						</span>
+						<h2 className="text-3xl font-extralight text-void-fg-1 uppercase flex flex-col gap-3">
+							<span className="text-sm tracking-[0.6em] opacity-50">Powered By</span>
+							<span className="font-black tracking-[0.25em] text-void-accent shadow-void-accent/20 drop-shadow-2xl">
+								The A-Tech Corporation
+							</span>
+						</h2>
+					</div>
+
+					{/* Bottom decorative line */}
+					<div className="h-px bg-gradient-to-r from-transparent via-void-accent to-transparent animate-line-grow" />
+				</div>
+				
+				{/* Global scan effect */}
+				<div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20">
+					<div className="w-full h-[10vh] bg-gradient-to-b from-transparent via-void-accent to-transparent absolute -top-[10vh] animate-[scan_4s_linear_infinite]" />
+				</div>
+			</div>
+		</>
+	);
+}
 
 const VoidOnboardingContent = () => {
 
@@ -514,6 +614,7 @@ const VoidOnboardingContent = () => {
 	const voidMetricsService = accessor.get('IMetricsService')
 
 	const voidSettingsState = useSettingsState()
+	const isDark = useIsDark()
 
 	const [pageIndex, setPageIndex] = useState(0)
 
@@ -645,30 +746,36 @@ const VoidOnboardingContent = () => {
 	const contentOfIdx: { [pageIndex: number]: React.ReactNode } = {
 		0: <OnboardingPageShell
 			content={
-				<div className='flex flex-col items-center justify-center gap-6'>
+				<div className='flex flex-col items-center justify-center gap-10 py-12'>
 					{/* Logo */}
-					{!isLinux && <div className='@@void-void-icon mb-2' style={{ width: '80px', height: '80px', opacity: 0.8 }} />}
+					<div className="relative group">
+						<div className="absolute -inset-4 bg-void-accent/20 rounded-full blur-2xl group-hover:bg-void-accent/30 transition-all duration-1000" />
+						{!isLinux && <div className='@@void-void-icon relative z-10' style={{ width: '120px', height: '120px', opacity: 0.9 }} />}
+					</div>
 
-					{/* Title */}
-					<h1 className="text-4xl font-semibold text-void-fg-1 text-center">Welcome to A-Coder</h1>
+					{/* Title & Tagline */}
+					<div className="text-center space-y-4 max-w-lg">
+						<h1 className="text-5xl font-extrabold text-void-fg-1 tracking-tight">
+							Welcome to <span className="text-void-accent">A-Coder</span>
+						</h1>
+						<p className='text-void-fg-3 text-lg leading-relaxed'>
+							Your open-source, AI-powered coding assistant.<br />
+							Experience the future of software development today.
+						</p>
+					</div>
 
-					{/* Tagline */}
-					<p className='text-void-fg-3 text-base text-center max-w-md'>
-						Your AI-powered coding assistant.<br />
-						Make changes across your entire codebase.
-					</p>
-
-					<FadeIn
-						delayMs={800}
-					>
+					<FadeIn delayMs={800}>
 						<PrimaryActionButton
 							onClick={() => { setPageIndex(1) }}
-							className="mt-4"
+							className="mt-4 px-10 py-4 text-lg shadow-xl hover:shadow-void-accent/20"
 						>
 							Get Started
 						</PrimaryActionButton>
 					</FadeIn>
 
+					<div className="mt-12 flex items-center gap-6 opacity-40 grayscale hover:opacity-100 hover:grayscale-0 transition-all duration-500">
+						{/* Optional: Add small partner/tech stack logos here */}
+					</div>
 				</div>
 			}
 		/>,
@@ -679,16 +786,30 @@ const VoidOnboardingContent = () => {
 			}
 		/>,
 		2: <OnboardingPageShell
-
 			content={
-				<div className='flex flex-col items-center justify-center'>
-					<h1 className="text-4xl font-semibold text-void-fg-1 text-center mb-8">Settings and Themes</h1>
+				<div className='flex flex-col items-center justify-center gap-8 py-12'>
+					<div className="text-center space-y-2">
+						<h1 className="text-4xl font-bold text-void-fg-1 tracking-tight">Settings & Migration</h1>
+						<p className="text-void-fg-3 text-lg">Make yourself at home by bringing your existing setup.</p>
+					</div>
 
-					<div className="text-center flex flex-col items-center gap-3 w-full max-w-md mx-auto">
-						<p className="text-void-fg-3 text-sm mb-2">Transfer your settings from an existing editor?</p>
-						<OneClickSwitchButton className='w-full px-4 py-2.5 rounded-lg' fromEditor="VS Code" />
-						<OneClickSwitchButton className='w-full px-4 py-2.5 rounded-lg' fromEditor="Cursor" />
-						<OneClickSwitchButton className='w-full px-4 py-2.5 rounded-lg' fromEditor="Windsurf" />
+					<SettingCard
+						isDark={isDark}
+						title="Transfer from another editor"
+						description="We'll automatically migrate your extensions, keybindings, and snippets."
+						className="w-full max-w-xl"
+					>
+						<SettingBox className="flex flex-col gap-3">
+							<OneClickSwitchButton fromEditor="VS Code" />
+							<OneClickSwitchButton fromEditor="Cursor" />
+							<OneClickSwitchButton fromEditor="Windsurf" />
+						</SettingBox>
+					</SettingCard>
+
+					<div className="flex items-center gap-4 w-full max-w-xl text-void-fg-4 text-sm px-2">
+						<div className="h-px flex-1 bg-void-border-2" />
+						<span>or skip for now</span>
+						<div className="h-px flex-1 bg-void-border-2" />
 					</div>
 				</div>
 			}
@@ -698,7 +819,12 @@ const VoidOnboardingContent = () => {
 
 
 	if (isExiting) {
-		return <MatrixRain />
+		return (
+			<>
+				<MatrixRain />
+				<EnterpriseOverlay />
+			</>
+		)
 	}
 
 	return <div key={pageIndex} className="w-full h-[80vh] text-left mx-auto flex flex-col items-center justify-center">

@@ -808,7 +808,7 @@ export const VoidInputBox2 = forwardRef<HTMLTextAreaElement, InputBox2Props>(fun
 		{isMenuOpen && (
 			<div
 				ref={refs.setFloating}
-				className="z-[100] border-void-border-3 bg-void-bg-2-alt border rounded shadow-lg flex flex-col overflow-hidden"
+				className="z-[100] border-void-border-2 bg-void-bg-1/95 backdrop-blur-xl border rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150"
 				style={{
 					position: strategy,
 					top: y ?? 0,
@@ -818,27 +818,21 @@ export const VoidInputBox2 = forwardRef<HTMLTextAreaElement, InputBox2Props>(fun
 				onWheel={(e) => e.stopPropagation()}
 			>
 				{/* Breadcrumbs Header */}
-				{isBreadcrumbsShowing && <div className="px-2 py-1 text-void-fg-1 bg-void-bg-2-alt border-b border-void-border-3 sticky top-0 bg-void-bg-1 z-10 select-none pointer-events-none">
+				{isBreadcrumbsShowing && <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-void-fg-3 bg-void-bg-2/50 border-b border-void-border-2 sticky top-0 z-10 select-none pointer-events-none">
 					{optionText ?
 						<div className="flex items-center">
-							{/* {optionPath.map((path, index) => (
-								<React.Fragment key={index}>
-									<span>{path}</span>
-									<ChevronRight size={12} className="mx-1" />
-								</React.Fragment>
-							))} */}
 							<span>{optionText}</span>
 						</div>
-						: <div className='opacity-50'>Enter text to filter...</div>
+						: <div className='opacity-50'>Type to filter files...</div>
 					}
 				</div>}
 
 
 				{/* Options list */}
-				<div className='max-h-[400px] w-full max-w-full overflow-y-auto overflow-x-auto'>
-					<div className="w-max min-w-full flex flex-col gap-0 text-nowrap flex-nowrap">
+				<div className='max-h-[300px] w-full max-w-full overflow-y-auto overflow-x-auto p-1'>
+					<div className="w-max min-w-full flex flex-col gap-0.5 text-nowrap flex-nowrap">
 						{options.length === 0 ?
-							<div className="text-void-fg-3 px-3 py-0.5">No results found</div>
+							<div className="text-void-fg-4 px-3 py-4 text-center text-xs italic">No results found</div>
 							: options.map((o, oIdx) => {
 
 								return (
@@ -847,23 +841,24 @@ export const VoidInputBox2 = forwardRef<HTMLTextAreaElement, InputBox2Props>(fun
 										ref={oIdx === optionIdx ? selectedOptionRef : null}
 										key={o.fullName}
 										className={`
-											flex items-center gap-2
-											px-3 py-1 cursor-pointer
-											${oIdx === optionIdx ? 'bg-blue-500 text-white/80' : 'bg-void-bg-2-alt text-void-fg-1'}
+											flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-all duration-150
+											${oIdx === optionIdx ? 'bg-void-accent/10 text-void-accent shadow-sm' : 'text-void-fg-2 hover:bg-void-bg-2 hover:text-void-fg-1'}
+											cursor-pointer
 										`}
 										onClick={() => { onSelectOption(); }}
 										onMouseMove={() => { setOptionIdx(oIdx) }}
 									>
-										{<o.iconInMenu size={12} />}
-
-										<span>{o.abbreviatedName}</span>
-
-										{o.fullName && o.fullName !== o.abbreviatedName && <span className="opacity-60 text-sm">{o.fullName}</span>}
+										<div className={`p-1 rounded ${oIdx === optionIdx ? 'bg-void-accent/20' : 'bg-void-bg-2'}`}>
+											<o.iconInMenu size={14} className={oIdx === optionIdx ? 'text-void-accent' : 'text-void-fg-3'} />
+										</div>
+										<span className="flex-1 truncate font-medium">{o.abbreviatedName}</span>
+										{o.fullName && o.fullName !== o.abbreviatedName && <span className="opacity-60 text-[10px] font-mono">{o.fullName}</span>}
 
 										{o.nextOptions || o.generateNextOptions ? (
-											<ChevronRight size={12} />
-										) : null}
-
+											<ChevronRight size={12} className="opacity-40" />
+										) : (
+											o.leafNodeType && <span className="text-[10px] opacity-40 font-mono">{o.leafNodeType}</span>
+										)}
 									</div>
 								)
 							})

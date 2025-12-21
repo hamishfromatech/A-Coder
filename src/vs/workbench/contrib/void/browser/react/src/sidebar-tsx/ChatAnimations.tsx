@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------*/
 
 import React, { useEffect, useState, useRef } from 'react';
+import { Brain, Zap, Eye, Loader2, File, Pencil, Database, Check, ChevronDown, Folder } from 'lucide-react';
 
 /**
  * Fade-in animation for messages - DISABLED for better UX
@@ -27,8 +28,8 @@ export const SlideInRight = ({ children }: { children: React.ReactNode, delay?: 
 };
 
 /**
- * Enhanced typing indicator with shimmer text animation
- * Uses CSS text-shimmer class for GPU-accelerated effect
+ * Enhanced typing indicator with smooth cross-fade transitions and shimmer text
+ * Optimized for better immersion and reduced jitter
  */
 export const TypingIndicator = ({
 	state = 'thinking', // 'thinking' | 'processing' | 'generating'
@@ -56,28 +57,48 @@ export const TypingIndicator = ({
 
 	const allMessages = messagesByState[state] ?? messagesByState.thinking;
 	const [messageIndex, setMessageIndex] = useState(() => Math.floor(Math.random() * allMessages.length));
+	const [isTransitioning, setIsTransitioning] = useState(false);
+	const [displayMessage, setDisplayMessage] = useState(allMessages[messageIndex]);
 
-	// Advance message every few seconds
+	// Advance message every few seconds with smooth cross-fade
 	useEffect(() => {
 		const interval = window.setInterval(() => {
-			setMessageIndex((prev) => (prev + 1) % allMessages.length);
-		}, 4500);
+			setIsTransitioning(true);
+			setTimeout(() => {
+				const nextIndex = (messageIndex + 1) % allMessages.length;
+				setMessageIndex(nextIndex);
+				setDisplayMessage(allMessages[nextIndex]);
+				setIsTransitioning(false);
+			}, 300); // Half of transition duration
+		}, 5000);
 		return () => window.clearInterval(interval);
-	}, [allMessages.length]);
+	}, [allMessages, messageIndex]);
 
-	const currentMessage = allMessages[messageIndex] || allMessages[0];
+	// Update display message when state changes
+	useEffect(() => {
+		setIsTransitioning(true);
+		setTimeout(() => {
+			const newMessages = messagesByState[state] || messagesByState.thinking;
+			const newIndex = Math.floor(Math.random() * newMessages.length);
+			setMessageIndex(newIndex);
+			setDisplayMessage(newMessages[newIndex]);
+			setIsTransitioning(false);
+		}, 300);
+	}, [state]);
 
-	return (
-		<div className="py-2">
-			<span className="text-sm select-none text-shimmer">
-				{currentMessage}
-			</span>
-		</div>
-	);
-};
+	        return (
+	                <div className="py-2 h-8 flex items-center">
+	                        <span 
+	                                className={`text-sm select-none text-shimmer transition-all duration-500 ease-in-out ${isTransitioning ? 'opacity-0 translate-y-1' : 'opacity-100 translate-y-0'}`}
+	                        >
+	                                {displayMessage}
+	                        </span>
+	                </div>
+	        );};
 
 /**
  * ReAct phase indicator for showing Thought/Action/Observation phases
+ * Optimized with debouncing and smooth transitions to prevent jitter
  */
 export const ReActPhaseIndicator = ({
 	phase,
@@ -86,101 +107,110 @@ export const ReActPhaseIndicator = ({
 	phase?: 'thought' | 'action' | 'observation' | null;
 	phaseContent?: string;
 }) => {
-	if (!phase) return null;
+	const [displayPhase, setDisplayPhase] = useState(phase);
+	const [isTransitioning, setIsTransitioning] = useState(false);
+	const lastPhaseChange = useRef(Date.now());
+	const MIN_PHASE_DURATION = 500; // ms
+
+	useEffect(() => {
+		if (phase === displayPhase) return;
+
+		const now = Date.now();
+		const timeSinceLastChange = now - lastPhaseChange.current;
+		
+		const updatePhase = () => {
+			setIsTransitioning(true);
+			setTimeout(() => {
+				setDisplayPhase(phase);
+				setIsTransitioning(false);
+				lastPhaseChange.current = Date.now();
+			}, 150); // Half of transition duration
+		};
+
+		if (timeSinceLastChange < MIN_PHASE_DURATION) {
+			const timer = setTimeout(updatePhase, MIN_PHASE_DURATION - timeSinceLastChange);
+			return () => clearTimeout(timer);
+		} else {
+			updatePhase();
+		}
+	}, [phase, displayPhase]);
+
+	if (!displayPhase) return null;
 
 	const phaseConfig = {
 		thought: {
-			icon: '🧠',
-			color: 'var(--vscode-charts-purple, #652d90)',
-			bgColor: 'rgba(101, 45, 144, 0.1)',
+			icon: <Brain size={16} />,
+			color: '#a855f7', // purple-500
+			bgColor: 'rgba(168, 85, 247, 0.1)',
 			text: 'Thinking',
-			description: 'A-Coder is reasoning about the next steps'
+			description: 'Reasoning about next steps'
 		},
 		action: {
-			icon: '⚡',
-			color: 'var(--vscode-void-accent, #007acc)',
-			bgColor: 'rgba(0, 122, 204, 0.1)',
+			icon: <Zap size={16} />,
+			color: '#0ea5e9', // blue-500
+			bgColor: 'rgba(14, 165, 233, 0.1)',
 			text: 'Taking Action',
-			description: 'A-Coder is executing tools to complete the task'
+			description: 'Executing tools'
 		},
 		observation: {
-			icon: '👁️',
-			color: 'var(--vscode-charts-green, #388a34)',
-			bgColor: 'rgba(56, 138, 52, 0.1)',
-			text: 'Observing Results',
-			description: 'A-Coder is analyzing the tool execution results'
+			icon: <Eye size={16} />,
+			color: '#10b981', // emerald-500
+			bgColor: 'rgba(16, 185, 129, 0.1)',
+			text: 'Observing',
+			description: 'Analyzing results'
 		}
 	};
 
-	const config = phaseConfig[phase];
+	const config = phaseConfig[displayPhase];
 
 	return (
 		<div
-			className="flex items-center gap-2 px-3 py-2 rounded-md border transition-all duration-300"
+			className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all duration-300 ${isTransitioning ? 'opacity-50 blur-[1px]' : 'opacity-100 blur-0'}`}
 			style={{
-				borderColor: config.color,
+				borderColor: `${config.color}33`,
 				backgroundColor: config.bgColor,
+				transform: isTransitioning ? 'scale(0.98)' : 'scale(1)',
 			}}
 		>
 			{/* Phase icon */}
-			<span className="text-lg">{config.icon}</span>
+			<div 
+				className="p-2 rounded-lg flex items-center justify-center shadow-sm"
+				style={{ backgroundColor: `${config.color}22`, color: config.color }}
+			>
+				{config.icon}
+			</div>
 
 			{/* Phase info */}
-			<div className="flex-1">
+			<div className="flex-1 overflow-hidden">
 				<div className="flex items-center gap-2">
 					<span
-						className="text-sm font-medium"
+						className="text-[11px] font-bold uppercase tracking-wider"
 						style={{ color: config.color }}
 					>
 						{config.text}
 					</span>
 					{/* Thinking dots for thought phase */}
-					{phase === 'thought' && (
+					{displayPhase === 'thought' && (
 						<div className="flex gap-1">
-							<div
-								className="w-1 h-1 rounded-full animate-pulse"
-								style={{
-									backgroundColor: config.color,
-									animationDelay: '0s'
-								}}
-							/>
-							<div
-								className="w-1 h-1 rounded-full animate-pulse"
-								style={{
-									backgroundColor: config.color,
-									animationDelay: '0.2s'
-								}}
-							/>
-							<div
-								className="w-1 h-1 rounded-full animate-pulse"
-								style={{
-									backgroundColor: config.color,
-									animationDelay: '0.4s'
-								}}
-							/>
+							<div className="w-1 h-1 rounded-full animate-pulse" style={{ backgroundColor: config.color, animationDelay: '0s' }} />
+							<div className="w-1 h-1 rounded-full animate-pulse" style={{ backgroundColor: config.color, animationDelay: '0.2s' }} />
+							<div className="w-1 h-1 rounded-full animate-pulse" style={{ backgroundColor: config.color, animationDelay: '0.4s' }} />
 						</div>
 					)}
 					{/* Spinner for action phase */}
-					{phase === 'action' && (
-						<div
-							className="w-3 h-3 border border-current rounded-full"
-							style={{
-								borderColor: config.color,
-								borderTopColor: 'transparent',
-								animation: 'spin 0.8s linear infinite',
-							}}
-						/>
+					{displayPhase === 'action' && (
+						<Loader2 className="w-3 h-3 animate-spin" style={{ color: config.color }} />
 					)}
 				</div>
 
 				{/* Phase description */}
-				<div className="text-xs text-void-fg-4 mt-0.5">
+				<div className="text-[10px] text-void-fg-3 font-medium mt-0.5 truncate opacity-80">
 					{config.description}
 				</div>
 
 				{/* Phase content if available */}
 				{phaseContent && (
-					<div className="text-xs text-void-fg-3 mt-1 italic truncate" title={phaseContent}>
+					<div className="text-[10px] text-void-fg-2 mt-1 italic truncate font-medium bg-white/5 px-1.5 py-0.5 rounded" title={phaseContent}>
 						{phaseContent}
 					</div>
 				)}
@@ -267,19 +297,19 @@ export const ToolLoadingIndicator = ({
 	// Stage-based styling
 	const stageConfig = {
 		preparing: {
-			color: 'var(--vscode-charts-orange, #f38500)',
-			text: 'Preparing...',
-			spinSpeed: '1.2s'
+			color: '#f97316', // orange-500
+			text: 'Preparing',
+			icon: <Database size={12} />
 		},
 		executing: {
-			color: 'var(--vscode-void-accent, #007acc)',
-			text: 'Executing...',
-			spinSpeed: '0.8s'
+			color: '#0ea5e9', // blue-500
+			text: 'Executing',
+			icon: <Zap size={12} />
 		},
 		completing: {
-			color: 'var(--vscode-charts-green, #388a34)',
-			text: 'Completing...',
-			spinSpeed: '0.6s'
+			color: '#10b981', // emerald-500
+			text: 'Finalizing',
+			icon: <Check size={12} />
 		}
 	};
 
@@ -287,112 +317,72 @@ export const ToolLoadingIndicator = ({
 	const isTransitioning = prevStage !== stage;
 
 	return (
-		<div className={`flex flex-col gap-1 py-2 ${isTransitioning ? 'transition-all duration-150' : ''}`}>
-			<div className="flex items-center gap-2">
-				{/* File name with diff stats for edit_file */}
-				{fileInfo && fileInfo.fileName ? (
-					<div className="flex items-center gap-1.5">
-						<span className="text-void-fg-3 text-sm">{fileInfo.fileName}</span>
-						{fileInfo.diffStats && (
-							<span className='flex items-center gap-1 text-xs'>
-								{fileInfo.diffStats.addedLines > 0 && (
-									<span className='text-green-500'>+{fileInfo.diffStats.addedLines}</span>
+		<div className={`flex flex-col gap-2 py-3 px-1 ${isTransitioning ? 'opacity-70 transition-all duration-150' : ''}`}>
+			<div className="flex items-center justify-between bg-void-bg-2/30 border border-void-border-2 rounded-xl px-3 py-2 shadow-sm">
+				<div className="flex items-center gap-2.5 min-w-0">
+					{/* Icon for tool type */}
+					<div className={`p-1.5 rounded-lg ${toolName?.includes('read') ? 'bg-void-bg-3' : 'bg-void-accent/10 text-void-accent'}`}>
+						{toolName?.includes('read') || toolName?.includes('search') ? <File size={14} /> :
+						 toolName?.includes('edit') || toolName?.includes('rewrite') ? <Pencil size={14} /> :
+						 <Database size={14} />}
+					</div>
+
+					{/* File name or tool name */}
+					<div className="flex flex-col min-w-0">
+						{fileInfo && fileInfo.fileName ? (
+							<div className="flex items-center gap-1.5 min-w-0">
+								<span className="text-void-fg-1 text-xs font-bold truncate">{fileInfo.fileName}</span>
+								{fileInfo.diffStats && (
+									<span className='flex items-center gap-1 text-[10px] font-bold'>
+										{fileInfo.diffStats.addedLines > 0 && <span className='text-emerald-500'>+{fileInfo.diffStats.addedLines}</span>}
+										{fileInfo.diffStats.removedLines > 0 && <span className='text-rose-500'>-{fileInfo.diffStats.removedLines}</span>}
+									</span>
 								)}
-								{fileInfo.diffStats.removedLines > 0 && (
-									<span className='text-red-500'>-{fileInfo.diffStats.removedLines}</span>
-								)}
+							</div>
+						) : (
+							<span className="text-void-fg-1 text-xs font-bold truncate uppercase tracking-tight">
+								{toolName === 'detecting...' ? 'Thinking...' : toolName?.replace(/_/g, ' ')}
 							</span>
 						)}
+						<div className="flex items-center gap-1.5">
+							<span className="text-[10px] font-bold uppercase tracking-widest opacity-60" style={{ color: currentConfig.color }}>
+								{currentConfig.text}
+							</span>
+							<Loader2 className="w-2.5 h-2.5 animate-spin" style={{ color: currentConfig.color }} />
+						</div>
 					</div>
-				) : toolName ? (
-					<span className="text-void-fg-3 text-sm">
-						{toolName === 'detecting...' ? 'Detecting tool...' : toolName.replace(/_/g, ' ')}
-					</span>
-				) : null}
-
-				{/* Enhanced spinner with stage-based styling */}
-				<div className="relative">
-					<div
-						className="w-3 h-3 border-2 rounded-full transition-all duration-300"
-						style={{
-							borderColor: currentConfig.color,
-							borderTopColor: 'transparent',
-							animation: `spin ${currentConfig.spinSpeed} linear infinite`,
-							opacity: stage === 'completing' ? 0.8 : 1
-						}}
-					/>
-					{/* Progress indicator for tools with progress */}
-					{progress !== undefined && (
-						<div
-							className="absolute inset-0 w-3 h-3 border-2 rounded-full"
-							style={{
-								borderColor: 'var(--vscode-input-background, #252526)',
-								borderTopColor: currentConfig.color,
-								transform: `rotate(${progress * 360}deg)`,
-								transition: 'transform 0.3s ease-out'
-							}}
-						/>
-					)}
 				</div>
 
-				{/* Stage text */}
-				<span className="text-xs text-void-fg-4 italic">
-					{currentConfig.text}
-				</span>
-
-				{/* Collapsible icon for file details */}
-				{hasDetails && (
-					<button
-						onClick={() => setIsExpanded(!isExpanded)}
-						className="text-void-fg-4 hover:text-void-fg-2 transition-all duration-200 ml-1"
-						aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
-					>
-						<svg
-							width="12"
-							height="12"
-							viewBox="0 0 12 12"
-							fill="none"
-							style={{
-								transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-								transition: 'transform 200ms ease-in-out'
-							}}
-						>
-							<path
-								d="M3 4.5L6 7.5L9 4.5"
-								stroke="currentColor"
-								strokeWidth="1.5"
-								strokeLinecap="round"
-								strokeLinejoin="round"
+				{/* Collapsible/Progress section */}
+				<div className="flex items-center gap-2">
+					{progress !== undefined && (
+						<div className="w-12 h-1 bg-void-bg-3 rounded-full overflow-hidden">
+							<div 
+								className="h-full transition-all duration-500 ease-out"
+								style={{ width: `${progress * 100}%`, backgroundColor: currentConfig.color }}
 							/>
-						</svg>
-					</button>
-				)}
+						</div>
+					)}
+					{hasDetails && (
+						<button
+							onClick={() => setIsExpanded(!isExpanded)}
+							className={`p-1 hover:bg-void-bg-3 rounded-md transition-all ${isExpanded ? 'text-void-accent bg-void-accent/5' : 'text-void-fg-4'}`}
+						>
+							<ChevronDown size={14} className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+						</button>
+					)}
+				</div>
 			</div>
 
-			{/* Enhanced collapsible file details with animation */}
+			{/* Enhanced collapsible file details */}
 			<ExpandCollapse isExpanded={isExpanded}>
 				{hasDetails && fileInfo && (
-					<div className="text-xs text-void-fg-4 pl-5 py-1 font-mono border-l-2 border-void-border-3">
-						<div className="flex items-center gap-1 mb-1">
-							<span className="text-void-fg-3 font-medium">{fileInfo.fileName}</span>
-							{fileInfo.extra && <span className="text-void-fg-5">{fileInfo.extra}</span>}
-						</div>
-						<div className="text-void-fg-5 truncate" title={fileInfo.path}>
+					<div className="mx-2 p-3 bg-void-bg-4/50 rounded-xl border border-void-border-2/50 animate-in fade-in zoom-in-95 duration-200">
+						<div className="flex items-center gap-2 text-[10px] font-mono text-void-fg-3 truncate">
+							<Folder size={10} className="opacity-50" />
 							{fileInfo.path}
 						</div>
-						{progress !== undefined && (
-							<div className="mt-1">
-								<div className="w-full bg-void-bg-2 rounded-full h-1">
-									<div
-										className="h-1 rounded-full transition-all duration-300"
-										style={{
-											width: `${progress * 100}%`,
-											backgroundColor: currentConfig.color
-										}}
-									/>
-								</div>
-							</div>
-						)}
+						{fileInfo.extra && <div className="mt-1 text-[10px] font-bold text-void-accent opacity-80">{fileInfo.extra}</div>}
 					</div>
 				)}
 			</ExpandCollapse>
@@ -437,11 +427,7 @@ export const Shimmer = ({ className = '' }: { className?: string }) => {
 	return (
 		<div className={`relative overflow-hidden bg-void-bg-2 rounded ${className}`}>
 			<div
-				className="absolute inset-0 -translate-x-full animate-shimmer"
-				style={{
-					background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent)',
-					animation: 'shimmer 2s infinite',
-				}}
+				className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent"
 			/>
 		</div>
 	);

@@ -22,7 +22,7 @@ import { ChatMode, displayInfoOfProviderName, FeatureName, isFeatureNameDisabled
 import { ICommandService } from '../../../../../../../platform/commands/common/commands.js';
 import { WarningBox } from '../void-settings-tsx/WarningBox.js';
 import { getModelCapabilities, getIsReasoningEnabledState } from '../../../../common/modelCapabilities.js';
-import { AlertTriangle, File, Ban, Check, ChevronRight, ChevronDown, Dot, FileIcon, Pencil, Undo, Undo2, X, Flag, Copy as CopyIcon, Info, CirclePlus, Ellipsis, CircleEllipsis, Folder, ALargeSmall, TypeOutline, Text, Play, Settings, ArrowUp, Trash2, Send, Server, Circle } from 'lucide-react';
+import { AlertTriangle, File, Ban, Check, ChevronRight, ChevronDown, Dot, FileIcon, Pencil, Undo, Undo2, X, Flag, Copy as CopyIcon, Info, CirclePlus, Ellipsis, CircleEllipsis, Folder, ALargeSmall, TypeOutline, Text, Play, Settings, ArrowUp, Trash2, Send, Server, Circle, Loader2, SkipForward, Database, Brain } from 'lucide-react';
 import { ChatMessage, CheckpointEntry, StagingSelectionItem, ToolMessage, ImageAttachment } from '../../../../common/chatThreadServiceTypes.js';
 import { approvalTypeOfBuiltinToolName, BuiltinToolCallParams, BuiltinToolName, ToolName, LintErrorItem, ToolApprovalType, toolApprovalTypes } from '../../../../common/toolsServiceTypes.js';
 import { CopyButton, EditToolAcceptRejectButtonsHTML, IconShell1, JumpToFileButton, JumpToTerminalButton, StatusIndicator, StatusIndicatorForApplyButton, useApplyStreamState, useEditToolStreamState } from '../markdown/ApplyBlockHoverButtons.js';
@@ -404,28 +404,9 @@ export const IconWarning = ({ size, className = '' }: { size: number, className?
 
 export const IconLoading = ({ className = '' }: { className?: string }) => {
 
-	const [loadingText, setLoadingText] = useState('.');
 
-	useEffect(() => {
-		let intervalId;
+	return <Loader2 className={`animate-spin ${className}`} size={14} />;
 
-		// Function to handle the animation
-		const toggleLoadingText = () => {
-			if (loadingText === '...') {
-				setLoadingText('.');
-			} else {
-				setLoadingText(loadingText + '.');
-			}
-		};
-
-		// Start the animation loop
-		intervalId = setInterval(toggleLoadingText, 300);
-
-		// Cleanup function to clear the interval when component unmounts
-		return () => clearInterval(intervalId);
-	}, [loadingText, setLoadingText]);
-
-	return <div className={`${className}`}>{loadingText}</div>;
 
 }
 
@@ -1314,10 +1295,10 @@ const ToolHeaderWrapper = ({
 
 	// Apply different styles based on tool type
 	const containerClasses = `
-		w-full rounded-lg overflow-hidden transition-all duration-200
-		${isReadingTool ? 'border border-void-border-2 bg-void-bg-1/50' : ''}
-		${isCodingTool ? 'border-l-2 border-l-void-accent border-y border-r border-void-border-2 bg-void-bg-1/50' : ''}
-		${!isReadingTool && !isCodingTool ? 'border border-void-border-2 bg-void-bg-1/50' : ''}
+		w-full rounded-xl overflow-hidden transition-all duration-200
+		bg-void-bg-2/40 border border-void-border-2
+		hover:border-void-border-1 hover:bg-void-bg-2/60
+		${isCodingTool ? 'shadow-[0_0_15px_-5px_rgba(0,127,212,0.15)] ring-1 ring-void-accent/5' : 'shadow-sm'}
 		${className}
 	`
 
@@ -1334,46 +1315,54 @@ const ToolHeaderWrapper = ({
 		} : {}}
 	>{desc1}</span>
 
-	return (<div className='my-2'>
-		<div className={containerClasses}>
-			{/* header */}
-			<div className={`select-none flex items-center ${isReadingTool ? 'min-h-[28px]' : 'min-h-[32px]'} ${isReadingTool ? 'px-3 py-1' : 'px-3 py-1.5'}`}>
-				<div className={`flex items-center w-full gap-x-2 overflow-hidden justify-between ${isRejected ? 'line-through opacity-60' : ''}`}>
-					{/* left */}
-					<div // container for if desc1 is clickable
-						className='flex items-center overflow-hidden min-w-0'
-					>
-						{/* title eg "> Edited File" */}
-						<div className={`
-							flex items-center min-w-0 overflow-hidden
-							${isClickable ? 'cursor-pointer hover:opacity-80 transition-opacity duration-150' : ''}
-						`}
-							onClick={() => {
-								if (isDropdown) { setIsOpen(v => !v); }
-								if (onClick) { onClick(); }
-							}}
-						>
-							{isDropdown && (<ChevronRight
+	return (
+		<div className='my-3 px-1'>
+			<div className={containerClasses}>
+				{/* header */}
+				<div
+					className={`
+						select-none flex items-center justify-between
+						${isReadingTool ? 'min-h-[32px] px-3 py-1.5' : 'min-h-[36px] px-3 py-2'}
+						${isClickable ? 'cursor-pointer group/header' : ''}
+					`}
+					onClick={() => {
+						if (isDropdown) { setIsOpen(v => !v); }
+						if (onClick) { onClick(); }
+					}}
+				>
+					<div className={`flex items-center min-w-0 overflow-hidden ${isRejected ? 'line-through opacity-60' : ''}`}>
+						{isDropdown && (
+							<ChevronRight
+								size={14}
 								className={`
-								text-void-fg-3 mr-1.5 h-3.5 w-3.5 flex-shrink-0 transition-transform duration-200 ease-out
-								${isExpanded ? 'rotate-90' : ''}
-							`}
-							/>)}
-							<span className={`
-								flex-shrink-0
-								${isReadingTool ? 'text-void-fg-3 text-xs font-medium' : 'text-void-fg-2 text-sm font-medium'}
-							`}>{title}</span>
+									text-void-fg-4 mr-2 transition-transform duration-200 ease-out group-hover/header:text-void-fg-2
+									${isExpanded ? 'rotate-90 text-void-accent' : ''}
+								`}
+							/>
+						)}
 
-							{!isDesc1Clickable && desc1HTML}
+						{/* Icon for tool type */}
+						<div className={`mr-2 p-1 rounded-md ${isCodingTool ? 'bg-void-accent/10 text-void-accent' : 'bg-void-bg-3 text-void-fg-3'}`}>
+							{isReadingTool ? <File size={12} strokeWidth={2.5} /> :
+							 isCodingTool ? <Pencil size={12} strokeWidth={2.5} /> :
+							 <Database size={12} strokeWidth={2.5} />}
 						</div>
+
+						<span className={`
+							flex-shrink-0 truncate
+							${isReadingTool ? 'text-void-fg-2 text-xs font-semibold' : 'text-void-fg-1 text-sm font-bold'}
+						`}>
+							{title}
+						</span>
+
+						{!isDesc1Clickable && desc1HTML}
 						{isDesc1Clickable && desc1HTML}
 					</div>
 
 					{/* right */}
-					<div className="flex items-center gap-x-2 flex-shrink-0 ml-2">
-
+					<div className="flex items-center gap-x-2 flex-shrink-0 ml-3">
 						{info && <CircleEllipsis
-							className='ml-2 text-void-fg-4 opacity-60 flex-shrink-0 hover:opacity-100 transition-opacity'
+							className='text-void-fg-4 opacity-40 flex-shrink-0 hover:opacity-100 transition-opacity'
 							size={14}
 							data-tooltip-id='void-tooltip'
 							data-tooltip-content={info}
@@ -1387,6 +1376,7 @@ const ToolHeaderWrapper = ({
 							data-tooltip-content={'Error running tool'}
 							data-tooltip-place='top'
 						/>}
+
 						{isRejected && <Ban
 							className='text-void-fg-4 opacity-90 flex-shrink-0'
 							size={14}
@@ -1394,30 +1384,42 @@ const ToolHeaderWrapper = ({
 							data-tooltip-content={'Canceled'}
 							data-tooltip-place='top'
 						/>}
-						{desc2 && <span className="text-void-fg-4 text-xs" onClick={desc2OnClick}>
-							{desc2}
-						</span>}
+
+						{desc2 && <div className="flex-shrink-0">{desc2}</div>}
+
 						{numResults !== undefined && (
-							<span className="text-void-fg-4 text-xs ml-auto mr-1 bg-void-bg-2 px-1.5 py-0.5 rounded-full border border-void-border-1">
+							<span className="text-[10px] font-bold text-void-fg-3 bg-void-bg-3 px-1.5 py-0.5 rounded-full border border-void-border-2">
 								{`${numResults}${hasNextPage ? '+' : ''}`}
 							</span>
 						)}
+
+						{hasNextPage && <span className="text-[10px] font-bold text-void-accent bg-void-accent/10 px-1.5 py-0.5 rounded uppercase tracking-wider">
+							More
+						</span>}
 					</div>
 				</div>
+
+				{/* children */}
+				{children !== undefined && (
+					<div
+						className={`
+							overflow-hidden transition-all duration-300 ease-in-out border-t border-void-border-2 bg-void-bg-1/20
+							${isExpanded ? 'opacity-100 max-h-[2000px] py-3' : 'max-h-0 opacity-0'}
+							px-3 text-void-fg-2 overflow-x-auto
+						`}
+					>
+						{children}
+					</div>
+				)}
 			</div>
-			{/* children */}
-			{<div
-				className={`overflow-hidden transition-all duration-300 ease-in-out ${isExpanded ? 'opacity-100 max-h-[1000px]' : 'max-h-0 opacity-0'}
-				${isReadingTool ? 'px-3 pb-2' : 'px-3 pb-3'}
-				text-void-fg-4 rounded-b-lg overflow-x-auto
-			  `}
-			//    bg-black bg-opacity-10 border border-void-border-4 border-opacity-50
-			>
-				{children}
-			</div>}
+			{/* bottom children (errors etc) */}
+			{bottomChildren && (
+				<div className="mt-1 animate-in fade-in duration-200">
+					{bottomChildren}
+				</div>
+			)}
 		</div>
-		{bottomChildren}
-	</div>);
+	)
 };
 
 
@@ -1482,9 +1484,9 @@ const EditTool = ({ toolMessage, threadId, messageIdx, content }: Parameters<Res
 		// Add loading indicator when tool is running
 		if (toolMessage.type === 'running_now') {
 			componentParams.desc2 = (
-				<div className="flex items-center gap-1.5 text-xs text-void-fg-3">
-					<span>Running</span>
-					<div className="w-3 h-3 border-2 border-void-accent border-t-transparent rounded-full animate-spin" />
+				<div className="flex items-center gap-2 px-2 py-1 bg-void-accent/10 rounded-full border border-void-accent/20">
+					<span className="text-[10px] font-bold text-void-accent uppercase tracking-wider">Streaming</span>
+					<Loader2 className="w-3 h-3 animate-spin text-void-accent" />
 				</div>
 			);
 		}
@@ -1963,28 +1965,47 @@ const ReasoningWrapper = ({ isDoneReasoning, isStreaming, children }: { isDoneRe
 		if (isWriting) setIsOpen(true)
 	}, [isWriting])
 
-	const statusText = isWriting ? 'Thinking...' : 'Thought process'
+	const statusText = isWriting ? 'Reasoning' : 'Thought Process'
 
-	return <div className="border-l-2 border-void-border-2 pl-3 ml-1 my-2">
-		<div
-			className="flex items-center gap-2 cursor-pointer select-none text-void-fg-3 hover:text-void-fg-1 transition-colors"
-			onClick={() => setIsOpen(v => !v)}
-		>
-			<div className={`transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>
-				<ChevronRight size={14} />
-			</div>
-			{isWriting ? <IconLoading className="text-void-accent" /> : <div className="text-xs font-medium uppercase tracking-wide opacity-80">{statusText}</div>}
-		</div>
+	return (
+		<div className="my-3 mx-1">
+			<div className={`rounded-xl border border-void-border-2 overflow-hidden transition-all duration-300 ${isWriting ? 'bg-void-bg-2/30 border-void-accent/20' : 'bg-void-bg-2/10'}`}>
+				<div
+					className={`flex items-center justify-between px-3 py-2 cursor-pointer select-none transition-colors duration-150 group`}
+					onClick={() => setIsOpen(v => !v)}
+				>
+					<div className="flex items-center gap-2">
+						<ChevronRight
+							size={12}
+							className={`transition-transform duration-200 text-void-fg-4 group-hover:text-void-fg-2 ${isOpen ? 'rotate-90 text-void-accent' : ''}`}
+						/>
+						<div className="flex items-center gap-2">
+							<Brain size={12} className={isWriting ? 'text-void-accent animate-pulse' : 'text-void-fg-4'} />
+							<span className={`text-[10px] font-bold uppercase tracking-wider ${isWriting ? 'text-void-accent' : 'text-void-fg-3 group-hover:text-void-fg-2'}`}>
+								{statusText}
+							</span>
+						</div>
+					</div>
 
-		<div className={`
-            overflow-hidden transition-all duration-300 ease-in-out
-            ${isOpen ? 'max-h-[500px] opacity-100 mt-2' : 'max-h-0 opacity-0'}
-        `}>
-			<div className='!select-text cursor-auto text-void-fg-3'>
-				{children}
+					{isWriting && (
+						<div className="flex items-center gap-1.5 px-2 py-0.5 bg-void-accent/10 rounded-full border border-void-accent/20">
+							<span className="text-[9px] font-bold text-void-accent uppercase tracking-widest">Thinking</span>
+							<Loader2 className="w-2.5 h-2.5 animate-spin text-void-accent" />
+						</div>
+					)}
+				</div>
+
+				<div className={`
+					overflow-hidden transition-all duration-300 ease-in-out
+					${isOpen ? 'opacity-100 max-h-[1000px] border-t border-void-border-2/50 p-3' : 'max-h-0 opacity-0'}
+				`}>
+					<div className='!select-text cursor-auto text-[11px] leading-relaxed text-void-fg-3 font-medium italic'>
+						{children}
+					</div>
+				</div>
 			</div>
 		</div>
-	</div>
+	)
 }
 
 
@@ -2356,14 +2377,16 @@ const ToolRequestAcceptRejectButtons = ({ toolName }: { toolName: ToolName }) =>
 		<button
 			onClick={onAccept}
 			className={`
-                px-2 py-1
-                bg-[var(--vscode-button-background)]
-                text-[var(--vscode-button-foreground)]
-                hover:bg-[var(--vscode-button-hoverBackground)]
-                rounded
-                text-sm font-medium
+                px-4 py-1.5
+                bg-[#0e70c0]
+                text-white
+                hover:bg-[#1177cb]
+                rounded-xl shadow-sm
+                text-xs font-bold uppercase tracking-wider
+                transition-all duration-200 active:scale-95 flex items-center gap-1.5
             `}
 		>
+			<Check size={14} strokeWidth={3} />
 			Approve
 		</button>
 	)
@@ -2372,17 +2395,20 @@ const ToolRequestAcceptRejectButtons = ({ toolName }: { toolName: ToolName }) =>
 		<button
 			onClick={onSkip}
 			className={`
-                px-2 py-1
-                bg-[var(--vscode-button-secondaryBackground)]
-                text-[var(--vscode-button-secondaryForeground)]
-                hover:bg-[var(--vscode-button-secondaryHoverBackground)]
-                rounded
-                text-sm font-medium
+                px-3 py-1.5
+                bg-void-bg-2
+                text-void-fg-1
+                hover:bg-void-bg-3
+                border border-void-border-2
+                rounded-xl shadow-sm
+                text-xs font-bold uppercase tracking-wider
+                transition-all duration-200 active:scale-95 flex items-center gap-1.5
             `}
 			data-tooltip-id='void-tooltip'
 			data-tooltip-place='top'
 			data-tooltip-content='Skip this command and continue'
 		>
+			<SkipForward size={14} strokeWidth={2.5} />
 			Skip
 		</button>
 	)
@@ -2391,14 +2417,17 @@ const ToolRequestAcceptRejectButtons = ({ toolName }: { toolName: ToolName }) =>
 		<button
 			onClick={onReject}
 			className={`
-                px-2 py-1
-                bg-[var(--vscode-button-secondaryBackground)]
-                text-[var(--vscode-button-secondaryForeground)]
-                hover:bg-[var(--vscode-button-secondaryHoverBackground)]
-                rounded
-                text-sm font-medium
+                px-3 py-1.5
+                bg-void-bg-2
+                text-void-fg-1
+                hover:bg-void-bg-3
+                border border-void-border-2
+                rounded-xl shadow-sm
+                text-xs font-bold uppercase tracking-wider
+                transition-all duration-200 active:scale-95 flex items-center gap-1.5
             `}
 		>
+			<X size={14} strokeWidth={2.5} />
 			Cancel
 		</button>
 	)
@@ -2425,8 +2454,8 @@ export const ToolChildrenWrapper = ({ children, className }: { children: React.R
 }
 export const CodeChildren = ({ children, className }: { children: React.ReactNode, className?: string }) => {
 	const isDark = useIsDark()
-	return <div className={`${className ?? ''} p-3 rounded-md overflow-auto text-xs font-mono border border-void-border-1 ${isDark ? 'bg-[#181818]' : 'bg-void-bg-3'}`}>
-		<div className='!select-text cursor-auto'>
+	return <div className={`${className ?? ''} p-4 rounded-xl overflow-auto text-[11px] font-mono border border-void-border-2 ${isDark ? 'bg-void-bg-4 shadow-inner' : 'bg-void-bg-1'} tracking-tight`}>
+		<div className='!select-text cursor-auto leading-relaxed'>
 			{children}
 		</div>
 	</div>
@@ -2475,21 +2504,21 @@ const BottomChildren = ({ children, title }: { children: React.ReactNode, title:
 	const [isOpen, setIsOpen] = useState(false);
 	if (!children) return null;
 	return (
-		<div className="w-full px-3 mt-2">
+		<div className="w-full px-2 mt-2">
 			<div
-				className={`flex items-center cursor-pointer select-none transition-colors duration-150 px-2 py-1.5 rounded-lg hover:bg-void-bg-2/50 group`}
+				className={`flex items-center cursor-pointer select-none transition-all duration-200 px-3 py-2 rounded-xl hover:bg-void-bg-2/50 group bg-void-bg-2/20 border border-void-border-2/50`}
 				onClick={() => setIsOpen(o => !o)}
-				style={{ background: 'none' }}
 			>
 				<ChevronRight
-					className={`mr-1 h-3 w-3 flex-shrink-0 transition-transform duration-100 text-void-fg-4 group-hover:text-void-fg-3 ${isOpen ? 'rotate-90' : ''}`}
+					size={12}
+					className={`mr-2 transition-transform duration-200 text-void-fg-4 group-hover:text-void-fg-2 ${isOpen ? 'rotate-90 text-void-accent' : ''}`}
 				/>
-				<span className="font-medium text-void-fg-4 group-hover:text-void-fg-3 text-xs">{title}</span>
+				<span className="font-bold text-void-fg-3 group-hover:text-void-fg-2 text-[10px] uppercase tracking-wider">{title}</span>
 			</div>
 			<div
-				className={`overflow-hidden transition-all duration-200 ease-in-out ${isOpen ? 'opacity-100' : 'max-h-0 opacity-0'} text-xs pl-4`}
+				className={`overflow-hidden transition-all duration-300 ease-in-out ${isOpen ? 'opacity-100 max-h-[1000px] mt-2 mb-2' : 'max-h-0 opacity-0'} text-xs`}
 			>
-				<div className="overflow-x-auto text-void-fg-4 opacity-90 border-l-2 border-void-warning px-2 py-0.5">
+				<div className="pl-2">
 					{children}
 				</div>
 			</div>
@@ -2576,19 +2605,25 @@ const TerminalCommandApproval = ({ command, cwd, threadId }: { command: string, 
 	}, [chatThreadsService, metricsService, threadId])
 
 	return (
-		<div className="rounded-lg overflow-hidden border border-void-border-1 bg-[#1e1e1e]">
+		<div className="rounded-xl overflow-hidden border border-void-border-2 bg-void-bg-4 shadow-xl my-3 mx-1 animate-in fade-in slide-in-from-top-2 duration-300">
 			{/* Command display */}
-			<div className="px-3 py-2 font-mono text-sm">
-				<span className="text-void-fg-3">{displayPath}$ </span>
-				<span className="text-void-fg-1">{command}</span>
+			<div className="px-4 py-3 font-mono text-[13px] leading-relaxed relative group">
+				<div className="flex items-start gap-2">
+					<span className="text-void-accent font-bold opacity-70 mt-1"><Play size={10} strokeWidth={3} /></span>
+					<span className="text-void-fg-1 break-all">{command}</span>
+				</div>
+				<div className="mt-2 text-[10px] text-void-fg-4 font-bold uppercase tracking-wider flex items-center gap-1.5">
+					<Folder size={10} />
+					{displayPath}
+				</div>
 			</div>
 
 			{/* Action bar */}
-			<div className="flex items-center justify-end gap-2 px-3 py-2 border-t border-void-border-1">
+			<div className="flex items-center justify-end gap-2 px-3 py-2 border-t border-void-border-2 bg-void-bg-2/30">
 				{/* Copy button */}
 				<button
 					onClick={onCopy}
-					className="p-1.5 text-void-fg-3 hover:text-void-fg-1 hover:bg-void-bg-3 rounded transition-colors"
+					className="p-2 text-void-fg-3 hover:text-void-fg-1 hover:bg-void-bg-2 rounded-lg transition-all active:scale-90"
 					data-tooltip-id='void-tooltip'
 					data-tooltip-content='Copy command'
 					data-tooltip-place='top'
@@ -2596,30 +2631,19 @@ const TerminalCommandApproval = ({ command, cwd, threadId }: { command: string, 
 					<CopyIcon size={14} />
 				</button>
 
-				{/* Cancel button */}
-				<button
-					onClick={onCancel}
-					className="p-1.5 text-void-fg-3 hover:text-void-fg-1 hover:bg-void-bg-3 rounded transition-colors"
-					data-tooltip-id='void-tooltip'
-					data-tooltip-content='Cancel'
-					data-tooltip-place='top'
-				>
-					<X size={14} />
-				</button>
-
 				{/* Run button */}
 				<button
 					onClick={onRun}
-					className="flex items-center gap-1.5 px-3 py-1 bg-[var(--vscode-button-background)] text-[var(--vscode-button-foreground)] hover:bg-[var(--vscode-button-hoverBackground)] rounded text-sm font-medium"
+					className="flex items-center gap-2 px-4 py-1.5 bg-[#0e70c0] text-white hover:bg-[#1177cb] rounded-lg shadow-sm text-xs font-bold uppercase tracking-wider transition-all active:scale-95"
 				>
-					<Play size={12} />
+					<Play size={12} strokeWidth={3} />
 					Run
 				</button>
 
 				{/* Skip button */}
 				<button
 					onClick={onSkip}
-					className="px-3 py-1 bg-void-bg-3 text-void-fg-2 hover:bg-void-bg-2 rounded text-sm font-medium border border-void-border-2"
+					className="px-3 py-1.5 bg-void-bg-2 text-void-fg-2 hover:bg-void-bg-3 rounded-lg text-xs font-bold uppercase tracking-wider border border-void-border-2 transition-all active:scale-95"
 				>
 					Skip
 				</button>
@@ -2627,7 +2651,7 @@ const TerminalCommandApproval = ({ command, cwd, threadId }: { command: string, 
 				{/* Cancel button */}
 				<button
 					onClick={onCancel}
-					className="px-3 py-1 text-void-fg-3 hover:text-void-fg-1 hover:bg-void-bg-3 rounded text-sm font-medium"
+					className="px-3 py-1.5 text-void-fg-3 hover:text-void-fg-1 hover:bg-void-bg-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all active:scale-95"
 				>
 					Cancel
 				</button>

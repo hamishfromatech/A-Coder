@@ -14,12 +14,7 @@ interface WalkthroughResultWrapperProps {
 		name: ToolName
 		params: any
 		content: string
-		result?: {
-			success: boolean
-			filePath: string
-			action: 'created' | 'updated' | 'appended'
-			preview: string
-		} | null
+		result?: any
 		id: string // Add the missing id property
 	}
 	messageIdx: number
@@ -48,7 +43,7 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 			if (!thread) return
 
 			const messages = thread.messages || []
-			const walkthroughMessages = messages.filter((m: any) => m.name === 'update_walkthrough')
+			const walkthroughMessages = messages.filter((m: any) => m.name === 'update_walkthrough' || m.name === 'open_walkthrough_preview')
 			const latest = walkthroughMessages[walkthroughMessages.length - 1]
 
 			if (latest && latest.id !== toolMessage.id) {
@@ -62,8 +57,26 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 	}, [threadId, toolMessage.id, chatThreadsService, chatThreadsService?.state?.allThreads?.[threadId]?.messages?.length])
 
 	const result = latestWalkthrough.result
-	if (!result) {
-		// Hide the "not available" message - the open_walkthrough_preview tool will show the result
+	const toolName = latestWalkthrough.name
+
+	if (!result || typeof result === 'string') {
+		return null
+	}
+
+	// Handle open_walkthrough_preview tool result
+	if (toolName === 'open_walkthrough_preview') {
+		return (
+			<div className="void-walkthrough-result border border-void-border-2 rounded-lg overflow-hidden bg-void-bg-2 p-3">
+				<div className="flex items-center gap-2 text-void-fg-1">
+					<span className="text-lg">👁️</span>
+					<div className="text-sm font-medium">{result.message || 'Walkthrough preview opened'}</div>
+				</div>
+			</div>
+		)
+	}
+
+	// If it's not a walkthrough result object with preview, don't render
+	if (!result.preview && !result.filePath) {
 		return null
 	}
 

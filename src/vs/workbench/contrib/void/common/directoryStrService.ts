@@ -245,10 +245,12 @@ const renderChildrenCombined = async (
 	const itemsToProcess = maxItemsPerDir === Infinity ? children : children.slice(0, maxItemsPerDir);
 	const hasMoreItems = children.length > itemsToProcess.length;
 
+	let lastYieldTime = Date.now();
 	for (let i = 0; i < itemsToProcess.length; i++) {
-		// PERFORMANCE: Yield to event loop every 50 items to prevent UI freezing
-		if (i > 0 && i % 50 === 0) {
+		// PERFORMANCE: Yield to event loop if we've spent more than 16ms to prevent UI freezing
+		if (Date.now() - lastYieldTime > 16) {
 			await yieldToEventLoop();
+			lastYieldTime = Date.now();
 		}
 
 		// Check if we've reached the file limit
@@ -333,7 +335,8 @@ export async function getAllUrisInDirectory(
 	fileService: IFileService,
 ): Promise<URI[]> {
 	const result: URI[] = [];
-	let itemsProcessed = 0;
+
+	let lastYieldTime = Date.now();
 
 	// Helper function to recursively collect URIs
 	async function visitAll(folderStat: IFileStat): Promise<boolean> {
@@ -352,10 +355,10 @@ export async function getAllUrisInDirectory(
 
 			// Process files first (common convention to list files before directories)
 			for (const child of eChildren) {
-				// PERFORMANCE: Yield to event loop every 100 items to prevent UI freezing
-				itemsProcessed++;
-				if (itemsProcessed % 100 === 0) {
+				// PERFORMANCE: Yield to event loop if we've spent more than 16ms to prevent UI freezing
+				if (Date.now() - lastYieldTime > 16) {
 					await yieldToEventLoop();
+					lastYieldTime = Date.now();
 				}
 
 				if (!child.isDirectory) {
