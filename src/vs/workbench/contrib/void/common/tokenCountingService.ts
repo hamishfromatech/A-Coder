@@ -263,7 +263,9 @@ export class TokenCountingService {
 			'kimi-k2-thinking:cloud': 256000, // Alias for kimi-k2-thinking:1t-cloud
 			'qwen3-coder:480b-cloud': 128000,
 			'minimax-m2:cloud': 128000,
+			'minimax-m2.1:cloud': 203495,
 			'glm-4.6': 128000,
+			'glm-4.7': 203495,
 			// Ollama models (common ones)
 			'llama3.3': 128000,
 			'llama3.1': 128000,
@@ -321,9 +323,9 @@ export class TokenCountingService {
 			return 8192;
 		}
 
-		// Default to 4096 for unknown cloud models (conservative)
-		console.warn(`[TokenCountingService] Unknown context window for ${modelName}, defaulting to 4096`);
-		return 4096;
+		// Default to 131985 for unknown models (matches common modern model contexts)
+		console.warn(`[TokenCountingService] Unknown context window for ${modelName}, defaulting to 131985`);
+		return 131985;
 	}
 
 	/**
