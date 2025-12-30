@@ -184,36 +184,6 @@ const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 	const visibleTasks = isExpanded ? tasks : tasks.slice(0, 2)
 	const hiddenCount = tasks.length - visibleTasks.length
 
-	const openPlanPreview = async () => {
-		if (!agentManagerService) {
-			console.error('AgentManagerService not available')
-			return
-		}
-
-		try {
-			const isManagerOpen = agentManagerService.isAgentManagerOpen();
-
-			if (isManagerOpen) {
-				// Format the plan as markdown for preview
-				let planMarkdown = `# \u{1F4CB} Task Plan\n\n`
-				if (goal) {
-					planMarkdown += `## Goal\n${goal}\n\n`
-				}
-				planMarkdown += `## Tasks (${completedCount}/${totalCount} complete)\n\n`
-				tasks.forEach((task, index) => {
-					const marker = task.status === 'complete' ? 'x' : task.status === 'in_progress' ? '~' : ' '
-					planMarkdown += `- [${marker}] ${task.text}\n`
-				})
-
-				await agentManagerService.openContentPreview('Task Plan', planMarkdown)
-			} else {
-				console.log('Agent Manager is not open. Open it to see the visual preview.');
-			}
-		} catch (error) {
-			console.error('Failed to open plan preview:', error)
-		}
-	}
-
 	return (
 		<div className="void-planning-result w-full rounded-xl overflow-hidden border border-void-border-2 bg-void-bg-2 shadow-sm hover:shadow-md">
 			{/* Header - clickable to expand/collapse */}
@@ -235,21 +205,6 @@ const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 				<span className="text-void-fg-4 text-xs italic ml-1">
 					{getStatusText()}
 				</span>
-				<div className="ml-auto flex items-center gap-2">
-					<button
-						onClick={(e) => {
-							e.stopPropagation()
-							openPlanPreview()
-						}}
-						className="px-2 py-1 bg-void-bg-3 hover:bg-void-bg-4 text-void-fg-2 border border-void-border-2 rounded-md text-xs font-medium transition-colors flex items-center gap-1"
-						title="Open in preview"
-					>
-						<svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-						</svg>
-						Open
-					</button>
-				</div>
 			</div>
 
 			{/* Task list - collapsible */}

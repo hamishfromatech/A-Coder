@@ -186,56 +186,94 @@ export const endsWithAnyPrefixOf = (str: string, anyPrefix: string) => {
 // guarantees if you keep adding text, array length will strictly grow and state will progress without going back
 export const extractSearchReplaceBlocks = (str: string) => {
 
-	const ORIGINAL_ = ORIGINAL + `\n`
-	const DIVIDER_ = '\n' + DIVIDER + `\n`
-	// logic for FINAL_ is slightly more complicated - should be '\n' + FINAL, but that ignores if the final output is empty
-
 	const blocks: ExtractedSearchReplaceBlock[] = []
 
-	let i = 0 // search i and beyond (this is done by plain index, not by line number. much simpler this way)
+	let i = 0 // search i and beyond
 	while (true) {
-		let origStart = str.indexOf(ORIGINAL_, i)
-		if (origStart === -1) { return blocks }
-		origStart += ORIGINAL_.length
-		i = origStart
-		// wrote <<<< ORIGINAL\n
+		// 1. Find ORIGINAL marker
+		const origMarkerStart = str.indexOf(ORIGINAL, i)
+		if (origMarkerStart === -1) { return blocks }
 
-		let dividerStart = str.indexOf(DIVIDER_, i)
-		if (dividerStart === -1) { // if didnt find DIVIDER_, either writing originalStr or DIVIDER_ right now
-			const writingDIVIDERlen = endsWithAnyPrefixOf(str, DIVIDER_)?.length ?? 0
+		// Content starts after the marker + rest of the line
+		let origContentStart = str.indexOf('\n', origMarkerStart)
+		if (origContentStart === -1) {
+			// Found marker but no newline after it yet.
+			// Treat as writing header?
+			return blocks
+		}
+		origContentStart += 1 // skip the \n
+		i = origContentStart
+
+		// 2. Find DIVIDER marker
+		const dividerMarkerStart = str.indexOf(DIVIDER, i)
+		if (dividerMarkerStart === -1) {
+			// Check if writing divider
+			const writingDIVIDERlen = endsWithAnyPrefixOf(str, DIVIDER)?.length ?? 0
+			// If not found, everything so far is original content
+			// Be careful not to include the partial divider in the content
+			const contentEnd = str.length - writingDIVIDERlen
+			// If we are potentially writing a divider, trim the newline before it if it exists
+			// This is tricky during streaming. For now, simple substr.
 			blocks.push({
-				orig: voidSubstr(str, origStart, str.length - writingDIVIDERlen),
+				orig: voidSubstr(str, origContentStart, contentEnd),
 				final: '',
 				state: 'writingOriginal'
 			})
 			return blocks
 		}
-		const origStrDone = voidSubstr(str, origStart, dividerStart)
-		dividerStart += DIVIDER_.length
-		i = dividerStart
-		// wrote \n=====\n
 
-		const fullFINALStart = str.indexOf(FINAL, i)
-		const fullFINALStart_ = str.indexOf('\n' + FINAL, i) // go with B if possible, else fallback to A, it's more permissive
-		const matchedFullFINAL_ = fullFINALStart_ !== -1 && fullFINALStart === fullFINALStart_ + 1  // this logic is really important, otherwise we might look for FINAL_ at a much later part of the string
+		// Found divider. The original content is from origContentStart to dividerMarkerStart.
+		// We should trim the last newline before the divider if present.
+		let origContentEnd = dividerMarkerStart
+		if (origContentEnd > origContentStart && str[origContentEnd - 1] === '\n') {
+			origContentEnd -= 1
+			if (origContentEnd > origContentStart && str[origContentEnd - 1] === '\r') {
+				origContentEnd -= 1
+			}
+		}
+		const origStrDone = voidSubstr(str, origContentStart, origContentEnd)
 
-		let finalStart = matchedFullFINAL_ ? fullFINALStart_ : fullFINALStart
-		if (finalStart === -1) { // if didnt find FINAL_, either writing finalStr or FINAL or FINAL_ right now
-			const writingFINALlen = endsWithAnyPrefixOf(str, FINAL)?.length ?? 0
-			const writingFINALlen_ = endsWithAnyPrefixOf(str, '\n' + FINAL)?.length ?? 0 // this gets priority
-			const usingWritingFINALlen = Math.max(writingFINALlen, writingFINALlen_)
+		// Final content starts after divider line
+		let finalContentStart = str.indexOf('\n', dividerMarkerStart)
+		if (finalContentStart === -1) {
+			// Divider line not finished
 			blocks.push({
 				orig: origStrDone,
-				final: voidSubstr(str, dividerStart, str.length - usingWritingFINALlen),
+				final: '',
+				state: 'writingOriginal' // technically writing separator
+			})
+			return blocks
+		}
+		finalContentStart += 1
+		i = finalContentStart
+
+		// 3. Find FINAL marker
+		const finalMarkerStart = str.indexOf(FINAL, i)
+		if (finalMarkerStart === -1) {
+			const writingFINALlen = endsWithAnyPrefixOf(str, FINAL)?.length ?? 0
+			blocks.push({
+				orig: origStrDone,
+				final: voidSubstr(str, finalContentStart, str.length - writingFINALlen),
 				state: 'writingFinal'
 			})
 			return blocks
 		}
-		const usingFINAL = matchedFullFINAL_ ? '\n' + FINAL : FINAL
-		const finalStrDone = voidSubstr(str, dividerStart, finalStart)
-		finalStart += usingFINAL.length
-		i = finalStart
-		// wrote >>>>> FINAL
+
+		// Found final marker.
+		let finalContentEnd = finalMarkerStart
+		if (finalContentEnd > finalContentStart && str[finalContentEnd - 1] === '\n') {
+			finalContentEnd -= 1
+			if (finalContentEnd > finalContentStart && str[finalContentEnd - 1] === '\r') {
+				finalContentEnd -= 1
+			}
+		}
+		const finalStrDone = voidSubstr(str, finalContentStart, finalContentEnd)
+
+		// Advance past final marker line
+		let nextBlockStart = str.indexOf('\n', finalMarkerStart)
+		if (nextBlockStart === -1) nextBlockStart = str.length
+		else nextBlockStart += 1
+		i = nextBlockStart
 
 		blocks.push({
 			orig: origStrDone,

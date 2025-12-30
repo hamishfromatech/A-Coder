@@ -45,12 +45,6 @@ ${ORIGINAL}
 // ... original code goes here
 ${DIVIDER}
 // ... updated code goes here
-${FINAL}
-
-${ORIGINAL}
-// ... original code goes here
-${DIVIDER}
-// ... updated code goes here
 ${FINAL}`
 
 
@@ -78,6 +72,8 @@ ${tripleTick[1]}
 6. Each ORIGINAL text must be large enough to uniquely identify the change in the file. However, bias towards writing as little as possible.
 
 7. Each ORIGINAL text must be DISJOINT from all other ORIGINAL text.
+
+8. CRITICAL: The markers (${ORIGINAL}, ${DIVIDER}, ${FINAL}) must be on their own lines.
 
 ## EXAMPLE 1
 DIFF
@@ -130,6 +126,8 @@ ${searchReplaceBlockTemplate}
 6. This field is a STRING (not an array).
 
 7. If edit_file fails, the error message will show you similar blocks from the file. Use these suggestions to correct your ORIGINAL block and try again.
+
+8. MARKER FORMAT: The markers (${ORIGINAL}, ${DIVIDER}, ${FINAL}) must appear exactly as shown, on their own lines. Do NOT add extra spaces or text to the markers.
 
 ## When to use edit_file vs rewrite_file:
 
@@ -1206,6 +1204,8 @@ export const availableTools = (chatMode: ChatMode | null, mcpTools: InternalTool
 	// Filter out tools based on status (keep fast_context always available in tool modes)
 	const filteredBuiltinToolNames = builtinToolNames?.filter(toolName => {
 		if (toolName === 'run_code') return false;
+		// Filter fast_context if disabled
+		if (toolName === 'fast_context' && !options?.enableMorphFastContext) return false;
 		return true;
 	});
 

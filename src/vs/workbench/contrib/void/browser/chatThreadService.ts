@@ -1085,7 +1085,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 					console.log(`[_runChatAgent] Last user message content length: ${(lastMsg as any).content?.length || 0}`);
 				}
 			}
-			const { messages, separateSystemMessage, tokenUsage } = await this._convertToLLMMessagesService.prepareLLMChatMessages({
+			let { messages, separateSystemMessage, tokenUsage } = await this._convertToLLMMessagesService.prepareLLMChatMessages({
 				chatMessages,
 				modelSelection,
 				chatMode
@@ -1111,7 +1111,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				nAttempts += 1
 
 				type ResTypes =
-					| { type: 'llmDone', toolCall?: RawToolCallObj, info: { fullText: string, fullReasoning: string, anthropicReasoning: AnthropicReasoning[] | null } }
+					| { type: 'llmDone', toolCall?: RawToolCallObj, info: { fullText: string, fullReasoning: string, anthropicReasoning: AnthropicReasoning[] | null }, usage?: { promptTokens: number; completionTokens: number; } }
 					| { type: 'llmError', error?: { message: string; fullError: Error | null; } }
 					| { type: 'llmAborted' }
 
@@ -1199,11 +1199,25 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 							tokenUsage, // Preserve token usage during streaming
 						})
 					},
-					onFinalMessage: async ({ fullText, fullReasoning, toolCall, anthropicReasoning, }) => {
+					onFinalMessage: async ({ fullText, fullReasoning, toolCall, anthropicReasoning, usage }) => {
 						console.log(`[chatThreadService] onFinalMessage received - fullReasoning length: ${fullReasoning?.length ?? 0}`)
+						if (usage) {
+							console.log(`[chatThreadService] Token usage received:`, usage);
+							// Update token ratio for adaptive counting
+							if (tokenUsage?.used && usage.promptTokens) {
+								const { providerName, modelName } = modelSelection!;
+								const fullModelName = `${providerName}:${modelName}`;
+								// tokenUsage.used is our estimate, usage.promptTokens is actual
+								// We pass both so the service can calculate and update the ratio
+								// We access the private service via casting or public method if available
+								// Since it's private in the constructor, we might need to expose it or use a public method
+								// Assuming we can access it or it's public:
+								(this._convertToLLMMessagesService as any).tokenCountingService.updateTokenRatio(fullModelName, tokenUsage.used, usage.promptTokens);
+							}
+						}
 						const parsed = partitionReasoningContent(fullText, fullReasoning)
 						console.log(`[chatThreadService] After partitioning - reasoningText length: ${parsed.reasoningText?.length ?? 0}`)
-						resMessageIsDonePromise({ type: 'llmDone', toolCall, info: { fullText: parsed.displayText, fullReasoning: parsed.reasoningText, anthropicReasoning } }) // resolve with tool calls
+						resMessageIsDonePromise({ type: 'llmDone', toolCall, info: { fullText: parsed.displayText, fullReasoning: parsed.reasoningText, anthropicReasoning }, usage }) // resolve with tool calls
 					},
 					onError: async (error) => {
 						resMessageIsDonePromise({ type: 'llmError', error: error })
@@ -1237,6 +1251,44 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				}
 				// llm res error
 				else if (llmRes.type === 'llmError') {
+					const errorMsg = llmRes.error?.message || '';
+					const isContextError = errorMsg.includes('400') || errorMsg.includes('context') || errorMsg.includes('too long') || errorMsg.includes('token');
+
+					// Handle context length errors specifically by adjusting token estimation
+					if (isContextError && nAttempts < CHAT_RETRIES) {
+						console.warn(`[chatThreadService] Context length error detected: ${errorMsg}`);
+						const { providerName, modelName } = modelSelection!;
+						const fullModelName = `${providerName}:${modelName}`;
+						
+						// Force a more conservative ratio
+						// Since we can't get actual usage on error, we just blindly increase the multiplier
+						// This tells the token service "whatever you thought the count was, it's actually 1.5x higher"
+						// We pass dummy values (estimated=1000, actual=1500) to force a 1.5 ratio update
+						(this._convertToLLMMessagesService as any).tokenCountingService.updateTokenRatio(fullModelName, 1000, 1500);
+						console.log(`[chatThreadService] Bumped token ratio for ${fullModelName} due to context error`);
+						
+						shouldRetryLLM = true;
+						this._setStreamState(threadId, {
+							isRunning: undefined,
+							error: { message: `Context limit hit, compressing and retrying... (attempt ${nAttempts}/${CHAT_RETRIES})`, fullError: null }
+						});
+						
+						// Re-prepare messages with new ratio (this will trigger compression)
+						const newPrep = await this._convertToLLMMessagesService.prepareLLMChatMessages({
+							chatMessages,
+							modelSelection,
+							chatMode
+						});
+						
+						// Update messages and token usage for the retry
+						messages = newPrep.messages;
+						separateSystemMessage = newPrep.separateSystemMessage;
+						tokenUsage = newPrep.tokenUsage;
+						
+						// Update UI with new token usage
+						this._setStreamState(threadId, { isRunning: 'idle', interrupt: idleInterruptor, tokenUsage });
+					}
+
 					// error, should retry
 					if (nAttempts < CHAT_RETRIES) {
 						shouldRetryLLM = true
@@ -1254,6 +1306,9 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 						else {
 							// Clear error before retry
 							this._setStreamState(threadId, { isRunning: 'idle', interrupt: idleInterruptor })
+							
+							// Note: messages have already been re-prepared if it was a context error
+							
 							continue // retry
 						}
 					}

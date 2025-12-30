@@ -4377,16 +4377,6 @@ const CommandBarInChat = () => {
 					{fileDetailsButton}
 				</div>
 				<div className="flex gap-2 items-center">
-					<IconShell1
-						Icon={Server}
-						onClick={() => {
-							const mcpModalService = accessor.get('IMCPModalService');
-							mcpModalService.openModal();
-						}}
-						data-tooltip-id='void-tooltip'
-						data-tooltip-place='top'
-						data-tooltip-content='MCP Servers'
-					/>
 					{acceptRejectAllButtons}
 					{threadStatusHTML}
 				</div>

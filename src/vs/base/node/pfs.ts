@@ -167,6 +167,10 @@ function handleDirectoryChildren(children: string[]): string[];
 function handleDirectoryChildren(children: IDirent[]): IDirent[];
 function handleDirectoryChildren(children: (string | IDirent)[]): (string | IDirent)[];
 function handleDirectoryChildren(children: (string | IDirent)[]): (string | IDirent)[] {
+	if (!isMacintosh) {
+		return children;
+	}
+
 	return children.map(child => {
 
 		// Mac: uses NFD unicode form on disk, but we want NFC

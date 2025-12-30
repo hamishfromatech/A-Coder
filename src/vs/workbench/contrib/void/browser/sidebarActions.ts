@@ -23,6 +23,7 @@ import { localize2 } from '../../../../nls.js';
 import { IChatThreadService } from './chatThreadService.js';
 import { IViewsService } from '../../../services/views/common/viewsService.js';
 import { IAgentManagerService } from './agentManager.contribution.js';
+import { IMCPModalService } from './mcpModalService.js';
 
 // ---------- Register commands and keybindings ----------
 
@@ -235,23 +236,28 @@ registerAction2(class extends Action2 {
 	}
 })
 
-// MCP servers menu - moved to SidebarChat UI CommandBar
-// registerAction2(class extends Action2 {
-// 	constructor() {
-// 		super({
-// 			id: 'void.mcpServerAction',
-// 			title: 'MCP Servers',
-// 			icon: { id: 'server' },
-// 			menu: [{ id: MenuId.ViewTitle, group: 'navigation', when: ContextKeyExpr.equals('view', VOID_VIEW_ID), }]
-// 		});
-// 	}
-// 	async run(accessor: ServicesAccessor): Promise<void> {
-// 		const mcpModalService = accessor.get(IMCPModalService);
-//
-// 		// Open the React modal
-// 		mcpModalService.openModal();
-// 	}
-// })
+// MCP servers menu
+registerAction2(class extends Action2 {
+	constructor() {
+		super({
+			id: 'void.mcpServerAction',
+			title: 'MCP Servers',
+			icon: { id: 'server' },
+			menu: [{
+				id: MenuId.ViewTitle,
+				group: 'navigation',
+				when: ContextKeyExpr.equals('view', VOID_VIEW_ID),
+				order: 1100 // Position it next to Agent Manager (which is at 1000)
+			}]
+		});
+	}
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const mcpModalService = accessor.get(IMCPModalService);
+
+		// Open the React modal
+		mcpModalService.openModal();
+	}
+})
 
 // Settings gear
 registerAction2(class extends Action2 {

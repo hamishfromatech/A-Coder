@@ -76,17 +76,30 @@ export class TokenCountingService {
 	}
 
 	/**
+	 * Get token count multiplier for models with non-standard tokenizers
+	 * Minimax and some other models have very different tokenization than cl100k_base
+	 */
+	private _getTokenCountMultiplier(modelName: string): number {
+		const lowerName = modelName.toLowerCase();
+		if (lowerName.includes('minimax')) {
+			return 1.7; // Empirical observation: 128k estimated -> >204k actual
+		}
+		return 1.0;
+	}
+
+	/**
 	 * Async version: count tokens in a single text string using tiktoken via IPC.
 	 * Falls back to character estimation on IPC error.
 	 */
 	public async countTextTokensAsync(text: string, modelName: string): Promise<number> {
+		const multiplier = this._getTokenCountMultiplier(modelName);
 		try {
 			const channel = this.mainProcessService.getChannel('void-channel-token-counting');
 			const count = await channel.call('countTokens', { text, modelName });
-			return typeof count === 'number' ? count : Math.ceil(text.length / 4);
+			return Math.ceil((typeof count === 'number' ? count : Math.ceil(text.length / 4)) * multiplier);
 		} catch (error) {
 			console.warn('[TokenCountingService] IPC token counting failed, using character estimate:', error);
-			return Math.ceil(text.length / 4);
+			return Math.ceil((text.length / 4) * multiplier);
 		}
 	}
 
@@ -153,6 +166,7 @@ export class TokenCountingService {
 	 * Falls back to character estimation on IPC error.
 	 */
 	public async countMessageTokensAsync(message: LLMChatMessage, modelName: string): Promise<number> {
+		const multiplier = this._getTokenCountMultiplier(modelName);
 		try {
 			const channel = this.mainProcessService.getChannel('void-channel-token-counting');
 			const plainMessage = {
@@ -160,11 +174,12 @@ export class TokenCountingService {
 				content: this._extractContent(message)
 			};
 			const count = await channel.call('countMessagesTokens', { messages: [plainMessage], modelName });
-			return typeof count === 'number' ? count : Math.ceil(JSON.stringify(message).length / 4) + 4;
+			const baseCount = typeof count === 'number' ? count : Math.ceil(JSON.stringify(message).length / 4) + 4;
+			return Math.ceil(baseCount * multiplier);
 		} catch (error) {
 			console.warn('[TokenCountingService] IPC token counting failed, using character estimate:', error);
 			const messageStr = JSON.stringify(message);
-			return Math.ceil(messageStr.length / 4) + 4;
+			return Math.ceil(((messageStr.length / 4) + 4) * multiplier);
 		}
 	}
 
@@ -173,6 +188,7 @@ export class TokenCountingService {
 	 * Falls back to character estimation on IPC error.
 	 */
 	public async countMessagesTokensAsync(messages: LLMChatMessage[], modelName: string): Promise<number> {
+		const multiplier = this._getTokenCountMultiplier(modelName);
 		try {
 			const channel = this.mainProcessService.getChannel('void-channel-token-counting');
 			const plainMessages = messages.map(msg => ({
@@ -180,10 +196,11 @@ export class TokenCountingService {
 				content: this._extractContent(msg)
 			}));
 			const count = await channel.call('countMessagesTokens', { messages: plainMessages, modelName });
-			return typeof count === 'number' ? count : this._estimateMessagesTokens(messages);
+			const baseCount = typeof count === 'number' ? count : this._estimateMessagesTokens(messages);
+			return Math.ceil(baseCount * multiplier);
 		} catch (error) {
 			console.warn('[TokenCountingService] IPC token counting failed, using character estimate:', error);
-			return this._estimateMessagesTokens(messages);
+			return Math.ceil(this._estimateMessagesTokens(messages) * multiplier);
 		}
 	}
 
@@ -273,7 +290,7 @@ export class TokenCountingService {
 			'kimi-k2-thinking:cloud': 256000, // Alias for kimi-k2-thinking:1t-cloud
 			'qwen3-coder:480b-cloud': 128000,
 			'minimax-m2:cloud': 128000,
-			'minimax-m2.1:cloud': 203495,
+			'minimax-m2.1:cloud': 200000, // Reduced from 204800 to be safe
 			'glm-4.6': 128000,
 			'glm-4.7': 203495,
 			// Ollama models (common ones)
@@ -329,6 +346,10 @@ export class TokenCountingService {
 			lowerName.includes('mistral');
 
 		if (isLikelyLocal) {
+			// Hard override for Minimax models on Ollama Cloud which advertise 1M but fail > 200k
+			if (lowerName.includes('minimax')) {
+				return 200000;
+			}
 			console.warn(`[TokenCountingService] Unknown Ollama/local model ${modelName}, defaulting to 8192`);
 			return 8192;
 		}

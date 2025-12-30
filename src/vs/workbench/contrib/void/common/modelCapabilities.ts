@@ -1547,6 +1547,27 @@ const ollamaModelOptions = {
 			openSourceThinkTags: ['<reasoning>', '</reasoning>'] // Use OpenAI-style reasoning tags
 		},
 	},
+	'minimax-m2.1:cloud': {
+		contextWindow: 204_800, // Actual limit on Ollama Cloud despite theoretical 1M
+		reservedOutputTokenSpace: 8_192,
+		cost: { input: 0, output: 0 },
+		downloadable: false,
+		supportsFIM: false,
+		supportsSystemMessage: 'system-role',
+		specialToolFormat: 'openai-style', // ✅ FIXED: Native tool calling now works after fixing JSON schema type fields (was using custom XML before)
+		defaultTemperature: 1.0, // Recommended by MiniMax AI
+		reasoningCapabilities: {
+			supportsReasoning: true,
+			canTurnOffReasoning: true,
+			canIOReasoning: true,
+			reasoningSlider: {
+				type: 'effort_slider',
+				values: ['low', 'medium', 'high'],
+				default: 'medium'
+			},
+			openSourceThinkTags: ['<reasoning>', '</reasoning>'] // Use OpenAI-style reasoning tags
+		},
+	},
 	'gemini-3-pro-preview:cloud': {
 		contextWindow: 1_000_000, // 1M context window as per Ollama documentation
 		reservedOutputTokenSpace: 64_000, // 64K token output capacity

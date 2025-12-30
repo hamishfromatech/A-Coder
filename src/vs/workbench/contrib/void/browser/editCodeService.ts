@@ -47,7 +47,7 @@ import { deepClone } from '../../../../base/common/objects.js';
 import { acceptBg, acceptBorder, buttonFontSize, buttonTextColor, rejectBg, rejectBorder } from '../common/helpers/colors.js';
 import { DiffArea, Diff, CtrlKZone, VoidFileSnapshot, DiffAreaSnapshotEntry, diffAreaSnapshotKeys, DiffZone, TrackingZone, ComputedDiff } from '../common/editCodeServiceTypes.js';
 import { IConvertToLLMMessageService } from './convertToLLMMessageService.js';
-// import { isMacintosh } from '../../../../base/common/platform.js';
+import { isMacintosh } from '../../../../base/common/platform.js';
 // import { VOID_OPEN_SETTINGS_ACTION_ID } from './voidSettingsPane.js';
 
 const numLinesOfStr = (str: string) => str.split('\n').length
@@ -192,10 +192,15 @@ const findBestFuzzyMatch = (searchText: string, fileContents: string, startLine?
 	const threshold = 0.8; // 80% similarity required
 
 	// Limit search radius to prevent performance issues on large files
-	const maxSearchRadius = Math.min(1000, Math.floor(fileLines.length / 2));
+	// macOS is sensitive to main thread blocking, so we reduce the radius significantly
+	const maxSearchRadius = Math.min(isMacintosh ? 200 : 1000, Math.floor(fileLines.length / 2));
+	const startTime = Date.now();
 
 	// Middle-out search with limited radius
 	for (let offset = 0; offset < maxSearchRadius; offset++) {
+		// Yield if taking too long (15ms budget for 60fps)
+		if (Date.now() - startTime > 15) break;
+
 		const indices = offset === 0 ? [startIdx] : [startIdx + offset, startIdx - offset].filter(i => i >= 0 && i + searchLen <= fileLines.length);
 
 		for (const i of indices) {
@@ -524,7 +529,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 				diffAreasToDelete.forEach(da => this._deleteDiffZone(da))
 				onFinishEdit()
 			}
-		}, 100); // 100ms debounce
+		}, isMacintosh ? 500 : 100); // 100ms debounce (500ms on Mac to save CPU)
 
 		this._debouncedRefreshTimers.set(uriKey, timer);
 	}

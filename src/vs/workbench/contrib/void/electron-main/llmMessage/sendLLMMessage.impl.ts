@@ -377,7 +377,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 
 	// tools - only send if model supports native tool calling (specialToolFormat === 'openai-style')
 	// Models without specialToolFormat will use XML tool calling instead
-	const potentialTools = openAITools(chatMode, mcpTools, { enableMorphFastContext: modelSelectionOptions?.morphFastContext ?? globalSettings.enableMorphFastContext })
+	const potentialTools = openAITools(chatMode, mcpTools, { enableMorphFastContext: (modelSelectionOptions?.morphFastContext ?? globalSettings.enableMorphFastContext) && !!globalSettings.morphApiKey })
 	const nativeToolsObj = potentialTools && specialToolFormat === 'openai-style' ?
 		{ tools: potentialTools } as const
 		: {}
@@ -433,6 +433,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 	let toolId = ''
 	let toolParamsStr = ''
 	let thoughtSignature = ''
+	let finalUsage: { promptTokens: number; completionTokens: number } | undefined = undefined
 
 	console.log(`[sendLLMMessage] Reasoning extraction config:`, {
 		needsManualReasoningParse,
@@ -578,6 +579,15 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 					return
 				}
 
+				// Capture usage statistics if available
+				if (chunk.usage) {
+					finalUsage = {
+						promptTokens: chunk.usage.prompt_tokens,
+						completionTokens: chunk.usage.completion_tokens
+					};
+					console.log(`[sendLLMMessage] Usage stats received:`, finalUsage);
+				}
+
 				const delta = choice.delta ?? {}
 				const newText = toText(delta.content)
 				fullTextSoFar += newText
@@ -718,14 +728,14 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 				const toolCallObj = toolCall ? { toolCall } : {}
 				const anthropicReasoning: AnthropicReasoning[] | null = fullReasoningSoFar ? [{ type: 'thinking', thinking: fullReasoningSoFar, signature: thoughtSignature }] : null
 				console.log(`[sendLLMMessage] Final message - text length: ${fullTextSoFar.length}, reasoning length: ${fullReasoningSoFar.length}, toolName: ${toolName}, hasToolCall: ${!!toolCall}`)
-				onFinalMessage({ fullText: fullTextSoFar, fullReasoning: fullReasoningSoFar, anthropicReasoning, ...toolCallObj });
+				onFinalMessage({ fullText: fullTextSoFar, fullReasoning: fullReasoningSoFar, anthropicReasoning, ...toolCallObj, usage: finalUsage });
 			}
 			else {
 				const toolCall = rawToolCallObjOfParamsStr(toolName, toolParamsStr, toolId, thoughtSignature)
 				const toolCallObj = toolCall ? { toolCall } : {}
 				const anthropicReasoning: AnthropicReasoning[] | null = fullReasoningSoFar ? [{ type: 'thinking', thinking: fullReasoningSoFar, signature: thoughtSignature }] : null
 				console.log(`[sendLLMMessage] Final message - text length: ${fullTextSoFar.length}, reasoning length: ${fullReasoningSoFar.length}, toolName: ${toolName}, hasToolCall: ${!!toolCall}`)
-				onFinalMessage({ fullText: fullTextSoFar, fullReasoning: fullReasoningSoFar, anthropicReasoning, ...toolCallObj });
+				onFinalMessage({ fullText: fullTextSoFar, fullReasoning: fullReasoningSoFar, anthropicReasoning, ...toolCallObj, usage: finalUsage });
 			}
 		})
 		// when error/fail - this catches errors of both .create() and .then(for await)
@@ -923,7 +933,7 @@ const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessag
 	const maxTokens = getReservedOutputTokenSpace(providerName, modelName_, { isReasoningEnabled: !!reasoningInfo?.isReasoningEnabled, overridesOfModel })
 
 	// tools
-	const potentialTools = anthropicTools(chatMode, mcpTools, { enableMorphFastContext: modelSelectionOptions?.morphFastContext ?? globalSettings.enableMorphFastContext })
+	const potentialTools = anthropicTools(chatMode, mcpTools, { enableMorphFastContext: (modelSelectionOptions?.morphFastContext ?? globalSettings.enableMorphFastContext) && !!globalSettings.morphApiKey })
 	const nativeToolsObj = potentialTools && specialToolFormat === 'anthropic-style' ?
 		{ tools: potentialTools, tool_choice: { type: 'auto' } } as const
 		: {}
@@ -1169,7 +1179,7 @@ const _sendOllamaChatWithFallback = async (params: SendChatParams_Internal) => {
 	// Check if model supports native tool calling
 	const { specialToolFormat } = getModelCapabilities('ollama', modelName, params.overridesOfModel)
 	const hasNativeTools = specialToolFormat === 'openai-style'
-	const potentialTools = openAITools(chatMode, mcpTools, { enableMorphFastContext: modelSelectionOptions?.morphFastContext ?? globalSettings.enableMorphFastContext })
+	const potentialTools = openAITools(chatMode, mcpTools, { enableMorphFastContext: (modelSelectionOptions?.morphFastContext ?? globalSettings.enableMorphFastContext) && !!globalSettings.morphApiKey })
 	const hasTools = potentialTools && potentialTools.length > 0
 
 	console.log(`[sendOllamaChatWithFallback] Model: ${modelName}, specialToolFormat: ${specialToolFormat}, hasTools: ${hasTools}`)
@@ -1282,7 +1292,7 @@ const sendGeminiChat = async ({
 	})
 
 	// tools
-	const potentialTools = geminiTools(chatMode, mcpTools, { enableMorphFastContext: modelSelectionOptions?.morphFastContext ?? globalSettings.enableMorphFastContext })
+	const potentialTools = geminiTools(chatMode, mcpTools, { enableMorphFastContext: (modelSelectionOptions?.morphFastContext ?? globalSettings.enableMorphFastContext) && !!globalSettings.morphApiKey })
 	const toolConfig = potentialTools && specialToolFormat === 'gemini-style' ?
 		potentialTools
 		: undefined

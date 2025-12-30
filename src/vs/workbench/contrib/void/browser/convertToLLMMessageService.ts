@@ -610,6 +610,9 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		const studentLevel = chatMode === 'learn' ? this.voidSettingsService.state.globalSettings.studentLevel : undefined
 
 		// Get morph settings
+		const morphApiKey = this.voidSettingsService.state.globalSettings.morphApiKey
+		const hasMorphApiKey = !!morphApiKey
+
 		let enableMorphFastContext = this.voidSettingsService.state.globalSettings.enableMorphFastContext
 		if (modelSelection) {
 			const modelSelectionOptions = this.voidSettingsService.state.optionsOfModelSelection['Chat'][modelSelection.providerName]?.[modelSelection.modelName]
@@ -617,6 +620,9 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 				enableMorphFastContext = modelSelectionOptions.morphFastContext
 			}
 		}
+
+		// Ensure key is present
+		enableMorphFastContext = enableMorphFastContext && hasMorphApiKey
 
 		const systemMessage = chat_systemMessage({ workspaceFolders, openedURIs, directoryStr, activeURI, persistentTerminalIDs, chatMode, mcpTools, specialToolFormat, studentLevel, enableMorphFastContext })
 		return systemMessage

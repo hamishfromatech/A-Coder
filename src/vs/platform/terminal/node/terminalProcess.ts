@@ -119,6 +119,10 @@ export class TerminalProcess extends Disposable implements ITerminalChildProcess
 
 	private _isPtyPaused: boolean = false;
 	private _unacknowledgedCharCount: number = 0;
+
+	private _cwdCache: string | undefined;
+	private _cwdCacheTime: number = 0;
+
 	get exitMessage(): string | undefined { return this._exitMessage; }
 
 	get currentTitle(): string { return this._windowsShellHelper?.shellTitle || this._currentTitle; }
@@ -605,6 +609,10 @@ export class TerminalProcess extends Disposable implements ITerminalChildProcess
 
 	async getCwd(): Promise<string> {
 		if (isMacintosh) {
+			if (this._cwdCache && (Date.now() - this._cwdCacheTime < 2000)) {
+				return this._cwdCache;
+			}
+
 			// From Big Sur (darwin v20) there is a spawn blocking thread issue on Electron,
 			// this is fixed in VS Code's internal Electron.
 			// https://github.com/Microsoft/vscode/issues/105446
@@ -616,7 +624,10 @@ export class TerminalProcess extends Disposable implements ITerminalChildProcess
 				this._logService.trace('node-pty.IPty#pid');
 				exec('lsof -OPln -p ' + this._ptyProcess.pid + ' | grep cwd', { env: { ...process.env, LANG: 'en_US.UTF-8' } }, (error, stdout, stderr) => {
 					if (!error && stdout !== '') {
-						resolve(stdout.substring(stdout.indexOf('/'), stdout.length - 1));
+						const cwd = stdout.substring(stdout.indexOf('/'), stdout.length - 1);
+						this._cwdCache = cwd;
+						this._cwdCacheTime = Date.now();
+						resolve(cwd);
 					} else {
 						this._logService.error('lsof did not run successfully, it may not be on the $PATH?', error, stdout, stderr);
 						resolve(this._initialCwd);

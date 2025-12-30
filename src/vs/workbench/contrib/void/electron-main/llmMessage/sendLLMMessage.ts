@@ -100,7 +100,7 @@ export const sendLLMMessage = async ({
 	}
 
 	const onFinalMessage: OnFinalMessage = (params) => {
-		const { fullText, fullReasoning, toolCall } = params
+		const { fullText, fullReasoning, toolCall, usage } = params
 		if (_didAbort) return
 
 		// Legacy event capture (for backwards compatibility)
@@ -112,6 +112,8 @@ export const sendLLMMessage = async ({
 			reasoningLength: fullReasoning?.length,
 			hasToolCall: !!toolCall,
 			toolCallName: toolCall?.name,
+			inputTokens: usage?.promptTokens,
+			outputTokens: usage?.completionTokens,
 		})
 
 		onFinalMessage_(params)
