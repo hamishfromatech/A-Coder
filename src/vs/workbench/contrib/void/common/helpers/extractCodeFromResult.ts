@@ -186,6 +186,8 @@ export const endsWithAnyPrefixOf = (str: string, anyPrefix: string) => {
 // guarantees if you keep adding text, array length will strictly grow and state will progress without going back
 export const extractSearchReplaceBlocks = (str: string) => {
 
+	if (!str) return []
+
 	const blocks: ExtractedSearchReplaceBlock[] = []
 
 	let i = 0 // search i and beyond

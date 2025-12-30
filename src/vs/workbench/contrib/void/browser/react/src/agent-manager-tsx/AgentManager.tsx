@@ -305,14 +305,14 @@ export const AgentManager = ({ className }: { className: string }) => {
     }
 
     return (
-        <div className={`@@void-scope ${isDark ? 'dark' : ''} fixed inset-0 flex flex-col bg-void-bg-1 text-void-fg-1 overflow-hidden font-sans`}>
+        <div className={`@@void-scope ${isDark ? 'dark' : ''} absolute inset-0 flex flex-col bg-void-bg-1 text-void-fg-1 overflow-hidden font-sans`}>
             {/* Header */}
             <div className="h-14 border-b border-void-border-2 flex items-center justify-between px-4 md:px-6 flex-shrink-0 bg-void-bg-2/80 backdrop-blur-md z-10">
                 <div className="flex items-center gap-3 md:gap-4">
                     <div className="w-8 h-8 md:w-9 md:h-9 bg-gradient-to-br from-void-accent to-void-accent-hover rounded-xl flex items-center justify-center shadow-lg shadow-void-accent/20">
                         <Zap className="text-white w-4 h-4 md:w-5 md:h-5 fill-current" />
                     </div>
-                    <div className="hidden sm:block">
+                    <div className="hidden lg:block">
                         <h1 className="font-bold text-xs md:text-sm tracking-tight text-void-fg-1">CONTROL CENTER</h1>
                         <div className="flex items-center gap-2">
                             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
@@ -322,7 +322,7 @@ export const AgentManager = ({ className }: { className: string }) => {
                 </div>
 
                 <div className="flex items-center gap-3 md:gap-6 flex-1 justify-end">
-                    <div className="relative group max-w-xs w-full sm:w-64 md:w-80">
+                    <div className="relative group max-w-xs w-full sm:w-48 md:w-64 lg:w-80">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-void-fg-4 group-focus-within:text-void-accent transition-colors" />
                         <input
                             type="text"
@@ -337,10 +337,10 @@ export const AgentManager = ({ className }: { className: string }) => {
                 </div>
             </div>
 
-            <div className="flex-1 flex overflow-hidden relative h-full">
+            <div className="flex-1 flex overflow-hidden relative h-full min-h-0">
                 {/* Left Navigation Rail - Hidden on very small screens */}
-                <div className="hidden sm:flex w-16 md:w-20 border-r border-void-border-2 flex flex-col items-center py-6 bg-void-bg-2 flex-shrink-0 z-10 h-full">
-                    <div className="flex-1 w-full flex flex-col gap-2">
+                <div className="hidden sm:flex w-16 lg:w-20 border-r border-void-border-2 flex flex-col items-center py-6 bg-void-bg-2 flex-shrink-0 z-10 h-full">
+                    <div className="flex-1 w-full flex flex-col gap-2 min-h-0">
                         <NavButton
                             active={activeTab === 'dashboard'}
                             onClick={() => { setActiveTab('dashboard'); }}
@@ -373,8 +373,8 @@ export const AgentManager = ({ className }: { className: string }) => {
 
                 {/* Middle Pane - List/Threads */}
                 {(showSidebar && activeTab !== 'dashboard') && (
-                    <div className="w-64 md:w-80 border-r border-void-border-2 flex flex-col bg-void-bg-2 flex-shrink-0 shadow-inner absolute inset-y-0 left-0 z-20 md:relative h-full">
-                        <div className="p-4 md:p-5 border-b border-void-border-3 bg-void-bg-1/40 flex items-center justify-between">
+                    <div className="w-64 lg:w-72 border-r border-void-border-2 flex flex-col bg-void-bg-2 flex-shrink-0 shadow-inner absolute inset-y-0 left-0 z-20 md:relative h-full min-h-0">
+                        <div className="p-4 md:p-5 border-b border-void-border-3 bg-void-bg-1/40 flex items-center justify-between flex-shrink-0">
                             <div className="flex items-center gap-2">
                                 <h2 className="text-[10px] md:text-[11px] font-black uppercase tracking-[0.2em] text-void-fg-3">
                                     {activeTab === 'chats' ? 'Threads' : 'Workspaces'}
@@ -387,7 +387,7 @@ export const AgentManager = ({ className }: { className: string }) => {
                                 <X className="w-4 h-4" />
                             </button>
                         </div>
-                        <div className="flex-1 overflow-y-auto custom-scrollbar">
+                        <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0">
                             <ErrorBoundary>
                                 {activeTab === 'chats' ? (
                                     <div className="p-2">
@@ -402,7 +402,7 @@ export const AgentManager = ({ className }: { className: string }) => {
                 )}
 
                 {/* Main Content - Active Chat or Dashboard */}
-                <div className="flex-1 flex flex-col bg-void-bg-1 min-w-0 relative h-full overflow-hidden">
+                <div className="flex-1 flex flex-col bg-void-bg-1 min-w-0 relative h-full overflow-hidden min-h-0">
                     {!showSidebar && activeTab !== 'dashboard' && (
                         <button
                             onClick={() => setShowSidebar(true)}
@@ -412,7 +412,7 @@ export const AgentManager = ({ className }: { className: string }) => {
                             <ChevronRight className="w-4 h-4" />
                         </button>
                     )}
-                    <div className="flex-1 h-full overflow-hidden relative">
+                    <div className="flex-1 h-full overflow-hidden relative min-h-0">
                         <ErrorBoundary>
                             {activeTab === 'dashboard' ? (
                                 <DashboardView stats={stats} />
@@ -425,8 +425,8 @@ export const AgentManager = ({ className }: { className: string }) => {
 
                 {/* Right Pane - Visual Preview */}
                 {showPreview && (
-                    <div className="w-full md:w-[400px] lg:w-[500px] border-l border-void-border-2 flex flex-col bg-void-bg-2 flex-shrink-0 shadow-2xl z-30 absolute inset-y-0 right-0 md:relative h-full">
-                        <div className="h-14 border-b border-void-border-3 flex items-center justify-between px-4 md:px-6 bg-void-bg-3/50 backdrop-blur-sm">
+                    <div className="w-full md:w-[320px] lg:w-[450px] border-l border-void-border-2 flex flex-col bg-void-bg-2 flex-shrink-0 shadow-2xl z-30 absolute inset-y-0 right-0 md:relative h-full min-h-0">
+                        <div className="h-14 border-b border-void-border-3 flex items-center justify-between px-4 md:px-6 bg-void-bg-3/50 backdrop-blur-sm flex-shrink-0">
                             <div className="flex items-center gap-3 min-w-0">
                                 <div className="w-8 h-8 rounded-lg bg-void-accent/10 flex items-center justify-center text-void-accent">
                                     <Code className="w-4 h-4" />
@@ -458,7 +458,7 @@ export const AgentManager = ({ className }: { className: string }) => {
                             </div>
                         </div>
 
-                        <div className="flex-1 overflow-hidden p-4 md:p-6 bg-void-bg-1">
+                        <div className="flex-1 overflow-hidden p-4 md:p-6 bg-void-bg-1 min-h-0">
                             <ErrorBoundary>
                                 {selectedFileUri ? (
                                     <CodePreview selectedFileUri={selectedFileUri} />
@@ -478,7 +478,7 @@ export const AgentManager = ({ className }: { className: string }) => {
                 {!showPreview && (
                     <button
                         onClick={() => setShowPreview(true)}
-                        className="fixed bottom-6 right-6 md:bottom-8 md:right-8 w-12 h-12 md:w-14 md:h-14 bg-gradient-to-br from-void-accent to-void-accent-hover text-white rounded-2xl shadow-2xl flex items-center justify-center hover:scale-110 transition-all active:scale-95 z-50 group"
+                        className="absolute bottom-6 right-6 md:bottom-8 md:right-8 w-12 h-12 md:w-14 md:h-14 bg-gradient-to-br from-void-accent to-void-accent-hover text-white rounded-2xl shadow-2xl flex items-center justify-center hover:scale-110 transition-all active:scale-95 z-50 group"
                         title="Show Preview"
                     >
                         <Maximize2 className="w-6 h-6 md:w-7 md:h-7 group-hover:rotate-12 transition-transform" />

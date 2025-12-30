@@ -43,7 +43,7 @@ export const PastThreadsList = ({ className = '' }: { className?: string }) => {
 	const displayThreads = showAll ? sortedThreadIds : sortedThreadIds.slice(0, numInitialThreads);
 
 	return (
-		<div className={`flex flex-col mb-2 gap-0 w-full text-nowrap text-void-fg-3 select-none relative ${className}`}>
+		<div className={`flex flex-col mb-2 gap-0 w-full text-nowrap text-void-fg-3 select-none relative pb-20 ${className}`}>
 			{displayThreads.length === 0 // this should never happen
 				? <></>
 				: displayThreads.map((threadId, i) => {

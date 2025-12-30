@@ -10,7 +10,7 @@ import { isFeatureNameDisabled } from '../../../../common/voidSettingsTypes.js'
 import { URI } from '../../../../../../../base/common/uri.js'
 import { FileSymlink, LucideIcon, RotateCw, Terminal } from 'lucide-react'
 import { Check, X, Square, Copy, Play, } from 'lucide-react'
-import { getBasename, ListableToolItem, voidOpenFileFn, ToolChildrenWrapper } from '../sidebar-tsx/SidebarChat.js'
+import { getBasename, ListableToolItem, voidOpenFileFn, ToolChildrenWrapper } from '../sidebar-tsx/ToolResultHelpers.js'
 import { PlacesType, VariantType } from 'react-tooltip'
 
 enum CopyButtonText {
