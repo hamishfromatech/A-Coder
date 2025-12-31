@@ -1922,7 +1922,13 @@ class SCMInputWidget {
 		const inputMaxLines = typeof inputMaxLinesConfig === 'number' ? clamp(inputMaxLinesConfig, 1, 50) : 10;
 		const editorMaxHeight = inputMaxLines * lineHeight + top + bottom;
 
-		return clamp(this.inputEditor.getContentHeight(), editorMinHeight, editorMaxHeight);
+		const contentHeight = this.inputEditor.getContentHeight();
+
+		if (contentHeight <= 0) {
+			return editorMinHeight;
+		}
+
+		return clamp(contentHeight, editorMinHeight, editorMaxHeight);
 	}
 
 	layout(): void {

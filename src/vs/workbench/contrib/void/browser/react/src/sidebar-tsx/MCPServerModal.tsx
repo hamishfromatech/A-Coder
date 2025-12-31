@@ -6,7 +6,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Settings, X, Database, Settings2, ChevronDown, ChevronRight, Box } from 'lucide-react';
 import { useAccessor, useIsDark, useMCPServiceState, useSettingsState } from '../util/services.js';
-import { VOID_TOGGLE_SETTINGS_ACTION_ID } from '../../../voidSettingsPane.js';
+import { VOID_TOGGLE_SETTINGS_ACTION_ID } from '../../../actionIDs.js';
 import ErrorBoundary from './ErrorBoundary.js';
 import { VoidSwitch } from '../util/inputs.js';
 

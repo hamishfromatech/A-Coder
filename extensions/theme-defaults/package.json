@@ -26,6 +26,12 @@
         "path": "./themes/dark_modern.json"
       },
       {
+        "id": "A-Coder Theme",
+        "label": "A-Coder Theme",
+        "uiTheme": "vs-dark",
+        "path": "./themes/a_coder_theme.json"
+      },
+      {
         "id": "Default Light+",
         "label": "%lightPlusColorThemeLabel%",
         "uiTheme": "vs",

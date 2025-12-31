@@ -26,6 +26,7 @@ import { ContextKeyExpr } from '../../../../platform/contextkey/common/contextke
 import { mountVoidSettings } from './react/out/void-settings-tsx/index.js'
 import { Codicon } from '../../../../base/common/codicons.js';
 import { toDisposable } from '../../../../base/common/lifecycle.js';
+import { VOID_TOGGLE_SETTINGS_ACTION_ID, VOID_OPEN_SETTINGS_ACTION_ID } from './actionIDs.js';
 
 
 // refer to preferences.contribution.ts keybindings editor
@@ -117,7 +118,6 @@ Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane
 
 
 // register the gear on the top right
-export const VOID_TOGGLE_SETTINGS_ACTION_ID = 'workbench.action.toggleVoidSettings'
 registerAction2(class extends Action2 {
 	constructor() {
 		super({
@@ -173,11 +173,10 @@ registerAction2(class extends Action2 {
 
 
 
-export const ACODER_OPEN_SETTINGS_ACTION_ID = 'workbench.action.openA-CoderSettings'
 registerAction2(class extends Action2 {
 	constructor() {
 		super({
-			id: ACODER_OPEN_SETTINGS_ACTION_ID,
+			id: VOID_OPEN_SETTINGS_ACTION_ID,
 			title: nls.localize2('a-coderSettingsAction2', "A-Coder: Open Settings"),
 			f1: true,
 			icon: Codicon.settingsGear,
@@ -200,9 +199,6 @@ registerAction2(class extends Action2 {
 		await editorService.openEditor(input);
 	}
 })
-
-// Back-compat alias for callers still importing the previous identifier name.
-export const VOID_OPEN_SETTINGS_ACTION_ID = ACODER_OPEN_SETTINGS_ACTION_ID;
 
 
 

@@ -47,7 +47,7 @@ export const SettingBox = ({ children, className = '' }: { children: React.React
 )
 
 export const SettingCard = ({ title, description, children, className = '', isDark }: { title: string, description?: string, children: React.ReactNode, className?: string, isDark: boolean }) => (
-	<div className={`p-6 rounded-xl border border-void-border-2 ${isDark ? 'bg-[#181818]' : 'bg-void-bg-1'} ${className}`}>
+	<div className={`p-6 rounded-xl border border-void-border-2 ${isDark ? 'bg-void-bg-1' : 'bg-void-bg-1'} ${className}`}>
 		<div className="mb-4">
 			<h3 className="text-base font-medium text-void-fg-1">{title}</h3>
 			{description && <p className="text-sm text-void-fg-3 mt-1">{description}</p>}
@@ -1113,7 +1113,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 				{/* ──────────────  SIDEBAR  ────────────── */}
 				<aside
 					className={`w-64 h-full flex-shrink-0 flex flex-col border-r border-void-border-2
-						${isDark ? 'bg-[#181818]' : 'bg-void-bg-1'}
+						${isDark ? 'bg-void-bg-1' : 'bg-void-bg-1'}
 					`}
 				>
 				{/* Logo */}
@@ -1841,6 +1841,9 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 								<div className="py-4">
 									<div className="@@void-void-icon w-24 h-24 rounded-full mx-auto mb-6 opacity-90 shadow-lg" />
 									<h2 className="text-2xl font-bold text-void-fg-1 mb-2">A-Coder</h2>
+									<p className="text-xs text-void-fg-3 mb-4 font-mono">
+										Version: 1.4.9 (0044)
+									</p>
 									<p className="text-sm text-void-fg-3 mb-8 max-w-lg mx-auto leading-relaxed">
 										The open-source, AI-powered code editor built for the next generation of software development.
 									</p>

@@ -30,6 +30,8 @@
 	"linuxIconName": "a-coder-editor",
 	"licenseFileName": "LICENSE.txt",
 	"reportIssueUrl": "https://github.com/hamishfromatech/A-Coder/issues/new",
+	"updateUrl": "https://raw.githubusercontent.com/hamishfromatech/versions/refs/heads/main",
+	"downloadUrl": "https://github.com/hamishfromatech/A-Coder/releases",
 	"nodejsRepository": "https://nodejs.org",
 	"urlProtocol": "acoder",
 	"extensionsGallery": {

@@ -33,8 +33,20 @@ const EditToolHeaderButtons = ({ applyBoxId, uri, codeStr, toolName, threadId }:
 }
 
 export const EditToolChildren = ({ uri, code, type }: { uri: URI | undefined, code: string, type: 'diff' | 'rewrite' }) => {
+
+	const hasValidDiffFormat = type === 'diff' && (
+		code.includes('<<<<<<< ORIGINAL') &&
+		code.includes('=======') &&
+		code.includes('>>>>>>> UPDATED')
+	);
+
 	const content = type === 'diff' ?
-		<VoidDiffEditor uri={uri} originalUpdatedBlocks={code} />
+		(hasValidDiffFormat ?
+			<VoidDiffEditor uri={uri} originalUpdatedBlocks={code} />
+			: <div className="w-full p-4 text-void-fg-3 text-sm">
+				<div className="mb-2 font-medium">Processing diff...</div>
+				<div className="text-void-fg-4 text-xs">Waiting for complete ORIGINAL/UPDATED blocks.</div>
+			</div>)
 		: <ChatMarkdownRender string={`\
 ${code}
 \``} codeURI={uri} chatMessageLocation={undefined} />
@@ -56,8 +68,8 @@ export const EditToolResultWrapper: ResultWrapper<'edit_file' | 'rewrite_file'> 
 
 	// Calculate diff stats
 	let diffStatsElement: React.ReactNode = null;
-	const content = toolMessage.name === 'edit_file' ? toolMessage.params.originalUpdatedBlocks : toolMessage.params.newContent;
-	
+	const content = toolMessage.name === 'edit_file' ? (toolMessage.params as any).originalUpdatedBlocks : (toolMessage.params as any).newContent;
+
 	if (toolMessage.type === 'running_now' && toolMessage.name === 'edit_file' && content) {
 		let addedLines = 0;
 		let removedLines = 0;
@@ -125,8 +137,8 @@ export const EditToolResultWrapper: ResultWrapper<'edit_file' | 'rewrite_file'> 
 		</ToolChildrenWrapper>
 
 		if (toolMessage.type === 'success' || toolMessage.type === 'rejected') {
-			const { result } = toolMessage
-			if (result?.lintErrors?.length > 0) {
+			const result = toolMessage.result as any;
+			if (result?.lintErrors && result.lintErrors.length > 0) {
 				componentParams.bottomChildren = <BottomChildren title='Lint errors'>
 					{result.lintErrors.map((error: any, i: number) => (
 						<div key={i} className='whitespace-nowrap'>Lines {error.startLineNumber}-{error.endLineNumber}: {error.message}</div>

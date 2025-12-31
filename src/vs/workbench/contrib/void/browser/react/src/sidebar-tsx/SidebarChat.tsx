@@ -17,12 +17,12 @@ import { BlockCode, TextAreaFns, VoidCustomDropdownBox, VoidInputBox2, VoidSlide
 import { ModelDropdown, } from '../void-settings-tsx/ModelDropdown.js';
 import { PastThreadsList } from './SidebarThreadSelector.js';
 import { VOID_CTRL_L_ACTION_ID } from '../../../actionIDs.js';
-import { VOID_OPEN_SETTINGS_ACTION_ID } from '../../../voidSettingsPane.js';
+import { VOID_OPEN_SETTINGS_ACTION_ID } from '../../../actionIDs.js';
 import { ChatMode, displayInfoOfProviderName, FeatureName, isFeatureNameDisabled } from '../../../../../../../workbench/contrib/void/common/voidSettingsTypes.js';
 import { ICommandService } from '../../../../../../../platform/commands/common/commands.js';
 import { WarningBox } from '../void-settings-tsx/WarningBox.js';
 import { getModelCapabilities, getIsReasoningEnabledState } from '../../../../common/modelCapabilities.js';
-import { AlertTriangle, ChevronRight, ChevronDown, X, Copy as CopyIcon, CircleEllipsis, Play, Settings, ArrowUp, Trash2, Send, Circle, Loader2, Brain, Zap, Check, Pencil, CirclePlus, FileIcon, SkipForward } from 'lucide-react';
+import { AlertTriangle, ChevronRight, ChevronDown, X, Copy as CopyIcon, CircleEllipsis, Play, Settings, ArrowUp, Trash2, Send, Circle, Loader2, Brain, Check, Pencil, CirclePlus, File as FileIcon, Folder as FolderIcon, Text as TextIcon, SkipForward } from 'lucide-react';
 import { ChatMessage, CheckpointEntry, StagingSelectionItem, ToolMessage, ImageAttachment } from '../../../../common/chatThreadServiceTypes.js';
 import { BuiltinToolName, ToolName, IsRunningType } from '../../../../common/toolsServiceTypes.js';
 import { CopyButton, EditToolAcceptRejectButtonsHTML, IconShell1, StatusIndicator, useEditToolStreamState } from '../markdown/ApplyBlockHoverButtons.js';
@@ -765,7 +765,7 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 					focus-within:border-void-accent/50 focus-within:shadow-md focus-within:ring-1 focus-within:ring-void-accent/20
 					hover:border-void-border-1
 					max-h-[80vh] overflow-visible
-					${isDark ? 'bg-[#181818]' : 'bg-void-bg-1'}
+					${isDark ? 'bg-void-bg-1' : 'bg-void-bg-1'}
 					shadow-sm
 					${className}
 				`}
@@ -1102,9 +1102,9 @@ export const SelectedFiles = (
 							: i
 
 				const SelectionIcon = (
-					selection.type === 'File' ? File
-						: selection.type === 'Folder' ? Folder
-							: selection.type === 'CodeSelection' ? Text
+					selection.type === 'File' ? FileIcon
+						: selection.type === 'Folder' ? FolderIcon
+							: selection.type === 'CodeSelection' ? TextIcon
 								: (undefined as never)
 				)
 
@@ -1387,13 +1387,7 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 
 	const isMsgAfterCheckpoint = currCheckpointIdx !== undefined && currCheckpointIdx === messageIdx - 1
 
-	return <div
-		// align chatbubble accoridng to role
-		className={`
-		flex gap-3 mb-6
-		${mode === 'edit' ? 'w-full' : 'self-end max-w-[85%]'}
-        ${isCheckpointGhost && !isMsgAfterCheckpoint ? 'opacity-40 grayscale' : ''}
-    `}
+	return <div className={`flex gap-3 mb-6 ${mode === 'edit' ? 'w-full' : 'self-end max-w-[85%]'} ${isCheckpointGhost && !isMsgAfterCheckpoint ? 'opacity-40 grayscale' : ''}`}
 		onMouseEnter={() => setIsHovered(true)}
 		onMouseLeave={() => setIsHovered(false)}
 	>
@@ -1403,7 +1397,7 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 				className={`
 				group relative
 				${mode === 'edit' ? 'w-full'
-						: mode === 'display' ? 'px-4 py-3 bg-void-accent/10 hover:bg-void-accent/15 border border-void-accent/20 rounded-2xl rounded-tr-none text-void-fg-1 cursor-pointer transition-all duration-300 shadow-sm' : ''
+						: mode === 'display' ? 'px-4 py-3 bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2/50 rounded-2xl rounded-tr-none text-void-fg-1 cursor-pointer transition-all duration-300 shadow-md hover:shadow-lg hover:-translate-y-0.5' : ''
 					}
 			`}
 				onClick={() => { if (mode === 'display') { onOpenEdit() } }}
@@ -1423,12 +1417,6 @@ const UserMessageComponent = ({ chatMessage, messageIdx, isCheckpointGhost, curr
 			</div>
 			{mode === 'display' && <span className="text-[9px] font-black uppercase tracking-[0.15em] text-void-fg-4 opacity-40 px-1">You</span>}
 		</div>
-
-		{mode === 'display' && (
-			<div className="w-8 h-8 rounded-full bg-void-accent flex-shrink-0 flex items-center justify-center text-white text-xs font-bold shadow-lg shadow-void-accent/20 mt-1 ring-2 ring-void-accent/10">
-				U
-			</div>
-		)}
 	</div>
 }
 
@@ -1453,10 +1441,6 @@ const AssistantMessageComponent = ({ chatMessage, isCheckpointGhost, isCommitted
 	if (isEmpty) return null
 
 	return <div className={`flex gap-3 mb-8 ${isCheckpointGhost ? 'opacity-40 grayscale' : ''}`}>
-		<div className="w-8 h-8 rounded-full bg-void-bg-3 flex-shrink-0 flex items-center justify-center text-void-accent border border-void-border-2 shadow-sm mt-1 ring-2 ring-void-bg-3/50">
-			<Zap className="w-4 h-4 fill-current" />
-		</div>
-
 		<div className="flex flex-col gap-2 flex-1 min-w-0">
 			<div className="flex flex-col gap-3">
 				{/* reasoning token */}

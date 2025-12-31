@@ -13,7 +13,6 @@ import { ITerminalToolService } from './terminalToolService.js'
 import { LintErrorItem, BuiltinToolCallParams, BuiltinToolResultType, BuiltinToolName } from '../common/toolsServiceTypes.js'
 import { IVoidModelService } from '../common/voidModelService.js'
 import { EndOfLinePreference } from '../../../../editor/common/model.js'
-import { IVoidCommandBarService } from './voidCommandBarService.js'
 import { computeDirectoryTree1Deep, IDirectoryStrService, stringifyDirectoryTree1Deep } from '../common/directoryStrService.js'
 import { IMarkerService, MarkerSeverity } from '../../../../platform/markers/common/markers.js'
 import { timeout } from '../../../../base/common/async.js'
@@ -194,7 +193,6 @@ export class ToolsService implements IToolsService {
 		@IVoidModelService private readonly _voidModelService: IVoidModelService,
 		@IEditCodeService private readonly _editCodeService: IEditCodeService,
 		@ITerminalToolService private readonly _terminalToolService: ITerminalToolService,
-		@IVoidCommandBarService private readonly _commandBarService: IVoidCommandBarService,
 		@IDirectoryStrService private readonly _directoryStrService: IDirectoryStrService,
 		@IMarkerService private readonly _markerService: IMarkerService,
 		@IVoidSettingsService private readonly _voidSettingsService: IVoidSettingsService,
@@ -1145,9 +1143,6 @@ export class ToolsService implements IToolsService {
 					await this._voidModelService.initializeModel(uri)
 				}
 
-				if (this._commandBarService.getStreamState(uri) === 'streaming') {
-					throw new Error(`Another LLM is currently making changes to this file. Please stop streaming for now and ask the user to resume later.`)
-				}
 				await this._editCodeService.callBeforeApplyOrEdit(uri)
 
 				// Check if Morph Fast Apply is enabled
@@ -1184,9 +1179,6 @@ export class ToolsService implements IToolsService {
 
 			edit_file: async ({ uri, originalUpdatedBlocks: originalUpdatedBlocks, tryFuzzyMatching }, opts) => {
 				await this._voidModelService.initializeModel(uri)
-				if (this._commandBarService.getStreamState(uri) === 'streaming') {
-					throw new Error(`Another LLM is currently making changes to this file. Please stop streaming for now and ask the user to resume later.`)
-				}
 				await this._editCodeService.callBeforeApplyOrEdit(uri)
 
 				// Check if Morph Fast Apply is enabled
@@ -2211,4 +2203,4 @@ For each module include:
 	}
 }
 
-registerSingleton(IToolsService, ToolsService, InstantiationType.Eager);
+registerSingleton(IToolsService, ToolsService, InstantiationType.Delayed);

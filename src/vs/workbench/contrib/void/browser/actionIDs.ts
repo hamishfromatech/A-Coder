@@ -24,3 +24,7 @@ export const VOID_REJECT_FILE_ACTION_ID = 'void.rejectFile'
 export const VOID_ACCEPT_ALL_DIFFS_ACTION_ID = 'void.acceptAllDiffs'
 
 export const VOID_REJECT_ALL_DIFFS_ACTION_ID = 'void.rejectAllDiffs'
+
+export const VOID_OPEN_SETTINGS_ACTION_ID = 'workbench.action.openA-CoderSettings'
+
+export const VOID_TOGGLE_SETTINGS_ACTION_ID = 'workbench.action.toggleA-CoderSettings'

@@ -18,7 +18,8 @@ import { inputBackground, inputForeground } from '../../../../../../../platform/
 import { useFloating, autoUpdate, offset, flip, shift, size, autoPlacement } from '@floating-ui/react';
 import { URI } from '../../../../../../../base/common/uri.js';
 import { getBasename, getFolderName } from '../sidebar-tsx/ToolResultHelpers.js';
-import { ChevronRight, File, Folder, FolderClosed, LucideProps } from 'lucide-react';
+import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js';
+import { ChevronRight, File as FileIcon, Folder as FolderIcon, FolderClosed, LucideProps } from 'lucide-react';
 import { StagingSelectionItem } from '../../../../common/chatThreadServiceTypes.js';
 import { DiffEditorWidget } from '../../../../../../../editor/browser/widget/diffEditor/diffEditorWidget.js';
 import { extractSearchReplaceBlocks, ExtractedSearchReplaceBlock } from '../../../../common/helpers/extractCodeFromResult.js';
@@ -207,7 +208,7 @@ const getOptionsAtPath = async (accessor: ReturnType<typeof useAccessor>, path: 
 					return {
 						leafNodeType: 'File',
 						uri: uri,
-						iconInMenu: File,
+						iconInMenu: FileIcon,
 						fullName: relativePath,
 						abbreviatedName: getAbbreviatedName(relativePath),
 					}
@@ -271,7 +272,7 @@ const getOptionsAtPath = async (accessor: ReturnType<typeof useAccessor>, path: 
 				return Array.from(directoryMap.entries()).map(([relativePath, uri]) => ({
 					leafNodeType: 'Folder',
 					uri: uri,
-					iconInMenu: Folder, // Folder
+					iconInMenu: FolderIcon, // Folder
 					fullName: relativePath,
 					abbreviatedName: getAbbreviatedName(relativePath),
 				})) satisfies Option[];
@@ -287,13 +288,13 @@ const getOptionsAtPath = async (accessor: ReturnType<typeof useAccessor>, path: 
 		{
 			fullName: 'files',
 			abbreviatedName: 'files',
-			iconInMenu: File,
+			iconInMenu: FileIcon,
 			generateNextOptions: async (t) => (await searchForFilesOrFolders(t, 'files')) || [],
 		},
 		{
 			fullName: 'folders',
 			abbreviatedName: 'folders',
-			iconInMenu: Folder,
+			iconInMenu: FolderIcon,
 			generateNextOptions: async (t) => (await searchForFilesOrFolders(t, 'folders')) || [],
 		},
 	]
@@ -2079,7 +2080,9 @@ export const VoidDiffEditor = ({ uri, originalUpdatedBlocks, language }: { uri?:
 							Change {index + 1} of {blocks.length}
 						</div>
 					)}
-					<SingleDiffEditor block={block} lang={lang} />
+					<ErrorBoundary>
+						<SingleDiffEditor block={block} lang={lang} />
+					</ErrorBoundary>
 				</div>
 			))}
 		</div>

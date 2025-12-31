@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------*/
 
 import React, { useEffect, useState, useRef } from 'react';
-import { Brain, Zap, Eye, Loader2, File, Pencil, Database, Check, ChevronDown, Folder } from 'lucide-react';
+import { Brain, Eye, Loader2, File, Pencil, Database, Check, ChevronDown, Folder } from 'lucide-react';
 
 /**
  * Fade-in animation for messages - DISABLED for better UX
@@ -58,16 +58,18 @@ export const TypingIndicator = ({
 	const [messageIndex, setMessageIndex] = useState(() => Math.floor(Math.random() * allMessages.length));
 	const [isTransitioning, setIsTransitioning] = useState(false);
 	const [displayMessage, setDisplayMessage] = useState(allMessages[messageIndex]);
+	const [isInitialShow, setIsInitialShow] = useState(true);
 
 	// Advance message every few seconds with smooth cross-fade
 	useEffect(() => {
 		const interval = window.setInterval(() => {
+			setIsInitialShow(false); // After first interval, it's no longer initial
 			setIsTransitioning(true);
 			setTimeout(() => {
 				setMessageIndex(prev => (prev + 1) % allMessages.length);
 				setIsTransitioning(false);
 			}, 300); // Half of transition duration
-		}, 5000);
+		}, 8000); // Increased delay to 8s so it doesn't happen as frequently
 		return () => window.clearInterval(interval);
 	}, [allMessages.length]); // Only depend on length
 
@@ -78,6 +80,7 @@ export const TypingIndicator = ({
 
 	// Update display message when state changes
 	useEffect(() => {
+		setIsInitialShow(false);
 		setIsTransitioning(true);
 		setTimeout(() => {
 			const newMessages = MESSAGES_BY_STATE[state] || MESSAGES_BY_STATE.thinking;
@@ -91,7 +94,7 @@ export const TypingIndicator = ({
 	return (
 		<div className="py-2 h-8 flex items-center">
 			<span
-				className={`text-sm select-none text-shimmer animate-text-shimmer transition-all duration-500 ease-in-out ${isTransitioning ? 'opacity-0 translate-y-1' : 'opacity-100 translate-y-0'}`}
+				className={`text-sm select-none text-shimmer animate-text-shimmer transition-all duration-500 ease-in-out ${isTransitioning ? 'opacity-0 translate-y-1' : 'opacity-100 translate-y-0'} ${isInitialShow ? 'transition-none' : ''}`}
 			>
 				{displayMessage}
 			</span>
@@ -149,7 +152,7 @@ export const ReActPhaseIndicator = ({
 			description: 'Reasoning about next steps'
 		},
 		action: {
-			icon: <Zap size={16} />,
+			icon: null,
 			color: '#0ea5e9', // blue-500
 			bgColor: 'rgba(14, 165, 233, 0.1)',
 			text: 'Taking Action',
@@ -307,7 +310,7 @@ export const ToolLoadingIndicator = ({
 		executing: {
 			color: '#0ea5e9', // blue-500
 			text: 'Executing',
-			icon: <Zap size={12} />
+			icon: null
 		},
 		completing: {
 			color: '#10b981', // emerald-500

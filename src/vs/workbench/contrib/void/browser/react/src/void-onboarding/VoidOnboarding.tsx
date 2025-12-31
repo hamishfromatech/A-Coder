@@ -37,12 +37,12 @@ export const VoidOnboarding = () => {
 					alignItems: 'center', 
 					justifyContent: 'center',
 					background: isDark 
-						? 'radial-gradient(circle at center, rgba(30, 30, 30, 0.7) 0%, rgba(15, 15, 15, 0.9) 100%)' 
+						? '#000000' 
 						: 'radial-gradient(circle at center, rgba(255, 255, 255, 0.7) 0%, rgba(240, 240, 240, 0.9) 100%)'
 				}}
 			>
 				{/* Sophisticated Vignette */}
-				<div className="fixed inset-0 pointer-events-none shadow-[inset_0_0_150px_rgba(0,0,0,0.3)] z-[-1]" />
+				{isDark ? null : <div className="fixed inset-0 pointer-events-none shadow-[inset_0_0_150px_rgba(0,0,0,0.3)] z-[-1]" />}
 				
 				<ErrorBoundary>
 					<VoidOnboardingContent />
@@ -758,6 +758,9 @@ const VoidOnboardingContent = () => {
 						<h1 className="text-5xl font-extrabold text-void-fg-1 tracking-tight">
 							Welcome to <span className="text-void-accent">A-Coder</span>
 						</h1>
+						<p className="text-xs text-void-fg-3 font-mono opacity-60">
+							Version: 1.4.9 (0044)
+						</p>
 						<p className='text-void-fg-3 text-lg leading-relaxed'>
 							Your open-source, AI-powered coding assistant.<br />
 							Experience the future of software development today.

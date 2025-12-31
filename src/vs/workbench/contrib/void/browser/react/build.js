@@ -125,7 +125,18 @@ if (isWatch) {
 
 	// Handle tsup watcher output
 	tsupWatcher.stdout.on('data', (data) => {
-		console.log(`[tsup] ${data}`);
+		const str = data.toString();
+		console.log(`[tsup] ${str}`);
+
+		// If tsup finished building, run the fix script
+		if (str.includes('Success') || str.includes('Build success')) {
+			try {
+				console.log('🔧 [tsup] Running import fixes...');
+				execSync('node fix-imports-after-build.cjs', { stdio: 'inherit', cwd: __dirname });
+			} catch (err) {
+				console.error('❌ [tsup] Error running import fixes:', err);
+			}
+		}
 	});
 
 	tsupWatcher.stderr.on('data', (data) => {
@@ -149,6 +160,15 @@ if (isWatch) {
 
 	// Run tsup once
 	execSync('npx tsup', { stdio: 'inherit' });
+
+	// Fix imports
+	try {
+		console.log('🔧 Fixing imports...');
+		execSync('node fix-imports-after-build.cjs', { stdio: 'inherit' });
+		console.log('✅ Import fixes complete!');
+	} catch (err) {
+		console.warn('⚠️  Warning: Could not fix imports after build:', err.message);
+	}
 
 	console.log('✅ Build complete!');
 }

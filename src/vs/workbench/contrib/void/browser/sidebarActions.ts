@@ -17,7 +17,7 @@ import { IRange } from '../../../../editor/common/core/range.js';
 import { VOID_VIEW_CONTAINER_ID, VOID_VIEW_ID } from './sidebarPane.js';
 import { IMetricsService } from '../common/metricsService.js';
 import { ICommandService } from '../../../../platform/commands/common/commands.js';
-import { VOID_TOGGLE_SETTINGS_ACTION_ID } from './voidSettingsPane.js';
+import { VOID_TOGGLE_SETTINGS_ACTION_ID } from './actionIDs.js';
 import { VOID_CTRL_L_ACTION_ID } from './actionIDs.js';
 import { localize2 } from '../../../../nls.js';
 import { IChatThreadService } from './chatThreadService.js';

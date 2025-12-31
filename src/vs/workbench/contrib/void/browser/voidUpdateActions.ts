@@ -7,7 +7,7 @@ import { Disposable } from '../../../../base/common/lifecycle.js';
 import Severity from '../../../../base/common/severity.js';
 import { ServicesAccessor } from '../../../../editor/browser/editorExtensions.js';
 import { localize2 } from '../../../../nls.js';
-import { Action2, registerAction2 } from '../../../../platform/actions/common/actions.js';
+import { Action2, MenuId, registerAction2 } from '../../../../platform/actions/common/actions.js';
 import { INotificationActions, INotificationHandle, INotificationService } from '../../../../platform/notification/common/notification.js';
 import { IMetricsService } from '../common/metricsService.js';
 import { IVoidUpdateService } from '../common/voidUpdateService.js';
@@ -178,6 +178,11 @@ registerAction2(class extends Action2 {
 			f1: true,
 			id: 'void.voidCheckUpdate',
 			title: localize2('voidCheckUpdate', 'A-Coder: Check for Updates'),
+			menu: [{
+				id: MenuId.MenubarHelpMenu,
+				group: '5_update',
+				order: 1
+			}]
 		});
 	}
 	async run(accessor: ServicesAccessor): Promise<void> {
