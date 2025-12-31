@@ -3,21 +3,17 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
+import { WebWorkerServer } from '../../../../../base/common/worker/webWorker.js';
 import { DiffWorker } from './diffWorker.js';
 
 // This is the worker entry point
-const worker = new DiffWorker();
+const server = new WebWorkerServer(
+	(msg, transfer) => {
+		(self as any).postMessage(msg, transfer);
+	},
+	() => new DiffWorker()
+);
 
-// Simple message handling for the worker
 self.onmessage = (e: MessageEvent) => {
-	const { method, args, requestId } = e.data;
-	
-	if (method === 'findDiffs') {
-		try {
-			const result = worker.findDiffs(args[0], args[1]);
-			self.postMessage({ requestId, result });
-		} catch (error) {
-			self.postMessage({ requestId, error: String(error) });
-		}
-	}
+	server.onmessage(e.data);
 };

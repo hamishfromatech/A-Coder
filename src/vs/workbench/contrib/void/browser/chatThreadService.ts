@@ -432,6 +432,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 	// PERFORMANCE: Debounce timer for storage
 	private _storeThreadsDebounceTimer: any = null;
+	private readonly MAX_THREADS_IN_STORAGE = 20;
 
 	// used in checkpointing
 	// private readonly _userModifiedFilesToCheckInCheckpoints = new LRUCache<string, null>(50)
@@ -577,9 +578,22 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 	private _storeAllThreadsNow(threads: ChatThreads) {
 		const normalizedThreads = this._ensureThreadStateDefaults(threads)
+
+		// PERFORMANCE: Prune old threads to prevent storage bloat and high memory usage
+		const sortedThreadIds = Object.keys(normalizedThreads).sort((a, b) => {
+			const timeA = new Date(normalizedThreads[a]?.lastModified ?? 0).getTime();
+			const timeB = new Date(normalizedThreads[b]?.lastModified ?? 0).getTime();
+			return timeB - timeA; // Descending order (newest first)
+		});
+
+		const prunedThreads: ChatThreads = {};
+		// Keep the 20 most recent threads
+		sortedThreadIds.slice(0, this.MAX_THREADS_IN_STORAGE).forEach(id => {
+			prunedThreads[id] = normalizedThreads[id];
+		});
 		
 		// Convert Sets to Arrays for JSON serialization
-		const serializableThreads: any = { ...normalizedThreads };
+		const serializableThreads: any = { ...prunedThreads };
 		for (const threadId in serializableThreads) {
 			const thread = serializableThreads[threadId];
 			if (thread && thread.filesWithUserChanges instanceof Set) {
@@ -1327,14 +1341,14 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				// llm res success
 				const { toolCall, info } = llmRes
 
-				console.log(`[chatThreadService] LLM response:`, JSON.stringify({
-					hasToolCall: !!toolCall,
-					toolName: toolCall?.name,
-					fullText: info.fullText,
-					reasoning: info.fullReasoning
-				}))
-
-				// Check for empty response and treat as error for retry
+									const responseLog = JSON.stringify({
+										hasToolCall: !!toolCall,
+										toolName: toolCall?.name,
+										fullText: info.fullText,
+										reasoning: info.fullReasoning
+									});
+									console.log(`[chatThreadService] LLM response:`, responseLog.length > 1000 ? responseLog.substring(0, 1000) + '...' : responseLog)
+								// Check for empty response and treat as error for retry
 				// Note: Tool calls with empty content are valid (especially for Ollama)
 				// Also treat "(empty message)" placeholder as empty
 				const textContent = info.fullText?.trim() || ''
@@ -1409,7 +1423,8 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				if (toolCall) {
 					const mcpTools = this._mcpService.getMCPTools()
 					console.log(`[chatThreadService] LLM called tool: ${toolCall.name}`)
-					console.log(`[chatThreadService] Tool call params:`, JSON.stringify(toolCall.rawParams))
+					const paramsStr = JSON.stringify(toolCall.rawParams);
+					console.log(`[chatThreadService] Tool call params:`, paramsStr.length > 1000 ? paramsStr.substring(0, 1000) + '...' : paramsStr)
 					console.log(`[chatThreadService] Available MCP tools:`, mcpTools?.map(t => t.name))
 					const mcpTool = mcpTools?.find(t => t.name === toolCall.name)
 					console.log(`[chatThreadService] Found MCP tool:`, mcpTool ? `${mcpTool.name} on server ${mcpTool.mcpServerName}` : 'NOT FOUND')

@@ -633,7 +633,11 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 				})
 			}
 			// on final
-			console.log(`[sendLLMMessage] Stream completed. Total chunks: ${chunkCount}, fullText: "${fullTextSoFar}", reasoning: "${fullReasoningSoFar}", toolName: "${toolName}", toolParams: "${toolParamsStr}"`)
+			const truncatedFullText = fullTextSoFar.length > 500 ? fullTextSoFar.substring(0, 500) + '...' : fullTextSoFar;
+			const truncatedReasoning = fullReasoningSoFar.length > 500 ? fullReasoningSoFar.substring(0, 500) + '...' : fullReasoningSoFar;
+			const truncatedToolParams = toolParamsStr.length > 500 ? toolParamsStr.substring(0, 500) + '...' : toolParamsStr;
+			
+			console.log(`[sendLLMMessage] Stream completed. Total chunks: ${chunkCount}, fullText: "${truncatedFullText}", reasoning: "${truncatedReasoning}", toolName: "${toolName}", toolParams: "${truncatedToolParams}"`)
 
 			// Fallback: If no native tool call detected, check for XML tool calls in both content and reasoning
 			if (!toolName && (fullTextSoFar || fullReasoningSoFar)) {

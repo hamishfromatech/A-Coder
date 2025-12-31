@@ -13,23 +13,36 @@ import { encodingForModel } from 'js-tiktoken';
  */
 export class TokenCountingChannel implements IServerChannel {
 	private encoderCache: Map<string, any> = new Map();
+	private readonly MAX_ENCODERS = 5;
 
 	private getEncoder(modelName: string) {
-		if (!this.encoderCache.has(modelName)) {
-			try {
-				const encoder = encodingForModel(modelName as any);
-				this.encoderCache.set(modelName, encoder);
-			} catch (error) {
-				// If model not found, use cl100k_base (GPT-3.5/4 default)
-				console.warn(`[TokenCountingChannel] Model ${modelName} not found, using cl100k_base`);
-				const encoder = encodingForModel('gpt-3.5-turbo' as any);
-				this.encoderCache.set(modelName, encoder);
+		if (this.encoderCache.has(modelName)) {
+			// MRU: Move to end of map
+			const encoder = this.encoderCache.get(modelName);
+			this.encoderCache.delete(modelName);
+			this.encoderCache.set(modelName, encoder);
+			return encoder;
+		}
+
+		// Enforce limit
+		if (this.encoderCache.size >= this.MAX_ENCODERS) {
+			const oldestKey = this.encoderCache.keys().next().value;
+			if (oldestKey) {
+				this.encoderCache.delete(oldestKey);
 			}
 		}
-		// NOTE: We intentionally do NOT call encoder.free() here or elsewhere,
-		// because encoders are cached for the lifetime of the process. Freeing
-		// a cached encoder would make it invalid for subsequent uses.
-		return this.encoderCache.get(modelName)!;
+
+		try {
+			const encoder = encodingForModel(modelName as any);
+			this.encoderCache.set(modelName, encoder);
+			return encoder;
+		} catch (error) {
+			// If model not found, use cl100k_base (GPT-3.5/4 default)
+			console.warn(`[TokenCountingChannel] Model ${modelName} not found, using cl100k_base`);
+			const encoder = encodingForModel('gpt-3.5-turbo' as any);
+			this.encoderCache.set(modelName, encoder);
+			return encoder;
+		}
 	}
 
 	async call(_: unknown, command: string, arg?: any): Promise<any> {

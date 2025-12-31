@@ -134,4 +134,4 @@ class MarkerCheckService extends Disposable implements IMarkerCheckService {
 
 }
 
-registerSingleton(IMarkerCheckService, MarkerCheckService, InstantiationType.Eager);
+registerSingleton(IMarkerCheckService, MarkerCheckService, InstantiationType.Delayed);

@@ -5,6 +5,7 @@ import { IResolvedTextEditorModel, ITextModelService } from '../../../../editor/
 import { registerSingleton, InstantiationType } from '../../../../platform/instantiation/common/extensions.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { ITextFileService } from '../../../services/textfile/common/textfiles.js';
+import { isMacintosh } from '../../../../base/common/platform.js';
 
 type VoidModelType = {
 	model: ITextModel | null;
@@ -27,7 +28,7 @@ class VoidModelService extends Disposable implements IVoidModelService {
 	_serviceBrand: undefined;
 	static readonly ID = 'voidVoidModelService';
 	private readonly _modelRefOfURI: Map<string, IReference<IResolvedTextEditorModel>> = new Map();
-	private readonly MAX_MODELS = 50;
+	private readonly MAX_MODELS = isMacintosh ? 10 : 50;
 
 	constructor(
 		@ITextModelService private readonly _textModelService: ITextModelService,

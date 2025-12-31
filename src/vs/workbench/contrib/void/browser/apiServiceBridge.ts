@@ -901,7 +901,7 @@ export class ApiServiceBridge extends Disposable implements IApiServiceBridge {
 	}
 }
 
-registerSingleton(IApiServiceBridge, ApiServiceBridge, InstantiationType.Eager);
+registerSingleton(IApiServiceBridge, ApiServiceBridge, InstantiationType.Delayed);
 
 /**
  * Workbench Contribution to ensure ApiServiceBridge is instantiated on startup
@@ -916,4 +916,4 @@ export class ApiServiceBridgeContribution implements IWorkbenchContribution {
 	}
 }
 
-registerWorkbenchContribution2(ApiServiceBridgeContribution.ID, ApiServiceBridgeContribution, WorkbenchPhase.BlockRestore);
+registerWorkbenchContribution2(ApiServiceBridgeContribution.ID, ApiServiceBridgeContribution, WorkbenchPhase.AfterRestored);
