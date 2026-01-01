@@ -7,7 +7,7 @@ import React from 'react';
 import { Loader2 } from 'lucide-react';
 import { useAccessor, useChatThreadsStreamState, useIsDark } from '../util/services.js';
 import { URI } from '../../../../../../../base/common/uri.js';
-import { ChatMarkdownRender, getApplyBoxId } from '../markdown/ChatMarkdownRender.js';
+import { ChatMarkdownRender, getApplyBoxId, ChatMessageLocation } from '../markdown/ChatMarkdownRender.js';
 import { CopyButton, EditToolAcceptRejectButtonsHTML, useEditToolStreamState } from '../markdown/ApplyBlockHoverButtons.js';
 import { VoidDiffEditor } from '../util/inputs.js';
 import { 
@@ -32,7 +32,7 @@ const EditToolHeaderButtons = ({ applyBoxId, uri, codeStr, toolName, threadId }:
 	</div>
 }
 
-export const EditToolChildren = ({ uri, code, type }: { uri: URI | undefined, code: string, type: 'diff' | 'rewrite' }) => {
+export const EditToolChildren = ({ uri, code, type, chatMessageLocation }: { uri: URI | undefined, code: string, type: 'diff' | 'rewrite', chatMessageLocation: ChatMessageLocation | undefined }) => {
 
 	const hasValidDiffFormat = type === 'diff' && (
 		code.includes('<<<<<<< ORIGINAL') &&
@@ -48,8 +48,9 @@ export const EditToolChildren = ({ uri, code, type }: { uri: URI | undefined, co
 				<div className="text-void-fg-4 text-xs">Waiting for complete ORIGINAL/UPDATED blocks.</div>
 			</div>)
 		: <ChatMarkdownRender string={`\
+\`\`\`${uri ? detectLanguage(null as any, { uri, fileContents: code }) : ''}
 ${code}
-\``} codeURI={uri} chatMessageLocation={undefined} />
+\`\`\``} codeURI={uri} chatMessageLocation={chatMessageLocation} isApplyEnabled={true} />
 
 	return <div className='!select-text cursor-auto'>
 		<SmallProseWrapper>{content}</SmallProseWrapper>
@@ -127,13 +128,13 @@ export const EditToolResultWrapper: ResultWrapper<'edit_file' | 'rewrite_file'> 
 					<span className="text-xs italic text-void-fg-3">{activity}</span>
 				</div>
 			)}
-			<EditToolChildren uri={params.uri} code={content} type={editToolType} />
+			<EditToolChildren uri={params.uri} code={content} type={editToolType} chatMessageLocation={{ threadId, messageIdx }} />
 		</ToolChildrenWrapper>
 	} else {
 		const applyBoxId = getApplyBoxId({ threadId, messageIdx, tokenIdx: 'N/A' })
 		componentParams.desc2 = <EditToolHeaderButtons applyBoxId={applyBoxId} uri={params.uri} codeStr={content} toolName={name} threadId={threadId} />
 		componentParams.children = <ToolChildrenWrapper>
-			<EditToolChildren uri={params.uri} code={content} type={editToolType} />
+			<EditToolChildren uri={params.uri} code={content} type={editToolType} chatMessageLocation={{ threadId, messageIdx }} />
 		</ToolChildrenWrapper>
 
 		if (toolMessage.type === 'success' || toolMessage.type === 'rejected') {

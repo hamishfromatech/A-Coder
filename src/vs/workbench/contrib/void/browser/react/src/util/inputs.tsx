@@ -1954,62 +1954,129 @@ const SingleDiffEditor = ({ block, lang }: { block: ExtractedSearchReplaceBlock,
 		if (!divRef.current || !modelsRef.current) return;
 		const { original, modified } = modelsRef.current;
 
-		// Create the diff editor instance
-		const editor = instantiationService.createInstance(
-			DiffEditorWidget,
-			divRef.current,
-			{
-				automaticLayout: false, // Handle layout manually for performance
-				readOnly: true,
-				renderSideBySide: true,
-				minimap: { enabled: false },
-				lineNumbers: 'off',
-				scrollbar: {
-					vertical: 'hidden',
-					horizontal: 'auto',
-					verticalScrollbarSize: 0,
-					horizontalScrollbarSize: 8,
-					alwaysConsumeMouseWheel: false,
-					ignoreHorizontalScrollbarInContentHeight: true,
-				},
-				hover: { enabled: false },
-				folding: false,
-				selectionHighlight: false,
-				renderLineHighlight: 'none',
-				overviewRulerLanes: 0,
-				hideCursorInOverviewRuler: true,
-				overviewRulerBorder: false,
-				glyphMargin: false,
-				stickyScroll: { enabled: false },
-				scrollBeyondLastLine: false,
-				renderGutterMenu: false,
-				renderIndicators: false,
-				diffCodeLens: false,
-				renderMarginRevertIcon: false,
-			},
-			{ originalEditor: { isSimpleWidget: true }, modifiedEditor: { isSimpleWidget: true } }
-		);
-		editor.setModel({ original, modified });
+				// Create the diff editor instance
 
-		// Calculate the height based on content
-		let updateTimer: any = null;
-		const updateHeight = () => {
-			if (updateTimer) clearTimeout(updateTimer);
-			updateTimer = setTimeout(() => {
-				if (!modelsRef.current || !divRef.current || !editor) return;
-				const { original, modified } = modelsRef.current;
+				const editor = instantiationService.createInstance(
+
+					DiffEditorWidget,
+
+					divRef.current,
+
+					{
+
+						automaticLayout: true,
+
+						readOnly: true,
+
+						renderSideBySide: true,
+
+						minimap: { enabled: false },
+
+						lineNumbers: 'off',
+
+						scrollbar: {
+
+							vertical: 'hidden',
+
+							horizontal: 'auto',
+
+							verticalScrollbarSize: 0,
+
+							horizontalScrollbarSize: 8,
+
+							alwaysConsumeMouseWheel: false,
+
+							ignoreHorizontalScrollbarInContentHeight: true,
+
+						},
+
+						hover: { enabled: false },
+
+						folding: false,
+
+						selectionHighlight: false,
+
+						renderLineHighlight: 'none',
+
+						overviewRulerLanes: 0,
+
+						hideCursorInOverviewRuler: true,
+
+						overviewRulerBorder: false,
+
+						glyphMargin: false,
+
+						stickyScroll: { enabled: false },
+
+						scrollBeyondLastLine: false,
+
+						renderGutterMenu: false,
+
+						renderIndicators: false,
+
+						diffCodeLens: false,
+
+						renderMarginRevertIcon: false,
+
+					},
+
+					{ originalEditor: { isSimpleWidget: true }, modifiedEditor: { isSimpleWidget: true } }
+
+				);
+
+				editor.setModel({ original, modified });
+
+		
+
+				// Calculate the height based on content
+
+				let updateTimer: any = null;
+
+				const updateHeight = () => {
+
+					if (updateTimer) clearTimeout(updateTimer);
+
+					updateTimer = setTimeout(() => {
+
+						if (!modelsRef.current || !divRef.current || !editor) return;
+
+						const { original, modified } = modelsRef.current;
+
+						const lineCount = Math.max(1, original.getLineCount(), modified.getLineCount());
+
+						const contentHeight = lineCount * 19 + 19 * 2 + 1;
+
+		
+
+						// Set reasonable min/max heights
+
+						const height = Math.min(Math.max(contentHeight, 100), 600);
+
+						divRef.current.style.height = `${height}px`;
+
+						editor.layout();
+
+					}, 10); // Faster update
+
+				};
+
+		
+
+				// Set initial height immediately if possible
 
 				const lineCount = Math.max(1, original.getLineCount(), modified.getLineCount());
-				const contentHeight = lineCount * 19 + 19 * 2 + 1;
 
-				// Set reasonable min/max heights
-				const height = Math.min(Math.max(contentHeight, 100), 300);
-				divRef.current.style.height = `${height}px`;
+				const initialHeight = Math.min(Math.max(lineCount * 19 + 40, 100), 600);
+
+				divRef.current.style.height = `${initialHeight}px`;
+
 				editor.layout();
-			}, 50); // Debounce by 50ms
-		};
 
-		updateHeight();
+		
+
+				updateHeight();
+
+		
 		editorRef.current = editor;
 
 		// Update height when content changes
@@ -2026,7 +2093,7 @@ const SingleDiffEditor = ({ block, lang }: { block: ExtractedSearchReplaceBlock,
 	}, [instantiationService]); // Stable instantiationService
 
 	return (
-		<div className="w-full bg-void-bg-3 @@bg-editor-style-override" ref={divRef} />
+		<div className="w-full bg-void-bg-3 @@bg-editor-style-override overflow-hidden" ref={divRef} />
 	);
 };
 

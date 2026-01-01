@@ -77,10 +77,10 @@ export class ApiServiceBridge extends Disposable implements IApiServiceBridge {
 				return this.cancelThread(params.threadId);
 
 			case 'approveToolCall':
-				return this.approveToolCall(params.threadId);
+				return this.approveToolCall(params.threadId, params.toolId);
 
 			case 'rejectToolCall':
-				return this.rejectToolCall(params.threadId);
+				return this.rejectToolCall(params.threadId, params.toolId);
 
 			// ===== Workspace Methods =====
 			case 'getWorkspace':
@@ -272,7 +272,7 @@ export class ApiServiceBridge extends Disposable implements IApiServiceBridge {
 				// LLM streaming info
 				content: streamState.llmInfo?.displayContentSoFar || null,
 				reasoning: streamState.llmInfo?.reasoningSoFar || null,
-				toolCall: streamState.llmInfo?.toolCallSoFar || null,
+				toolCalls: streamState.llmInfo?.toolCallsSoFar || null,
 				// Tool execution info
 				toolInfo: streamState.toolInfo ? {
 					toolName: streamState.toolInfo.toolName,
@@ -468,7 +468,7 @@ export class ApiServiceBridge extends Disposable implements IApiServiceBridge {
 		return { success: true };
 	}
 
-	private async approveToolCall(threadId: string) {
+	private async approveToolCall(threadId: string, toolId?: string) {
 		const allThreads = this.chatThreadService.state.allThreads;
 		if (!allThreads || !allThreads[threadId]) {
 			throw new Error('Thread not found');
@@ -481,11 +481,11 @@ export class ApiServiceBridge extends Disposable implements IApiServiceBridge {
 		}
 
 		// Approve the pending tool call
-		this.chatThreadService.approveLatestToolRequest(threadId);
+		this.chatThreadService.approveLatestToolRequest(threadId, toolId);
 		return { success: true };
 	}
 
-	private async rejectToolCall(threadId: string) {
+	private async rejectToolCall(threadId: string, toolId?: string) {
 		const allThreads = this.chatThreadService.state.allThreads;
 		if (!allThreads || !allThreads[threadId]) {
 			throw new Error('Thread not found');
@@ -498,7 +498,7 @@ export class ApiServiceBridge extends Disposable implements IApiServiceBridge {
 		}
 
 		// Reject the pending tool call
-		this.chatThreadService.rejectLatestToolRequest(threadId);
+		this.chatThreadService.rejectLatestToolRequest(threadId, toolId);
 		return { success: true };
 	}
 

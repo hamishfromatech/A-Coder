@@ -78,6 +78,20 @@ export function extractXMLToolCalls(text: string): XMLToolCall[] {
 		}
 	}
 
+	// 3. Special Marker format: <|tool_call_start|>{"name": "tool_name", "arguments": {...}}<|tool_call_end|>
+	const markerRegex = /<\|tool_call_start\|>([\s\S]*?)<\|tool_call_end\|>/g;
+	let markerMatch;
+	while ((markerMatch = markerRegex.exec(text)) !== null) {
+		try {
+			const callObj = JSON.parse(markerMatch[1]);
+			if (callObj.name && callObj.arguments) {
+				toolCalls.push({ toolName: callObj.name, parameters: callObj.arguments });
+			}
+		} catch (e) {
+			console.log(`[extractXMLTools] Failed to parse marker tool call:`, e);
+		}
+	}
+
 	return toolCalls;
 }
 
@@ -86,16 +100,18 @@ export function extractXMLToolCalls(text: string): XMLToolCall[] {
  * When a tool call is detected, only keep the text BEFORE the first <function_calls> block
  */
 export function stripXMLBlocks(text: string): string {
-	// Find the first <function_calls> or <tool_call> block
-	const firstToolCallMatch = text.match(/<function_calls>|<tool_call>/);
+	// Find the first <function_calls>, <tool_call>, or <|tool_call_start|> block
+	const firstToolCallMatch = text.match(/<function_calls>|<tool_call>|<\|tool_call_start\|>/);
 
 	if (firstToolCallMatch && firstToolCallMatch.index !== undefined) {
 		// Only keep text before the first tool call
 		return text.substring(0, firstToolCallMatch.index).trim();
 	}
 
-	// If no tool calls, just remove any stray <function_results> blocks
+	// If no tool calls, just remove any stray <function_results> or <|tool_response_start|> blocks
 	let cleaned = text.replace(/<function_results>[\s\S]*?<\/function_results>/g, '');
+	cleaned = cleaned.replace(/<\|tool_response_start\|>[\s\S]*?<\|tool_response_end\|>/g, '');
+	cleaned = cleaned.replace(/<\|tool_list_start\|>[\s\S]*?<\|tool_list_end\|>/g, '');
 	cleaned = cleaned.trim();
 
 	return cleaned;
@@ -116,4 +132,14 @@ export function formatXMLToolResults(results: Array<{ toolName: string; result: 
 	).join('\n');
 
 	return `<function_results>\n${resultBlocks}\n</function_results>`;
+}
+
+/**
+ * Formats tool results using special markers:
+ * <|tool_response_start|>{"name": "tool_name", "content": "result content"}<|tool_response_end|>
+ */
+export function formatMarkerToolResults(results: Array<{ toolName: string; result: string }>): string {
+	return results.map(({ toolName, result }) => 
+		`<|tool_response_start|>${JSON.stringify({ name: toolName, content: result })}<|tool_response_end|>`
+	).join('\n');
 }

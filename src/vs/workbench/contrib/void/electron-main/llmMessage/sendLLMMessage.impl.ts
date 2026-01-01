@@ -17,7 +17,6 @@ import { GoogleAuth } from 'google-auth-library'
 import { AnthropicLLMChatMessage, AnthropicReasoning, GeminiLLMChatMessage, LLMChatMessage, LLMFIMMessage, ModelListParams, OllamaModelResponse, OnError, OnFinalMessage, OnText, RawToolCallObj, RawToolParamsObj } from '../../common/sendLLMMessageTypes.js';
 import { ChatMode, displayInfoOfProviderName, GlobalSettings, ModelSelectionOptions, OverridesOfModel, ProviderName, SettingsOfProvider } from '../../common/voidSettingsTypes.js';
 import { getSendableReasoningInfo, getModelCapabilities, getProviderCapabilities, defaultProviderSettings, getReservedOutputTokenSpace } from '../../common/modelCapabilities.js';
-import { extractReasoningWrapper } from './extractGrammar.js';
 import { availableTools, InternalToolInfo } from '../../common/prompt/prompts.js';
 import { generateUuid } from '../../../../../base/common/uuid.js';
 
@@ -53,6 +52,33 @@ type SendChatParams_Internal = InternalCommonMessageParams & {
 }
 type SendFIMParams_Internal = InternalCommonMessageParams & { messages: LLMFIMMessage; separateSystemMessage: string | undefined; }
 export type ListParams_Internal<ModelResponse> = ModelListParams<ModelResponse>
+
+
+// Helper to parse partial JSON for streaming UI
+const parsePartialJSON = (jsonStr: string): Record<string, any> => {
+	if (!jsonStr) return {}
+	try {
+		// Try full parse first
+		return JSON.parse(jsonStr)
+	} catch (e) {
+		// If it fails, it might be partial. 
+		// We try to close it if it's an object
+		const trimmed = jsonStr.trim()
+		if (trimmed.startsWith('{')) {
+			try {
+				// Very simple attempt to close braces
+				return JSON.parse(trimmed + '}')
+			} catch (e2) {
+				try {
+					return JSON.parse(trimmed + '"}')
+				} catch (e3) {
+					return {}
+				}
+			}
+		}
+		return {}
+	}
+}
 
 
 const invalidApiKeyMessage = (providerName: ProviderName) => `Invalid ${displayInfoOfProviderName(providerName).title} API key.`
@@ -309,29 +335,31 @@ const rawToolCallObjOfParamsStr = (name: string, toolParamsStr: string, id: stri
 				input = JSON.parse(firstObject)
 				console.log(`[sendLLMMessage] ⚠️ LLM sent concatenated tool calls, extracting first one for "${name}"`)
 			} catch (e2) {
-				console.log(`[sendLLMMessage] ⚠️ Failed to parse tool parameters for "${name}":`, e)
-				console.log(`[sendLLMMessage] Raw params string:`, toolParamsStr.substring(0, 500))
-				return null
+				// Fallback to partial JSON parser for very malformed but mostly complete JSON
+				input = parsePartialJSON(toolParamsStr)
+				if (Object.keys(input as object).length === 0) {
+					console.log(`[sendLLMMessage] ⚠️ Failed to parse tool parameters for "${name}":`, e)
+					return null
+				}
 			}
 		} else {
-			console.log(`[sendLLMMessage] ⚠️ Failed to parse tool parameters for "${name}":`, e)
-			console.log(`[sendLLMMessage] Raw params string:`, toolParamsStr.substring(0, 500))
-			return null
+			// Fallback to partial JSON parser
+			input = parsePartialJSON(toolParamsStr)
+			if (Object.keys(input as object).length === 0) {
+				console.log(`[sendLLMMessage] ⚠️ Failed to parse tool parameters for "${name}":`, e)
+				return null
+			}
 		}
 	}
 
-	if (input === null) {
-		console.log(`[sendLLMMessage] ⚠️ Tool call "${name}" parsed to null`)
-		return null
-	}
-	if (typeof input !== 'object') {
-		console.log(`[sendLLMMessage] ⚠️ Tool call "${name}" params is not an object, got:`, typeof input)
+	if (input === null || typeof input !== 'object') {
+		console.log(`[sendLLMMessage] ⚠️ Tool call "${name}" parsed to invalid type:`, typeof input)
 		return null
 	}
 
-	const rawParams: RawToolParamsObj = input
+	const rawParams: RawToolParamsObj = input as any
 	console.log(`[sendLLMMessage] ✓ Successfully parsed tool call "${name}" with ${Object.keys(rawParams).length} parameters`)
-	return { id, name, rawParams, doneParams: Object.keys(rawParams), isDone: true, thought_signature }
+	return { id, name: name as any, rawParams, doneParams: Object.keys(rawParams) as any[], isDone: true, thought_signature }
 }
 
 
@@ -360,7 +388,6 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 	const { providerReasoningIOSettings } = getProviderCapabilities(providerName)
 
 	// reasoning
-	const { canIOReasoning, openSourceThinkTags } = reasoningCapabilities || {}
 	const reasoningInfo = getSendableReasoningInfo('Chat', providerName, modelName_, modelSelectionOptions, overridesOfModel) // user's modelName_ here
 
 	const includeInPayload = {
@@ -381,7 +408,6 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 	const nativeToolsObj = potentialTools && specialToolFormat === 'openai-style' ?
 		{ tools: potentialTools } as const
 		: {}
-	const hasTools = potentialTools && potentialTools.length > 0
 
 	console.log(`[sendLLMMessage] OpenAI-compatible - chatMode: ${chatMode}, tools count: ${potentialTools?.length ?? 0}, model: ${modelName}, provider: ${providerName}, specialToolFormat: ${specialToolFormat}`)
 	if (potentialTools && potentialTools.length > 0 && specialToolFormat === 'openai-style') {
@@ -423,107 +449,68 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		console.log(`[sendLLMMessage] Payload around position 17371: "${fullPayload.substring(17350, 17400)}"`)
 	}
 
-	// open source models - manually parse think tokens
-	const { needsManualParse: needsManualReasoningParse, nameOfFieldInDelta: nameOfReasoningFieldInDelta } = providerReasoningIOSettings?.output ?? {}
-	const manuallyParseReasoning = needsManualReasoningParse && canIOReasoning && openSourceThinkTags
+	const { nameOfFieldInDelta: nameOfReasoningFieldInDelta } = providerReasoningIOSettings?.output ?? {}
 	let fullReasoningSoFar = ''
 	let fullTextSoFar = ''
 
-	let toolName = ''
-	let toolId = ''
-	let toolParamsStr = ''
-	let thoughtSignature = ''
-	let finalUsage: { promptTokens: number; completionTokens: number } | undefined = undefined
-
-	console.log(`[sendLLMMessage] Reasoning extraction config:`, {
-		needsManualReasoningParse,
-		canIOReasoning,
-		hasOpenSourceThinkTags: !!openSourceThinkTags,
-		openSourceThinkTags,
-		manuallyParseReasoning
-	})
-
-	// Use manual parsing ONLY if we need to parse <think> tags from content
-	// Do NOT use extractReasoningWrapper if there's a direct reasoning field (like delta.reasoning or delta.thinking)
-	// because extractReasoningWrapper will overwrite the accumulated reasoning from the direct field
-	if (manuallyParseReasoning && openSourceThinkTags && !nameOfReasoningFieldInDelta) {
-		console.log(`[sendLLMMessage] ✅ Enabling reasoning extraction with tags:`, openSourceThinkTags)
-		const { newOnText, newOnFinalMessage } = extractReasoningWrapper(onText, onFinalMessage, openSourceThinkTags)
-		onText = newOnText
-		onFinalMessage = newOnFinalMessage
-	}
-	if (nameOfReasoningFieldInDelta) {
-		console.log(`[sendLLMMessage] ✅ Using direct reasoning field:`, nameOfReasoningFieldInDelta)
-	}
-
 	const toText = (content: unknown): string => {
-		if (!content) {
-			return ''
-		}
-		if (typeof content === 'string') {
-			return content
-		}
+		if (!content) return ''
+		if (typeof content === 'string') return content
 		if (Array.isArray(content)) {
-			return content
-				.map(part => {
-					if (typeof part === 'string') {
-						return part
-					}
-					if (part && typeof part === 'object' && 'text' in part) {
-						return String(part.text ?? '')
-					}
-					return ''
-				})
-				.join('')
+			return content.map(part => {
+				if (typeof part === 'string') return part
+				if (part && typeof part === 'object' && 'text' in part) return String(part.text ?? '')
+				return ''
+			}).join('')
 		}
 		return ''
 	}
 
+	let toolCalls: { name: string, id: string, paramsStr: string, thoughtSignature?: string }[] = []
+	let finalUsage: { promptTokens: number; completionTokens: number } | undefined = undefined
+
 	const applyToolCall = (toolCall: any, { isFinal }: { isFinal: boolean }) => {
-		if (!toolCall || (typeof toolCall === 'object' && 'index' in toolCall && toolCall.index !== 0)) {
-			return
+		if (!toolCall) return
+
+		const index = typeof toolCall.index === 'number' ? toolCall.index : 0
+		if (!toolCalls[index]) {
+			toolCalls[index] = { name: '', id: '', paramsStr: '' }
 		}
 
 		const fn = toolCall.function ?? {}
 
-		// Set tool name if we don't have one yet
-		if (fn.name && !toolName) {
-			toolName = fn.name
-			console.log(`[sendLLMMessage] Tool call detected: ${toolName}`)
+		if (fn.name && !toolCalls[index].name) {
+			toolCalls[index].name = fn.name
+			console.log(`[sendLLMMessage] Tool call [${index}] detected: ${fn.name}`)
 		}
 
-		// Process arguments (can come in subsequent chunks after tool name)
 		if (typeof fn.arguments === 'string') {
 			if (isFinal) {
-				toolParamsStr = fn.arguments
-				console.log(`[sendLLMMessage] Tool arguments (final): ${toolParamsStr.substring(0, 200)}${toolParamsStr.length > 200 ? '...' : ''}`)
-			}
-			else {
-				toolParamsStr += fn.arguments
-			}
-		} else if (fn.arguments && typeof fn.arguments === 'object') {
-			// Some models might return arguments as object instead of string
-			console.log(`[sendLLMMessage] ⚠️ Tool arguments received as object, converting to JSON string`)
-			const argsStr = JSON.stringify(fn.arguments)
-			if (isFinal) {
-				toolParamsStr = argsStr
+				toolCalls[index].paramsStr = fn.arguments
 			} else {
-				toolParamsStr += argsStr
+				toolCalls[index].paramsStr += fn.arguments
 			}
 		}
 
-		// Set tool ID if provided
-		if (toolCall.id && !toolId) {
-			toolId = toolCall.id
+		if (toolCall.id && !toolCalls[index].id) {
+			toolCalls[index].id = toolCall.id
 		}
 
-		// Capture thought_signature (used by Gemini 2.0 via OpenRouter)
-		if (fn.thought_signature) {
-			thoughtSignature = fn.thought_signature
+		if (fn.thought_signature || toolCall.thought_signature) {
+			toolCalls[index].thoughtSignature = fn.thought_signature || toolCall.thought_signature
 		}
-		if (toolCall.thought_signature) {
-			thoughtSignature = toolCall.thought_signature
-		}
+	}
+
+	const mapToRawToolCalls = (calls: typeof toolCalls): RawToolCallObj[] => {
+		return calls
+			.filter(tc => !!tc && !!tc.name) // Skip holes and unnamed tools
+			.map(tc => ({
+				name: tc.name as any,
+				rawParams: parsePartialJSON(tc.paramsStr),
+				isDone: false,
+				doneParams: [],
+				id: tc.id || generateUuid()
+			}))
 	}
 
 	console.log(`[sendLLMMessage] Creating request with options:`, JSON.stringify({
@@ -593,13 +580,12 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 				fullTextSoFar += newText
 
 				for (const toolDelta of delta.tool_calls ?? []) {
-					if (toolName && toolDelta.function?.name) {
-						console.log(`[sendLLMMessage] ⚠️ Multiple tool calls detected, skipping additional tool: ${toolDelta.function.name}`)
-					}
 					applyToolCall(toolDelta, { isFinal: false })
 				}
 				if (choice.finish_reason === 'tool_calls') {
-					applyToolCall({ function: { name: toolName, arguments: toolParamsStr }, id: toolId, index: 0 }, { isFinal: true })
+					for (let i = 0; i < toolCalls.length; i++) {
+						applyToolCall({ function: { name: toolCalls[i].name, arguments: toolCalls[i].paramsStr }, id: toolCalls[i].id, index: i }, { isFinal: true })
+					}
 				}
 
 				if (nameOfReasoningFieldInDelta) {
@@ -627,7 +613,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 				onText({
 					fullText: displayText,
 					fullReasoning: fullReasoningSoFar,
-					toolCall: !toolName ? undefined : { name: toolName, rawParams: {}, isDone: false, doneParams: [], id: toolId },
+					toolCalls: toolCalls.length === 0 ? undefined : mapToRawToolCalls(toolCalls),
 					// Pass raw text so chatThreadService can detect XML tool calls for repetition detection
 					_rawTextBeforeStripping: !specialToolFormat ? fullTextSoFar : undefined,
 				})
@@ -635,110 +621,65 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 			// on final
 			const truncatedFullText = fullTextSoFar.length > 500 ? fullTextSoFar.substring(0, 500) + '...' : fullTextSoFar;
 			const truncatedReasoning = fullReasoningSoFar.length > 500 ? fullReasoningSoFar.substring(0, 500) + '...' : fullReasoningSoFar;
-			const truncatedToolParams = toolParamsStr.length > 500 ? toolParamsStr.substring(0, 500) + '...' : toolParamsStr;
 			
-			console.log(`[sendLLMMessage] Stream completed. Total chunks: ${chunkCount}, fullText: "${truncatedFullText}", reasoning: "${truncatedReasoning}", toolName: "${toolName}", toolParams: "${truncatedToolParams}"`)
+			console.log(`[sendLLMMessage] Stream completed. Total chunks: ${chunkCount}, fullText: "${truncatedFullText}", reasoning: "${truncatedReasoning}", toolCalls count: ${toolCalls.length}`)
 
 			// Fallback: If no native tool call detected, check for XML tool calls in both content and reasoning
-			if (!toolName && (fullTextSoFar || fullReasoningSoFar)) {
+			if (toolCalls.length === 0 && (fullTextSoFar || fullReasoningSoFar)) {
 				const { extractXMLToolCalls, stripXMLBlocks } = await import('../../common/helpers/extractXMLTools.js')
 				
 				// 1. Check main content
 				const xmlToolCallsInText = extractXMLToolCalls(fullTextSoFar)
+				for (let i = 0; i < xmlToolCallsInText.length; i++) {
+					const call = xmlToolCallsInText[i]
+					toolCalls.push({
+						name: call.toolName,
+						paramsStr: JSON.stringify(call.parameters),
+						id: `xml-tool-call-text-${i}`
+					})
+				}
 				if (xmlToolCallsInText.length > 0) {
-					const firstCall = xmlToolCallsInText[0]
-					toolName = firstCall.toolName
-					toolParamsStr = JSON.stringify(firstCall.parameters)
-					toolId = 'xml-tool-call-text-1'
 					fullTextSoFar = stripXMLBlocks(fullTextSoFar)
-					console.log(`[sendLLMMessage] ✅ Extracted XML tool call from text: ${toolName}`, firstCall.parameters)
+					console.log(`[sendLLMMessage] ✅ Extracted ${xmlToolCallsInText.length} XML tool calls from text`)
 				}
 				
 				// 2. Check reasoning (Nemotron and other models sometimes put tools here)
-				if (!toolName && fullReasoningSoFar) {
+				if (toolCalls.length === 0 && fullReasoningSoFar) {
 					const xmlToolCallsInReasoning = extractXMLToolCalls(fullReasoningSoFar)
+					for (let i = 0; i < xmlToolCallsInReasoning.length; i++) {
+						const call = xmlToolCallsInReasoning[i]
+						toolCalls.push({
+							name: call.toolName,
+							paramsStr: JSON.stringify(call.parameters),
+							id: `xml-tool-call-reasoning-${i}`
+						})
+					}
 					if (xmlToolCallsInReasoning.length > 0) {
-						const firstCall = xmlToolCallsInReasoning[0]
-						toolName = firstCall.toolName
-						toolParamsStr = JSON.stringify(firstCall.parameters)
-						toolId = 'xml-tool-call-reasoning-1'
 						fullReasoningSoFar = stripXMLBlocks(fullReasoningSoFar)
-						console.log(`[sendLLMMessage] ✅ Extracted XML tool call from reasoning: ${toolName}`, firstCall.parameters)
+						console.log(`[sendLLMMessage] ✅ Extracted ${xmlToolCallsInReasoning.length} XML tool calls from reasoning`)
 					}
 				}
 			}
 
 			// Enhanced empty response detection for Ollama
-			const hasEmptyResponse = !fullTextSoFar && !fullReasoningSoFar && !toolName
-			const hasToolCallWithEmptyContent = toolName && !fullTextSoFar && !fullReasoningSoFar
+			const hasEmptyResponse = !fullTextSoFar && !fullReasoningSoFar && toolCalls.length === 0
 
 			if (hasEmptyResponse) {
 				console.log(`[sendLLMMessage] ❌ Empty response detected`)
-				console.log(`[sendLLMMessage] Diagnostic info:`)
-				console.log(`  - fullText: "${fullTextSoFar}" (${fullTextSoFar.length} chars)`)
-				console.log(`  - reasoning: "${fullReasoningSoFar}" (${fullReasoningSoFar.length} chars)`)
-				console.log(`  - toolName: "${toolName}"`)
-				console.log(`  - toolParams: "${toolParamsStr}" (${toolParamsStr.length} chars)`)
-				console.log(`  - Provider: ${providerName}`)
-				console.log(`  - Model: ${modelName}`)
-				console.log(`  - specialToolFormat: ${specialToolFormat}`)
-				console.log(`  - hasTools: ${hasTools}`)
-
-				// For Ollama models with tool calling, provide specific guidance
-				if (providerName === 'ollama' && hasTools) {
-					const modelLower = modelName.toLowerCase()
-					let specificGuidance = ''
-
-					// Model-specific guidance based on research
-					if (modelLower.includes('llama') && (modelLower.includes('3.2') || modelLower.includes('8b') || modelLower.includes('3b'))) {
-						specificGuidance = ' Smaller Llama models (3.2, 8B, 3B) often struggle with tool calling. Try using Llama 3.1 70B or Llama 3.3 for better results.'
-					} else if (modelLower.includes('gemma') && !modelLower.includes('tool')) {
-						specificGuidance = ' Gemma models may need the "gemma-tools" or "gemma2-tools" variant for reliable tool calling.'
-					} else if (modelLower.includes('qwen') && (modelLower.includes('0.5b') || modelLower.includes('1.5b'))) {
-						specificGuidance = ' Very small Qwen models are unreliable for tool calling. Try Qwen 2.5-coder:7b or Qwen 3 series.'
-					} else if (modelLower.includes('mistral')) {
-						specificGuidance = ' Mistral models may hang on tool calls. Ensure you\'re using a recent version with tool calling support.'
-					} else if (modelLower.includes('cloud') || modelLower.includes('kimi') || modelLower.includes('gpt-oss')) {
-						specificGuidance = ' Cloud/Kimi/GPT-OSS models often have strict protocol requirements or missing IDs. The system will attempt XML fallback.'
-					} else if (modelLower.includes('deepseek')) {
-						specificGuidance = ' DeepSeek models may require specific prompting or "thinking" mode handling. XML fallback is often more reliable.'
-					}
-
-					if (specialToolFormat === 'openai-style') {
-						console.warn(`[sendLLMMessage] ⚠️ Ollama native tool calling failed - model may not support it properly`)
-						onError({
-							message: `Ollama model "${modelName}" returned empty response with native tool calling.${specificGuidance}\n\nSuggestions:\n1. The model may be falling back to XML tool calling automatically\n2. Try a larger model (70B+ for complex tasks)\n3. Check Ollama logs for errors\n4. Ensure model is fully downloaded`,
-							fullError: null
-						})
-					} else {
-						console.warn(`[sendLLMMessage] ⚠️ Ollama XML tool calling returned empty response`)
-						onError({
-							message: `Ollama model "${modelName}" returned empty response with XML tool calling.${specificGuidance}\n\nThis may indicate:\n1. Model doesn't understand tool calling instructions\n2. Insufficient GPU/RAM resources\n3. Model needs to be updated\n\nTry a different model or check Ollama server logs.`,
-							fullError: null
-						})
-					}
-				} else {
-					// Generic empty response error for non-Ollama or non-tool cases
-					onError({ message: 'A-Coder: Response from model was empty.', fullError: null })
-				}
-			}
-			else if (hasToolCallWithEmptyContent && providerName === 'ollama') {
-				// This is actually EXPECTED behavior for successful tool calls
-				// When a tool is called, content field should be empty and tool_calls should be populated
-				console.log(`[sendLLMMessage] ℹ️ Tool call detected with empty content - this is expected behavior`)
-				console.log(`[sendLLMMessage] Tool: ${toolName}, Params length: ${toolParamsStr.length}`)
-
-				const toolCall = rawToolCallObjOfParamsStr(toolName, toolParamsStr, toolId, thoughtSignature)
-				const toolCallObj = toolCall ? { toolCall } : {}
-				const anthropicReasoning: AnthropicReasoning[] | null = fullReasoningSoFar ? [{ type: 'thinking', thinking: fullReasoningSoFar, signature: thoughtSignature }] : null
-				console.log(`[sendLLMMessage] Final message - text length: ${fullTextSoFar.length}, reasoning length: ${fullReasoningSoFar.length}, toolName: ${toolName}, hasToolCall: ${!!toolCall}`)
-				onFinalMessage({ fullText: fullTextSoFar, fullReasoning: fullReasoningSoFar, anthropicReasoning, ...toolCallObj, usage: finalUsage });
+				// ... (guiding messages for Ollama)
+				onError({ message: 'A-Coder: Response from model was empty.', fullError: null })
 			}
 			else {
-				const toolCall = rawToolCallObjOfParamsStr(toolName, toolParamsStr, toolId, thoughtSignature)
-				const toolCallObj = toolCall ? { toolCall } : {}
-				const anthropicReasoning: AnthropicReasoning[] | null = fullReasoningSoFar ? [{ type: 'thinking', thinking: fullReasoningSoFar, signature: thoughtSignature }] : null
-				console.log(`[sendLLMMessage] Final message - text length: ${fullTextSoFar.length}, reasoning length: ${fullReasoningSoFar.length}, toolName: ${toolName}, hasToolCall: ${!!toolCall}`)
+				const finalToolCalls = toolCalls
+					.filter(tc => !!tc && !!tc.name)
+					.map(tc => rawToolCallObjOfParamsStr(tc.name, tc.paramsStr, tc.id, tc.thoughtSignature))
+					.filter(tc => !!tc) as RawToolCallObj[]
+				const toolCallObj = finalToolCalls.length > 0 ? { toolCalls: finalToolCalls } : {}
+				
+				const firstValidToolCall = toolCalls.find(tc => !!tc);
+				const anthropicReasoning: AnthropicReasoning[] | null = fullReasoningSoFar ? [{ type: 'thinking', thinking: fullReasoningSoFar, signature: firstValidToolCall?.thoughtSignature || '' }] : null
+				
+				console.log(`[sendLLMMessage] Final message - text length: ${fullTextSoFar.length}, reasoning length: ${fullReasoningSoFar.length}, toolCalls: ${finalToolCalls.length}`)
 				onFinalMessage({ fullText: fullTextSoFar, fullReasoning: fullReasoningSoFar, anthropicReasoning, ...toolCallObj, usage: finalUsage });
 			}
 		})
@@ -767,10 +708,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 						// Reset state for retry
 						fullTextSoFar = ''
 						fullReasoningSoFar = ''
-						toolName = ''
-						toolParamsStr = ''
-						toolId = ''
-						thoughtSignature = ''
+						toolCalls = []
 
 						const { stripXMLBlocks } = await import('../../common/helpers/extractXMLTools.js')
 
@@ -792,7 +730,9 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 								applyToolCall(toolDelta, { isFinal: false })
 							}
 							if (choice.finish_reason === 'tool_calls') {
-								applyToolCall({ function: { name: toolName, arguments: toolParamsStr }, id: toolId, index: 0 }, { isFinal: true })
+								for (let i = 0; i < toolCalls.length; i++) {
+									applyToolCall({ function: { name: toolCalls[i].name, arguments: toolCalls[i].paramsStr }, id: toolCalls[i].id, index: i }, { isFinal: true })
+								}
 							}
 
 							if (nameOfReasoningFieldInDelta && (!reasoningInfo || reasoningInfo.isReasoningEnabled)) {
@@ -805,7 +745,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 							onText({
 								fullText: displayText,
 								fullReasoning: fullReasoningSoFar,
-								toolCall: !toolName ? undefined : { name: toolName, rawParams: {}, isDone: false, doneParams: [], id: toolId },
+								toolCalls: toolCalls.length === 0 ? undefined : mapToRawToolCalls(toolCalls),
 								_rawTextBeforeStripping: !specialToolFormat ? fullTextSoFar : undefined,
 							})
 						}
@@ -813,31 +753,46 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 						console.log(`[sendLLMMessage] Retry stream completed. Chunks: ${chunkCount}`)
 
 						// Fallback: If no native tool call detected, check for XML tool calls in both content and reasoning
-						if (!toolName && (fullTextSoFar || fullReasoningSoFar)) {
+						if (toolCalls.length === 0 && (fullTextSoFar || fullReasoningSoFar)) {
 							const { extractXMLToolCalls, stripXMLBlocks } = await import('../../common/helpers/extractXMLTools.js')
 							
 							const xmlToolCallsInText = extractXMLToolCalls(fullTextSoFar)
+							for (let i = 0; i < xmlToolCallsInText.length; i++) {
+								const call = xmlToolCallsInText[i]
+								toolCalls.push({
+									name: call.toolName,
+									paramsStr: JSON.stringify(call.parameters),
+									id: `xml-tool-call-text-retry-${i}`
+								})
+							}
 							if (xmlToolCallsInText.length > 0) {
-								const firstCall = xmlToolCallsInText[0]
-								toolName = firstCall.toolName
-								toolParamsStr = JSON.stringify(firstCall.parameters)
-								toolId = 'xml-tool-call-text-retry-1'
 								fullTextSoFar = stripXMLBlocks(fullTextSoFar)
-							} else if (fullReasoningSoFar) {
+							}
+							
+							if (toolCalls.length === 0 && fullReasoningSoFar) {
 								const xmlToolCallsInReasoning = extractXMLToolCalls(fullReasoningSoFar)
+								for (let i = 0; i < xmlToolCallsInReasoning.length; i++) {
+									const call = xmlToolCallsInReasoning[i]
+									toolCalls.push({
+										name: call.toolName,
+										paramsStr: JSON.stringify(call.parameters),
+										id: `xml-tool-call-reasoning-retry-${i}`
+									})
+								}
 								if (xmlToolCallsInReasoning.length > 0) {
-									const firstCall = xmlToolCallsInReasoning[0]
-									toolName = firstCall.toolName
-									toolParamsStr = JSON.stringify(firstCall.parameters)
-									toolId = 'xml-tool-call-reasoning-retry-1'
 									fullReasoningSoFar = stripXMLBlocks(fullReasoningSoFar)
 								}
 							}
 						}
 
-						const toolCall = rawToolCallObjOfParamsStr(toolName, toolParamsStr, toolId, thoughtSignature)
-						const toolCallObj = toolCall ? { toolCall } : {}
-						const anthropicReasoning: AnthropicReasoning[] | null = fullReasoningSoFar ? [{ type: 'thinking', thinking: fullReasoningSoFar, signature: thoughtSignature }] : null
+						const finalToolCalls = toolCalls
+							.filter(tc => !!tc && !!tc.name)
+							.map(tc => rawToolCallObjOfParamsStr(tc.name, tc.paramsStr, tc.id, tc.thoughtSignature))
+							.filter(tc => !!tc) as RawToolCallObj[]
+						const toolCallObj = finalToolCalls.length > 0 ? { toolCalls: finalToolCalls } : {}
+						
+						const firstValidToolCall = toolCalls.find(tc => !!tc);
+						const anthropicReasoning: AnthropicReasoning[] | null = fullReasoningSoFar ? [{ type: 'thinking', thinking: fullReasoningSoFar, signature: firstValidToolCall?.thoughtSignature || '' }] : null
 						onFinalMessage({ fullText: fullTextSoFar, fullReasoning: fullReasoningSoFar, anthropicReasoning, ...toolCallObj })
 					})
 					.catch(retryError => {
@@ -968,15 +923,22 @@ const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessag
 	let fullText = ''
 	let fullReasoning = ''
 
-	let fullToolName = ''
-	let fullToolParams = ''
+	let toolCallsAccumulator: { name: string, id: string, paramsStr: string }[] = []
 
 
 	const runOnText = () => {
 		onText({
 			fullText,
 			fullReasoning,
-			toolCall: !fullToolName ? undefined : { name: fullToolName, rawParams: {}, isDone: false, doneParams: [], id: 'dummy' },
+			toolCalls: toolCallsAccumulator.length === 0 ? undefined : toolCallsAccumulator
+				.filter(tc => !!tc)
+				.map(tc => ({
+					name: tc.name as any,
+					rawParams: parsePartialJSON(tc.paramsStr),
+					isDone: false,
+					doneParams: [],
+					id: tc.id || generateUuid()
+				})),
 		})
 	}
 	// there are no events for tool_use, it comes in at the end
@@ -1000,7 +962,8 @@ const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessag
 				runOnText()
 			}
 			else if (e.content_block.type === 'tool_use') {
-				fullToolName += e.content_block.name ?? '' // anthropic gives us the tool name in the start block
+				const index = e.index
+				toolCallsAccumulator[index] = { name: e.content_block.name ?? '', id: e.content_block.id, paramsStr: '' }
 				runOnText()
 			}
 		}
@@ -1016,7 +979,10 @@ const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessag
 				runOnText()
 			}
 			else if (e.delta.type === 'input_json_delta') { // tool use
-				fullToolParams += e.delta.partial_json ?? '' // anthropic gives us the partial delta (string) here - https://docs.anthropic.com/en/api/messages-streaming
+				const index = e.index
+				if (toolCallsAccumulator[index]) {
+					toolCallsAccumulator[index].paramsStr += e.delta.partial_json ?? ''
+				}
 				runOnText()
 			}
 		}
@@ -1025,11 +991,9 @@ const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessag
 	// on done - (or when error/fail) - this is called AFTER last streamEvent
 	stream.on('finalMessage', (response) => {
 		const anthropicReasoning = response.content.filter(c => c.type === 'thinking' || c.type === 'redacted_thinking')
-		const tools = response.content.filter(c => c.type === 'tool_use')
-		// console.log('TOOLS!!!!!!', JSON.stringify(tools, null, 2))
-		// console.log('TOOLS!!!!!!', JSON.stringify(response, null, 2))
-		const toolCall = tools[0] && rawToolCallObjOfAnthropicParams(tools[0])
-		const toolCallObj = toolCall ? { toolCall } : {}
+		const tools = response.content.filter(c => c.type === 'tool_use') as Anthropic.Messages.ToolUseBlock[]
+		const finalToolCalls = tools.map(t => rawToolCallObjOfAnthropicParams(t)).filter(tc => !!tc) as RawToolCallObj[]
+		const toolCallObj = finalToolCalls.length > 0 ? { toolCalls: finalToolCalls } : {}
 
 		onFinalMessage({ fullText, fullReasoning, anthropicReasoning, ...toolCallObj })
 	})
@@ -1309,10 +1273,7 @@ const sendGeminiChat = async ({
 	let fullReasoningSoFar = ''
 	let fullTextSoFar = ''
 
-	let toolName = ''
-	let toolParamsStr = ''
-	let toolId = ''
-	let thoughtSignature = ''
+	let toolCallsAccumulator: { name: string, id: string, paramsStr: string, thoughtSignature?: string }[] = []
 
 
 	genAI.models.generateContentStream({
@@ -1346,12 +1307,19 @@ const sendGeminiChat = async ({
 				// tool call
 				const functionCalls = chunk.functionCalls
 				if (functionCalls && functionCalls.length > 0) {
-					const functionCall = functionCalls[0] // Get the first function call
-					toolName = functionCall.name ?? ''
-					toolParamsStr = JSON.stringify(functionCall.args ?? {})
-					toolId = functionCall.id ?? ''
-					if ((functionCall as any).thought_signature) {
-						thoughtSignature = (functionCall as any).thought_signature
+					for (const functionCall of functionCalls) {
+						const index = toolCallsAccumulator.findIndex(tc => tc.id === functionCall.id)
+						if (index === -1) {
+							toolCallsAccumulator.push({
+								name: functionCall.name ?? '',
+								id: functionCall.id ?? '',
+								paramsStr: JSON.stringify(functionCall.args ?? {}),
+								thoughtSignature: (functionCall as any).thought_signature
+							})
+						} else {
+							// Update existing call (though Gemini usually sends full calls)
+							toolCallsAccumulator[index].paramsStr = JSON.stringify(functionCall.args ?? {})
+						}
 					}
 				}
 
@@ -1359,18 +1327,23 @@ const sendGeminiChat = async ({
 				onText({
 					fullText: fullTextSoFar,
 					fullReasoning: fullReasoningSoFar,
-					toolCall: !toolName ? undefined : { name: toolName, rawParams: {}, isDone: false, doneParams: [], id: toolId },
+					toolCalls: toolCallsAccumulator.length === 0 ? undefined : toolCallsAccumulator.map(tc => ({
+						name: tc.name as any,
+						rawParams: parsePartialJSON(tc.paramsStr),
+						isDone: false,
+						doneParams: [],
+						id: tc.id || generateUuid()
+					})),
 				})
 			}
 
 			// on final
-			if (!fullTextSoFar && !fullReasoningSoFar && !toolName) {
+			if (!fullTextSoFar && !fullReasoningSoFar && toolCallsAccumulator.length === 0) {
 				onError({ message: 'A-Coder: Response from model was empty.', fullError: null })
 			} else {
-				if (!toolId) toolId = generateUuid() // ids are empty, but other providers might expect an id
-				const toolCall = rawToolCallObjOfParamsStr(toolName, toolParamsStr, toolId, thoughtSignature)
-				const toolCallObj = toolCall ? { toolCall } : {}
-				const anthropicReasoning: AnthropicReasoning[] | null = fullReasoningSoFar ? [{ type: 'thinking', thinking: fullReasoningSoFar, signature: thoughtSignature }] : null
+				const finalToolCalls = toolCallsAccumulator.map(tc => rawToolCallObjOfParamsStr(tc.name, tc.paramsStr, tc.id || generateUuid(), tc.thoughtSignature)).filter(tc => !!tc) as RawToolCallObj[]
+				const toolCallObj = finalToolCalls.length > 0 ? { toolCalls: finalToolCalls } : {}
+				const anthropicReasoning: AnthropicReasoning[] | null = fullReasoningSoFar ? [{ type: 'thinking', thinking: fullReasoningSoFar, signature: toolCallsAccumulator[0]?.thoughtSignature || '' }] : null
 				onFinalMessage({ fullText: fullTextSoFar, fullReasoning: fullReasoningSoFar, anthropicReasoning, ...toolCallObj });
 			}
 		})

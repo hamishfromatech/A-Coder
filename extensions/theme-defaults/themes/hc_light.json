@@ -571,6 +571,7 @@
 	"colors": {
 		"actionBar.toggledBackground": "#dddddd",
 		"statusBarItem.remoteBackground": "#FFFFFF",
-		"statusBarItem.remoteForeground": "#000000"
+		"statusBarItem.remoteForeground": "#000000",
+		"void.accent": "#005FB8"
 	}
 }

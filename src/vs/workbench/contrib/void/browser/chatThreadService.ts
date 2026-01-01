@@ -61,6 +61,9 @@ const splitThinkTags = (input: string): { displayText: string; reasoningText: st
 		let currentText = text
 		let lastIndex = 0
 
+		// Optimization: check if tag exists at all before doing complex work
+		if (!text.includes(openTag)) return text;
+
 		while (true) {
 			const openIdx = currentText.indexOf(openTag, lastIndex)
 			if (openIdx === -1) break
@@ -99,8 +102,15 @@ const mergeReasoningContent = (existing?: string | null, fromTags?: string | nul
 	const secondary = (fromTags ?? '').trim()
 	if (!primary) return secondary
 	if (!secondary) return primary
-	if (primary.includes(secondary)) return primary
-	if (secondary.includes(primary)) return secondary
+	
+	// Optimization: skip expensive includes if strings are very different in length
+	// or if they are obviously different
+	if (primary.length >= secondary.length) {
+		if (primary.includes(secondary)) return primary
+	} else {
+		if (secondary.includes(primary)) return secondary
+	}
+	
 	return `${primary}\n\n${secondary}`.trim()
 }
 
@@ -257,7 +267,7 @@ export type ThreadStreamState = {
 		llmInfo: {
 			displayContentSoFar: string;
 			reasoningSoFar: string;
-			toolCallSoFar: RawToolCallObj | null;
+			toolCallsSoFar: RawToolCallObj[] | null;
 			_rawTextBeforeStripping?: string; // For XML tool call detection in UI
 			reactPhase?: ReActPhase | null; // Current ReAct phase for UI
 		};
@@ -374,9 +384,9 @@ export interface IChatThreadService {
 	addUserMessageAndStreamResponse({ userMessage, threadId, images, selections }: { userMessage: string, threadId: string, images?: ImageAttachment[], selections?: StagingSelectionItem[] }): Promise<void>;
 
 	// approve/reject/skip
-	approveLatestToolRequest(threadId: string): void;
-	rejectLatestToolRequest(threadId: string): void;
-	skipLatestToolRequest(threadId: string): void;
+	approveLatestToolRequest(threadId: string, toolId?: string): void;
+	rejectLatestToolRequest(threadId: string, toolId?: string): void;
+	skipLatestToolRequest(threadId: string, toolId?: string): void;
 
 	// jump to history
 	jumpToCheckpointBeforeMessageIdx(opts: { threadId: string, messageIdx: number, jumpToUserModified: boolean }): void;
@@ -729,52 +739,68 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		this._addMessageToThread(threadId, tool)
 	}
 
-	approveLatestToolRequest(threadId: string) {
+	approveLatestToolRequest(threadId: string, toolId?: string) {
 		const thread = this.state.allThreads[threadId]
 		if (!thread) return // should never happen
 
-		const lastMsg = thread.messages[thread.messages.length - 1]
-		if (!(lastMsg.role === 'tool' && lastMsg.type === 'tool_request')) return // should never happen
+		let toolMsgIdx = -1;
+		if (toolId) {
+			toolMsgIdx = findLastIdx(thread.messages, m => m.role === 'tool' && m.type === 'tool_request' && m.id === toolId);
+		} else {
+			toolMsgIdx = findLastIdx(thread.messages, m => m.role === 'tool' && m.type === 'tool_request');
+		}
 
-		const callThisToolFirst: ToolMessage<ToolName> = lastMsg
+		if (toolMsgIdx === -1) return;
+
+		const toolMsg = thread.messages[toolMsgIdx] as ToolMessage<ToolName> & { type: 'tool_request' };
 
 		this._wrapRunAgentToNotify(
-			this._runChatAgent({ callThisToolFirst, threadId, ...this._currentModelSelectionProps() })
+			this._runChatAgent({ callThisToolFirst: toolMsg, threadId, ...this._currentModelSelectionProps() })
 			, threadId
 		)
 	}
-	rejectLatestToolRequest(threadId: string) {
+	rejectLatestToolRequest(threadId: string, toolId?: string) {
 		const thread = this.state.allThreads[threadId]
 		if (!thread) return // should never happen
 
-		const lastMsg = thread.messages[thread.messages.length - 1]
-
-		let params: ToolCallParams<ToolName>
-		if (lastMsg.role === 'tool' && lastMsg.type !== 'invalid_params') {
-			params = lastMsg.params
+		let toolMsgIdx = -1;
+		if (toolId) {
+			toolMsgIdx = findLastIdx(thread.messages, m => m.role === 'tool' && m.type === 'tool_request' && m.id === toolId);
+		} else {
+			toolMsgIdx = findLastIdx(thread.messages, m => m.role === 'tool' && m.type === 'tool_request');
 		}
-		else return
 
-		const { name, id, rawParams, mcpServerName } = lastMsg
+		if (toolMsgIdx === -1) return;
+
+		const toolMsg = thread.messages[toolMsgIdx] as ToolMessage<ToolName> & { type: 'tool_request' };
+
+		let params: ToolCallParams<ToolName> = toolMsg.params
+
+		const { name, id, rawParams, mcpServerName } = toolMsg
 
 		const errorMessage = this.toolErrMsgs.rejected
 		this._updateLatestTool(threadId, { role: 'tool', type: 'rejected', params: params, name: name, content: errorMessage, result: null, id, rawParams, mcpServerName })
 		this._setStreamState(threadId, undefined)
 	}
 
-	skipLatestToolRequest(threadId: string) {
+	skipLatestToolRequest(threadId: string, toolId?: string) {
 		const thread = this.state.allThreads[threadId]
 		if (!thread) return // should never happen
 
-		const lastMsg = thread.messages[thread.messages.length - 1]
-
-		let params: ToolCallParams<ToolName>
-		if (lastMsg.role === 'tool' && lastMsg.type !== 'invalid_params') {
-			params = lastMsg.params
+		let toolMsgIdx = -1;
+		if (toolId) {
+			toolMsgIdx = findLastIdx(thread.messages, m => m.role === 'tool' && m.type === 'tool_request' && m.id === toolId);
+		} else {
+			toolMsgIdx = findLastIdx(thread.messages, m => m.role === 'tool' && m.type === 'tool_request');
 		}
-		else return
 
-		const { name, id, rawParams, mcpServerName } = lastMsg
+		if (toolMsgIdx === -1) return;
+
+		const toolMsg = thread.messages[toolMsgIdx] as ToolMessage<ToolName> & { type: 'tool_request' };
+
+		let params: ToolCallParams<ToolName> = toolMsg.params
+
+		const { name, id, rawParams, mcpServerName } = toolMsg
 
 		// Mark as skipped (similar to rejected but with different message)
 		const skipMessage = 'Tool skipped by user - continuing with next action'
@@ -797,9 +823,13 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 		// add assistant message
 		if (this.streamState[threadId]?.isRunning === 'LLM') {
-			const { displayContentSoFar, reasoningSoFar, toolCallSoFar } = this.streamState[threadId].llmInfo
+			const { displayContentSoFar, reasoningSoFar, toolCallsSoFar } = this.streamState[threadId].llmInfo
 			this._addMessageToThread(threadId, { role: 'assistant', displayContent: displayContentSoFar, reasoning: reasoningSoFar, anthropicReasoning: null })
-			if (toolCallSoFar) this._addMessageToThread(threadId, { role: 'interrupted_streaming_tool', name: toolCallSoFar.name, mcpServerName: this._computeMCPServerOfToolName(toolCallSoFar.name) })
+			if (toolCallsSoFar) {
+				for (const tc of toolCallsSoFar) {
+					this._addMessageToThread(threadId, { role: 'interrupted_streaming_tool', name: tc.name, mcpServerName: this._computeMCPServerOfToolName(tc.name) })
+				}
+			}
 		}
 		// add tool that's running
 		else if (this.streamState[threadId]?.isRunning === 'tool') {
@@ -1118,6 +1148,9 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 			let currentReActPhase: ReActPhase | null = null;
 			let lastParsedLength = 0;
 
+			let lastUpdateTime = 0;
+			const UI_UPDATE_THROTTLE_MS = 60; // ~16 FPS - smooth enough for reading, avoids renderer lag
+
 			let shouldRetryLLM = true
 			let nAttempts = 0
 			while (shouldRetryLLM) {
@@ -1125,7 +1158,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				nAttempts += 1
 
 				type ResTypes =
-					| { type: 'llmDone', toolCall?: RawToolCallObj, info: { fullText: string, fullReasoning: string, anthropicReasoning: AnthropicReasoning[] | null }, usage?: { promptTokens: number; completionTokens: number; } }
+					| { type: 'llmDone', toolCalls?: RawToolCallObj[], info: { fullText: string, fullReasoning: string, anthropicReasoning: AnthropicReasoning[] | null }, usage?: { promptTokens: number; completionTokens: number; } }
 					| { type: 'llmError', error?: { message: string; fullError: Error | null; } }
 					| { type: 'llmAborted' }
 
@@ -1146,7 +1179,13 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 					overridesOfModel,
 					logging: { loggingName: `Chat - ${chatMode}`, loggingExtras: { threadId, nMessagesSent, chatMode } },
 					separateSystemMessage: separateSystemMessage,
-					onText: ({ fullText, fullReasoning, toolCall, _rawTextBeforeStripping }) => {
+					onText: (params) => {
+						let { fullText, fullReasoning, toolCalls, _rawTextBeforeStripping } = params;
+						// Backward compatibility for Main process running old code
+						if (!toolCalls && (params as any).toolCall) {
+							toolCalls = [(params as any).toolCall];
+						}
+
 						const parsed = partitionReasoningContent(fullText, fullReasoning)
 
 						// Parse ReAct phases for enhanced UI detection
@@ -1158,19 +1197,11 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 						const reactResult = reactParser.parseReAct(newChunk);
 						if (reactResult) {
 							currentReActPhase = reactResult.phase;
-							console.log(`[chatThreadService] ReAct phase detected: ${reactResult.phase.type}`, {
-								content: reactResult.phase.content,
-								hasToolCall: !!reactResult.toolCall,
-								toolName: reactResult.toolCall?.name,
-								isComplete: reactResult.isComplete
-							});
 						}
 
-						// Detect repetition: ONLY check text content, NOT tool calls
-						// Tool calls can legitimately repeat (e.g., reading same file multiple times)
-						// Also skip if XML tool call is in progress (detected in raw text before stripping)
+						// Detect repetition
 						const hasXMLToolCallInProgress = _rawTextBeforeStripping?.includes('<function_calls>');
-						if (!toolCall && !hasXMLToolCallInProgress) {
+						if (!toolCalls && !hasXMLToolCallInProgress) {
 							const recentText = parsed.displayText.slice(-50);
 							if (recentText.length > 10) {
 								lastChunks.push(recentText);
@@ -1178,7 +1209,6 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 									lastChunks.shift();
 								}
 
-								// Count how many times this chunk appears
 								const repetitionCount = lastChunks.filter(chunk => chunk === recentText).length;
 								if (repetitionCount >= REPETITION_THRESHOLD) {
 									console.warn('[chatThreadService] Text repetition detected, aborting LLM...');
@@ -1189,32 +1219,48 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 								}
 							}
 						} else {
-							// Clear repetition tracking when tool call starts
 							lastChunks = [];
 						}
 
-						// Use tool call from ReAct parser if available, otherwise use native tool call
-						// Note: parseReAct already handles XML parsing internally, no need to call parse() separately
-						let parsedToolCall = toolCall;
-						if (!parsedToolCall && reactResult?.toolCall) {
-							parsedToolCall = reactResult.toolCall;
+						// Use tool calls from ReAct parser if available, otherwise use native tool calls
+						let parsedToolCalls = toolCalls;
+						if (!parsedToolCalls && reactResult?.toolCalls) {
+							parsedToolCalls = reactResult.toolCalls;
 						}
+
+						// Throttle UI updates
+						const now = Date.now();
+						const hasNewNativeToolCall = !!toolCalls && (toolCalls.length !== (this.streamState[threadId]?.llmInfo?.toolCallsSoFar?.length ?? 0));
+						const hasUpdatedXMLToolCall = !!reactResult?.toolCalls && (JSON.stringify(reactResult.toolCalls) !== JSON.stringify(this.streamState[threadId]?.llmInfo?.toolCallsSoFar));
+						
+						const isCriticalUpdate = hasNewNativeToolCall || hasUpdatedXMLToolCall || reactResult?.isComplete;
+						
+						if (now - lastUpdateTime < UI_UPDATE_THROTTLE_MS && !isCriticalUpdate) {
+							return;
+						}
+						lastUpdateTime = now;
 
 						this._setStreamState(threadId, {
 							isRunning: 'LLM',
 							llmInfo: {
 								displayContentSoFar: parsed.displayText,
 								reasoningSoFar: parsed.reasoningText,
-								toolCallSoFar: parsedToolCall ?? null,
-								_rawTextBeforeStripping, // For XML tool call detection in UI
-								reactPhase: currentReActPhase, // Current ReAct phase for UI
+								toolCallsSoFar: parsedToolCalls ?? null,
+								_rawTextBeforeStripping,
+								reactPhase: currentReActPhase,
 							},
 							interrupt: Promise.resolve(() => { if (llmCancelToken) this._llmMessageService.abort(llmCancelToken) }),
-							tokenUsage, // Preserve token usage during streaming
+							tokenUsage,
 						})
 					},
-					onFinalMessage: async ({ fullText, fullReasoning, toolCall, anthropicReasoning, usage }) => {
-						console.log(`[chatThreadService] onFinalMessage received - fullReasoning length: ${fullReasoning?.length ?? 0}`)
+					onFinalMessage: async (params) => {
+						let { fullText, fullReasoning, toolCalls, anthropicReasoning, usage } = params;
+						// Backward compatibility for Main process running old code
+						if (!toolCalls && (params as any).toolCall) {
+							toolCalls = [(params as any).toolCall];
+						}
+
+						console.log(`[chatThreadService] onFinalMessage received - fullReasoning length: ${fullReasoning?.length ?? 0}, toolCalls: ${toolCalls?.length ?? 0}`)
 						if (usage) {
 							console.log(`[chatThreadService] Token usage received:`, usage);
 							// Update token ratio for adaptive counting
@@ -1223,15 +1269,13 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 								const fullModelName = `${providerName}:${modelName}`;
 								// tokenUsage.used is our estimate, usage.promptTokens is actual
 								// We pass both so the service can calculate and update the ratio
-								// We access the private service via casting or public method if available
-								// Since it's private in the constructor, we might need to expose it or use a public method
-								// Assuming we can access it or it's public:
-								(this._convertToLLMMessagesService as any).tokenCountingService.updateTokenRatio(fullModelName, tokenUsage.used, usage.promptTokens);
+								// We access the service via the public method
+								this._convertToLLMMessagesService.updateTokenRatio(fullModelName, tokenUsage.used, usage.promptTokens);
 							}
 						}
 						const parsed = partitionReasoningContent(fullText, fullReasoning)
 						console.log(`[chatThreadService] After partitioning - reasoningText length: ${parsed.reasoningText?.length ?? 0}`)
-						resMessageIsDonePromise({ type: 'llmDone', toolCall, info: { fullText: parsed.displayText, fullReasoning: parsed.reasoningText, anthropicReasoning }, usage }) // resolve with tool calls
+						resMessageIsDonePromise({ type: 'llmDone', toolCalls, info: { fullText: parsed.displayText, fullReasoning: parsed.reasoningText, anthropicReasoning }, usage }) // resolve with tool calls
 					},
 					onError: async (error) => {
 						resMessageIsDonePromise({ type: 'llmError', error: error })
@@ -1249,7 +1293,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 					break
 				}
 
-				this._setStreamState(threadId, { isRunning: 'LLM', llmInfo: { displayContentSoFar: '', reasoningSoFar: '', toolCallSoFar: null, reactPhase: null }, interrupt: Promise.resolve(() => this._llmMessageService.abort(llmCancelToken)) })
+				this._setStreamState(threadId, { isRunning: 'LLM', llmInfo: { displayContentSoFar: '', reasoningSoFar: '', toolCallsSoFar: null, reactPhase: null }, interrupt: Promise.resolve(() => this._llmMessageService.abort(llmCancelToken)) })
 				const llmRes = await messageIsDonePromise // wait for message to complete
 
 				// if something else started running in the meantime
@@ -1278,7 +1322,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 						// Since we can't get actual usage on error, we just blindly increase the multiplier
 						// This tells the token service "whatever you thought the count was, it's actually 1.5x higher"
 						// We pass dummy values (estimated=1000, actual=1500) to force a 1.5 ratio update
-						(this._convertToLLMMessagesService as any).tokenCountingService.updateTokenRatio(fullModelName, 1000, 1500);
+						this._convertToLLMMessagesService.updateTokenRatio(fullModelName, 1000, 1500);
 						console.log(`[chatThreadService] Bumped token ratio for ${fullModelName} due to context error`);
 						
 						shouldRetryLLM = true;
@@ -1329,9 +1373,13 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 					// error, but too many attempts
 					else {
 						const { error } = llmRes
-						const { displayContentSoFar, reasoningSoFar, toolCallSoFar } = this.streamState[threadId].llmInfo
+						const { displayContentSoFar, reasoningSoFar, toolCallsSoFar } = this.streamState[threadId].llmInfo
 						this._addMessageToThread(threadId, { role: 'assistant', displayContent: displayContentSoFar, reasoning: reasoningSoFar, anthropicReasoning: null })
-						if (toolCallSoFar) this._addMessageToThread(threadId, { role: 'interrupted_streaming_tool', name: toolCallSoFar.name, mcpServerName: this._computeMCPServerOfToolName(toolCallSoFar.name) })
+						if (toolCallsSoFar) {
+							for (const tc of toolCallsSoFar) {
+								this._addMessageToThread(threadId, { role: 'interrupted_streaming_tool', name: tc.name, mcpServerName: this._computeMCPServerOfToolName(tc.name) })
+							}
+						}
 
 						this._setStreamState(threadId, { isRunning: undefined, error })
 						return
@@ -1339,11 +1387,11 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				}
 
 				// llm res success
-				const { toolCall, info } = llmRes
+				const { toolCalls, info } = llmRes
 
 									const responseLog = JSON.stringify({
-										hasToolCall: !!toolCall,
-										toolName: toolCall?.name,
+										hasToolCalls: !!toolCalls && toolCalls.length > 0,
+										toolCallsCount: toolCalls?.length ?? 0,
 										fullText: info.fullText,
 										reasoning: info.fullReasoning
 									});
@@ -1352,7 +1400,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				// Note: Tool calls with empty content are valid (especially for Ollama)
 				// Also treat "(empty message)" placeholder as empty
 				const textContent = info.fullText?.trim() || ''
-				const isEmptyResponse = (textContent.length === 0 || textContent === '(empty message)') && !toolCall && !info.fullReasoning && (!info.anthropicReasoning || info.anthropicReasoning.length === 0)
+				const isEmptyResponse = (textContent.length === 0 || textContent === '(empty message)') && (!toolCalls || toolCalls.length === 0) && !info.fullReasoning && (!info.anthropicReasoning || info.anthropicReasoning.length === 0)
 				if (isEmptyResponse) {
 					// In both modes, retry with delay if we haven't exhausted attempts
 					if (nAttempts < CHAT_RETRIES) {
@@ -1419,24 +1467,36 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 				this._setStreamState(threadId, { isRunning: 'idle', interrupt: 'not_needed' }) // just decorative for clarity
 
-				// call tool if there is one
-				if (toolCall) {
+				// call tool(s) if there are any
+				if (toolCalls && toolCalls.length > 0) {
 					const mcpTools = this._mcpService.getMCPTools()
-					console.log(`[chatThreadService] LLM called tool: ${toolCall.name}`)
-					const paramsStr = JSON.stringify(toolCall.rawParams);
-					console.log(`[chatThreadService] Tool call params:`, paramsStr.length > 1000 ? paramsStr.substring(0, 1000) + '...' : paramsStr)
-					console.log(`[chatThreadService] Available MCP tools:`, mcpTools?.map(t => t.name))
-					const mcpTool = mcpTools?.find(t => t.name === toolCall.name)
-					console.log(`[chatThreadService] Found MCP tool:`, mcpTool ? `${mcpTool.name} on server ${mcpTool.mcpServerName}` : 'NOT FOUND')
+					console.log(`[chatThreadService] LLM called ${toolCalls.length} tool(s)`)
 
-					const { awaitingUserApproval, interrupted } = await this._runToolCall(threadId, toolCall.name, toolCall.id, mcpTool?.mcpServerName, { preapproved: false, unvalidatedToolParams: toolCall.rawParams, thought_signature: toolCall.thought_signature })
-					if (interrupted) {
-						this._setStreamState(threadId, undefined)
-						return
+					let anyToolRan = false;
+
+					for (const toolCall of toolCalls) {
+						console.log(`[chatThreadService] LLM calling tool: ${toolCall.name}`)
+						const paramsStr = JSON.stringify(toolCall.rawParams);
+						console.log(`[chatThreadService] Tool call params:`, paramsStr.length > 1000 ? paramsStr.substring(0, 1000) + '...' : paramsStr)
+						const mcpTool = mcpTools?.find(t => t.name === toolCall.name)
+						
+						const { awaitingUserApproval, interrupted } = await this._runToolCall(threadId, toolCall.name, toolCall.id, mcpTool?.mcpServerName, { preapproved: false, unvalidatedToolParams: toolCall.rawParams, thought_signature: toolCall.thought_signature })
+						if (interrupted) {
+							this._setStreamState(threadId, undefined)
+							return
+						}
+						
+						if (awaitingUserApproval) {
+							isRunningWhenEnd = 'awaiting_user';
+							shouldSendAnotherMessage = false;
+							break; // STOP here, wait for user
+						} else {
+							anyToolRan = true;
+						}
 					}
-					if (awaitingUserApproval) { isRunningWhenEnd = 'awaiting_user' }
-					else {
-						shouldSendAnotherMessage = true
+
+					if (!isRunningWhenEnd && anyToolRan) {
+						shouldSendAnotherMessage = true;
 					}
 
 					this._setStreamState(threadId, { isRunning: 'idle', interrupt: 'not_needed' }) // just decorative, for clarity

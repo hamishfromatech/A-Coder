@@ -22,7 +22,7 @@ import {
 	WrapperProps
 } from './ToolResultHelpers.js';
 
-export const TerminalCommandApproval = ({ command, cwd, threadId }: { command: string, cwd?: string | null, threadId: string }) => {
+export const TerminalCommandApproval = ({ command, cwd, threadId, toolId }: { command: string, cwd?: string | null, threadId: string, toolId: string }) => {
 	const accessor = useAccessor()
 	const chatThreadsService = accessor.get('IChatThreadService')
 	const metricsService = accessor.get('IMetricsService')
@@ -35,21 +35,21 @@ export const TerminalCommandApproval = ({ command, cwd, threadId }: { command: s
 		: cwd || '~'
 
 	const onRun = useCallback(() => {
-		try { chatThreadsService.approveLatestToolRequest(threadId); metricsService.capture('Tool Request Accepted', { tool: 'run_command' }); }
+		try { chatThreadsService.approveLatestToolRequest(threadId, toolId); metricsService.capture('Tool Request Accepted', { tool: 'run_command' }); }
 		catch (e) { console.error('Error while approving command:', e) }
-	}, [chatThreadsService, metricsService, threadId])
+	}, [chatThreadsService, metricsService, threadId, toolId])
 
 	const onSkip = useCallback(() => {
-		try { chatThreadsService.skipLatestToolRequest(threadId); metricsService.capture('Tool Request Skipped', { tool: 'run_command' }); }
+		try { chatThreadsService.skipLatestToolRequest(threadId, toolId); metricsService.capture('Tool Request Skipped', { tool: 'run_command' }); }
 		catch (e) { console.error('Error while skipping command:', e) }
-	}, [chatThreadsService, metricsService, threadId])
+	}, [chatThreadsService, metricsService, threadId, toolId])
 
 	const onCopy = useCallback(() => { navigator.clipboard.writeText(command) }, [command])
 
 	const onCancel = useCallback(() => {
-		try { chatThreadsService.rejectLatestToolRequest(threadId); metricsService.capture('Tool Request Rejected', { tool: 'run_command' }); }
+		try { chatThreadsService.rejectLatestToolRequest(threadId, toolId); metricsService.capture('Tool Request Rejected', { tool: 'run_command' }); }
 		catch (e) { console.error('Error while rejecting command:', e) }
-	}, [chatThreadsService, metricsService, threadId])
+	}, [chatThreadsService, metricsService, threadId, toolId])
 
 	return (
 		<div className="rounded-xl overflow-hidden border border-void-border-2 bg-void-bg-4 shadow-xl my-3 mx-1 animate-in fade-in slide-in-from-top-2 duration-300">
@@ -125,7 +125,7 @@ export const CommandToolResultWrapper: ResultWrapper<'run_command' | 'run_persis
 		if (toolMessage.name === 'run_command' || toolMessage.name === 'run_persistent_command') {
 			const command = (toolMessage.params as any).command
 			const cwd = (toolMessage.params as any).cwd || null
-			return <TerminalCommandApproval command={command} cwd={cwd} threadId={threadId} />
+			return <TerminalCommandApproval command={command} cwd={cwd} threadId={threadId} toolId={toolMessage.id} />
 		}
 	}
 

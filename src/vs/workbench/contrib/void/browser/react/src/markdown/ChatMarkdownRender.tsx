@@ -566,7 +566,7 @@ const RenderToken = ({ token, inPTag, codeURI, chatMessageLocation, tokenIdx, ..
 export const ChatMarkdownRender = ({ string, inPTag = false, chatMessageLocation, ...options }: { string: string, inPTag?: boolean, codeURI?: URI, chatMessageLocation: ChatMessageLocation | undefined } & RenderTokenOptions) => {
 	// Safety check: ensure string is defined
 	const safeString = string?.replaceAll('\n•', '\n\n•') || '';
-	const tokens = marked.lexer(safeString); // https://marked.js.org/using_pro#renderer
+	const tokens = useMemo(() => marked.lexer(safeString), [safeString]); // https://marked.js.org/using_pro#renderer
 	return (
 		<>
 			{tokens.map((token, index) => (

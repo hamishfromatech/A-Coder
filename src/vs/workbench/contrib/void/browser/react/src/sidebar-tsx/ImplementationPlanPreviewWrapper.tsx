@@ -373,7 +373,7 @@ My requested changes:`
 
 			{/* Collapsible Content */}
 			{isExpanded && (
-				<div className="border-t border-void-border-2 max-h-96 overflow-auto">
+				<div className="border-t border-void-border-2 max-h-[800px] overflow-auto">
 					{/* Plan Content */}
 					<div className="p-3">
 						{/* Render steps if available */}

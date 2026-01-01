@@ -89,3 +89,10 @@ export const textBlockQuoteBorder = registerColor('textBlockQuote.border',
 export const textCodeBlockBackground = registerColor('textCodeBlock.background',
 	{ light: '#dcdcdc66', dark: '#0a0a0a66', hcDark: Color.black, hcLight: '#F2F2F2' },
 	nls.localize('textCodeBlockBackground', "Background color for code blocks in text."));
+
+
+// ------ void
+
+export const voidAccent = registerColor('void.accent',
+	{ dark: '#0078D4', light: '#005FB8', hcDark: '#0078D4', hcLight: '#005FB8' },
+	nls.localize('voidAccent', "Primary accent color for A-Coder components."));

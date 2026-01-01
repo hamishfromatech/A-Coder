@@ -198,7 +198,7 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 			{isExpanded && (
 				<div className="p-3">
 					<div className="text-sm font-medium text-void-fg-2 mb-2">Preview:</div>
-					<div className="bg-void-bg-4/40 border border-void-border-2 rounded-md p-4 max-h-64 overflow-y-auto prose prose-sm prose-invert max-w-none">
+					<div className="bg-void-bg-4/40 border border-void-border-2 rounded-md p-4 max-h-[500px] overflow-y-auto prose prose-sm prose-invert max-w-none">
 						<ChatMarkdownRender
 							key={refreshKey}
 							string={result.preview}

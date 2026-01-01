@@ -11,10 +11,35 @@ import { IMainProcessService } from '../../../../platform/ipc/common/mainProcess
  * Uses tiktoken via IPC; falls back to character estimation if IPC fails.
  */
 export class TokenCountingService {
+	private readonly _modelRatios = new Map<string, number>();
+
 	constructor(
 		@IMainProcessService private readonly mainProcessService: IMainProcessService,
 	) {
 		console.log('[TokenCountingService] Using tiktoken via IPC with character-based fallback');
+	}
+
+	/**
+	 * Update the token ratio for a specific model based on actual usage.
+	 * Helps improve character-based estimation for future calls.
+	 */
+	public updateTokenRatio(modelName: string, estimatedTokens: number, actualTokens: number): void {
+		if (estimatedTokens <= 0 || actualTokens <= 0) return;
+
+		const ratio = actualTokens / estimatedTokens;
+
+		// Get existing ratio or default to the baseline multiplier
+		const existingRatio = this._modelRatios.get(modelName) || this._getTokenCountMultiplier(modelName);
+
+		// Smoothing factor to avoid wild fluctuations (EMA - Exponential Moving Average)
+		// New ratio = 0.7 * old + 0.3 * new
+		const smoothedRatio = (existingRatio * 0.7) + (ratio * 0.3);
+
+		// Cap the ratio to reasonable bounds (0.5 to 5.0)
+		const cappedRatio = Math.max(0.5, Math.min(5.0, smoothedRatio));
+
+		this._modelRatios.set(modelName, cappedRatio);
+		console.log(`[TokenCountingService] Updated token ratio for ${modelName}: ${cappedRatio.toFixed(3)} (last: ${ratio.toFixed(3)})`);
 	}
 
 	/**
@@ -80,6 +105,11 @@ export class TokenCountingService {
 	 * Minimax and some other models have very different tokenization than cl100k_base
 	 */
 	private _getTokenCountMultiplier(modelName: string): number {
+		// If we have a dynamically calculated ratio, use it
+		if (this._modelRatios.has(modelName)) {
+			return this._modelRatios.get(modelName)!;
+		}
+
 		const lowerName = modelName.toLowerCase();
 		if (lowerName.includes('minimax')) {
 			return 1.7; // Empirical observation: 128k estimated -> >204k actual

@@ -226,8 +226,7 @@ const colorThemeSchema: IJSONSchema = {
 	properties: {
 		colors: {
 			description: nls.localize('schema.workbenchColors', 'Colors in the workbench'),
-			$ref: workbenchColorsSchemaId,
-			additionalProperties: false
+			$ref: workbenchColorsSchemaId
 		},
 		tokenColors: {
 			anyOf: [{

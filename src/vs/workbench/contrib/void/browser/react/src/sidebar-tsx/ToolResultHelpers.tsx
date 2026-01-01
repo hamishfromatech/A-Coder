@@ -480,7 +480,7 @@ export const ToolHeaderWrapper = ({
 						{hasNextPage && <span className="text-[10px] font-bold text-void-accent bg-void-accent/10 px-1.5 py-0.5 rounded uppercase tracking-wider">More</span>}
 					</div>
 				</div>
-				{children !== undefined && <div className={`overflow-auto transition-all duration-300 ease-in-out border-t border-void-border-2 bg-void-bg-1/20 ${isExpanded ? 'opacity-100 max-h-96 py-3' : 'max-h-0 opacity-0'} px-3 text-void-fg-2`}>{children}</div>}
+				{children !== undefined && <div className={`overflow-auto transition-all duration-300 ease-in-out border-t border-void-border-2 bg-void-bg-1/20 ${isExpanded ? 'opacity-100 max-h-[800px] py-3' : 'max-h-0 opacity-0'} px-3 text-void-fg-2`}>{children}</div>}
 			</div>
 			{bottomChildren && <div className="mt-1 animate-in fade-in duration-200">{bottomChildren}</div>}
 		</div>

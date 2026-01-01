@@ -1532,7 +1532,7 @@ const ReasoningWrapper = ({ isDoneReasoning, isStreaming, children }: { isDoneRe
 					ref={scrollRef}
 					className={`
 					overflow-auto transition-all duration-300 ease-in-out custom-scrollbar
-					${isOpen ? 'opacity-100 max-h-96 border-t border-void-border-2/50 p-3' : 'max-h-0 opacity-0'}
+					${isOpen ? 'opacity-100 max-h-[800px] border-t border-void-border-2/50 p-3' : 'max-h-0 opacity-0'}
 				`}>
 					<div className='!select-text cursor-auto text-[11px] leading-relaxed text-void-fg-3 font-medium italic'>
 						{children}
@@ -1553,7 +1553,7 @@ const ReasoningWrapper = ({ isDoneReasoning, isStreaming, children }: { isDoneRe
 
 
 
-const ToolRequestAcceptRejectButtons = ({ toolName }: { toolName: ToolName }) => {
+const ToolRequestAcceptRejectButtons = ({ toolName, toolId }: { toolName: ToolName, toolId: string }) => {
 	const accessor = useAccessor()
 	const chatThreadsService = accessor.get('IChatThreadService')
 	const metricsService = accessor.get('IMetricsService')
@@ -1563,26 +1563,26 @@ const ToolRequestAcceptRejectButtons = ({ toolName }: { toolName: ToolName }) =>
 	const onAccept = useCallback(() => {
 		try { // this doesn't need to be wrapped in try/catch anymore
 			const threadId = chatThreadsService.state.currentThreadId
-			chatThreadsService.approveLatestToolRequest(threadId)
-			metricsService.capture('Tool Request Accepted', {})
+			chatThreadsService.approveLatestToolRequest(threadId, toolId)
+			metricsService.capture('Tool Request Accepted', { tool: toolName })
 		} catch (e) { console.error('Error while approving message in chat:', e) }
-	}, [chatThreadsService, metricsService])
+	}, [chatThreadsService, metricsService, toolId, toolName])
 
 	const onReject = useCallback(() => {
 		try {
 			const threadId = chatThreadsService.state.currentThreadId
-			chatThreadsService.rejectLatestToolRequest(threadId)
-		} catch (e) { console.error('Error while approving message in chat:', e) }
-		metricsService.capture('Tool Request Rejected', {})
-	}, [chatThreadsService, metricsService])
+			chatThreadsService.rejectLatestToolRequest(threadId, toolId)
+		} catch (e) { console.error('Error while rejecting message in chat:', e) }
+		metricsService.capture('Tool Request Rejected', { tool: toolName })
+	}, [chatThreadsService, metricsService, toolId, toolName])
 
 	const onSkip = useCallback(() => {
 		try {
 			const threadId = chatThreadsService.state.currentThreadId
-			chatThreadsService.skipLatestToolRequest(threadId)
+			chatThreadsService.skipLatestToolRequest(threadId, toolId)
 		} catch (e) { console.error('Error while skipping tool in chat:', e) }
-		metricsService.capture('Tool Request Skipped', {})
-	}, [chatThreadsService, metricsService])
+		metricsService.capture('Tool Request Skipped', { tool: toolName })
+	}, [chatThreadsService, metricsService, toolId, toolName])
 
 	const approveButton = (
 		<button
@@ -1952,7 +1952,7 @@ const _ChatBubble = ({ threadId, chatMessage, currCheckpointIdx, isCommitted, me
 				</div>
 				{chatMessage.type === 'tool_request' && chatMessage.name !== 'run_command' && chatMessage.name !== 'run_persistent_command' && chatMessage.name !== 'open_persistent_terminal' ?
 					<div className={`${isCheckpointGhost ? 'opacity-50 pointer-events-none' : ''}`}>
-						<ToolRequestAcceptRejectButtons toolName={chatMessage.name} />
+						<ToolRequestAcceptRejectButtons toolName={chatMessage.name} toolId={chatMessage.id} />
 					</div> : null}
 			</>
 		return null
@@ -2029,8 +2029,9 @@ const CommandBarInChat = () => {
 	// dark = Done
 
 	// Detect if we're generating a tool call (native or XML)
-	const { toolCallSoFar: streamingToolCall, _rawTextBeforeStripping } = chatThreadsStreamState?.llmInfo ?? {}
-	const isGeneratingToolCall = !!(streamingToolCall && !streamingToolCall.isDone)
+	const { toolCallsSoFar, _rawTextBeforeStripping } = chatThreadsStreamState?.llmInfo ?? {}
+	const streamingToolCall = toolCallsSoFar?.[0]
+	const isGeneratingToolCall = !!(toolCallsSoFar && toolCallsSoFar.some(tc => !tc.isDone))
 	const isGeneratingXMLTool = !!(_rawTextBeforeStripping && _rawTextBeforeStripping.includes('<function_calls>') && !_rawTextBeforeStripping.includes('</function_calls>'))
 	const isAnyToolGenerating = isGeneratingToolCall || isGeneratingXMLTool
 
@@ -2411,21 +2412,23 @@ export const SidebarChat = () => {
 	const currThreadStreamState = useChatThreadsStreamState(chatThreadsState.currentThreadId)
 	const isRunning = currThreadStreamState?.isRunning
 	const latestError = currThreadStreamState?.error
-	const { displayContentSoFar, toolCallSoFar, reasoningSoFar, _rawTextBeforeStripping, reactPhase } = currThreadStreamState?.llmInfo ?? {}
-
-	// this is just if it's currently being generated, NOT if it's currently running
-	const toolIsGenerating = !!(toolCallSoFar && !toolCallSoFar.isDone) // show loading for slow tools (right now just edit)
-
-	// Also detect if tool name exists (even if params aren't done yet)
-	const hasToolName = !!(toolCallSoFar && toolCallSoFar.name && toolCallSoFar.name !== 'detecting...')
-
-	// Detect if a tool call just completed but hasn't started executing yet
-	// This covers the gap between stream completion and tool execution start
-	const toolCallJustCompleted = !!(toolCallSoFar && toolCallSoFar.isDone && isRunning === 'LLM')
-
-	// For XML tool calling: detect if we're inside a <function_calls> block even before parsing completes
-	// Use raw text before stripping to detect the XML tags
-	const isGeneratingXMLToolCall = !!(!toolIsGenerating && _rawTextBeforeStripping && _rawTextBeforeStripping.includes('<function_calls>') && !_rawTextBeforeStripping.includes('</function_calls>'));
+	const { displayContentSoFar, toolCallsSoFar, reasoningSoFar, _rawTextBeforeStripping, reactPhase } = currThreadStreamState?.llmInfo ?? {}
+		// this is just if it's currently being generated, NOT if it's currently running
+		const toolIsGenerating = !!(toolCallsSoFar && toolCallsSoFar.some(tc => !tc.isDone)) // show loading for slow tools (right now just edit)
+	
+		// Also detect if tool name exists (even if params aren't done yet)
+		const hasToolName = !!(toolCallsSoFar && toolCallsSoFar.length > 0 && toolCallsSoFar[0].name && toolCallsSoFar[0].name !== 'detecting...')
+	
+		// Detect if a tool call just completed but hasn't started executing yet
+		// This covers the gap between stream completion and tool execution start
+		const toolCallJustCompleted = !!(toolCallsSoFar && toolCallsSoFar.every(tc => tc.isDone) && isRunning === 'LLM')
+	
+		// For XML tool calling: detect if we're inside a <function_calls> block even before parsing completes
+		// Use raw text before stripping to detect the XML tags
+		const isGeneratingXMLToolCall = !!(!toolIsGenerating && _rawTextBeforeStripping && _rawTextBeforeStripping.includes('<function_calls>') && !_rawTextBeforeStripping.includes('</function_calls>'));
+	
+		// Use tool calls from ReAct parser if available, otherwise use native tool calls
+		const toolCallsToRender = toolCallsSoFar || [];
 
 	// ReAct phase detection for enhanced UI
 	const isReActThoughtPhase = reactPhase?.type === 'thought';
@@ -2436,13 +2439,12 @@ export const SidebarChat = () => {
 	const isAnyToolActivity = hasToolName || toolIsGenerating || isGeneratingXMLToolCall;
 
 	// Debug: log tool state and ReAct phase
-	if (toolCallSoFar || isGeneratingXMLToolCall || reactPhase) {
+	if ((toolCallsSoFar && toolCallsSoFar.length > 0) || isGeneratingXMLToolCall || reactPhase) {
 		console.log('[SidebarChat] Tool generation state:', {
-			toolCallSoFar: toolCallSoFar ? {
-				name: toolCallSoFar.name,
-				isDone: toolCallSoFar.isDone,
-				isGenerating: toolIsGenerating,
-			} : null,
+			toolCallsSoFar: toolCallsSoFar ? toolCallsSoFar.map(tc => ({
+				name: tc.name,
+				isDone: tc.isDone,
+			})) : null,
 			isGeneratingXMLToolCall,
 			reactPhase: reactPhase ? {
 				type: reactPhase.type,
@@ -2772,9 +2774,9 @@ export const SidebarChat = () => {
 
 
 	// Determine which tool to show UI for
-	// Priority: 1) toolCallSoFar (streaming), 2) toolInfo (executing), 3) XML generating
-	const activeToolName = toolCallSoFar?.name || currThreadStreamState?.toolInfo?.toolName;
-	const activeToolParams = toolCallSoFar?.rawParams || currThreadStreamState?.toolInfo?.rawParams;
+	// Priority: 1) toolCallsSoFar (streaming), 2) toolInfo (executing), 3) XML generating
+	const activeToolName = toolCallsSoFar?.[0]?.name || currThreadStreamState?.toolInfo?.toolName;
+	const activeToolParams = toolCallsSoFar?.[0]?.rawParams || currThreadStreamState?.toolInfo?.rawParams;
 
 	// Helper to check if tool should show EditToolSoFar component (streaming UI)
 	// Only show for tools that modify files - NOT for read/search tools
@@ -2824,29 +2826,32 @@ export const SidebarChat = () => {
 		isReActActionPhase
 	) && !lastMessageIsTool && !isQuickTool(activeToolName);
 
-	const generatingTool = shouldShowToolUI && (activeToolName || isReActActionPhase) ? (
-		<>
-			{/* Show EditToolSoFar for file-modifying tools */}
-			{isFileRelatedTool(activeToolName) ? (
-				<EditToolSoFar
-					key={'curr-streaming-tool'}
-					toolCallSoFar={toolCallSoFar || {
-						name: activeToolName as any,
-						rawParams: activeToolParams || {},
-						doneParams: [],
-						id: currThreadStreamState?.toolInfo?.id || 'executing-tool',
-						isDone: false
-					}}
-				/>
-			) : (
-				<ProseWrapper>
-					<ToolLoadingIndicator
-						toolName={activeToolName || (isReActActionPhase ? 'detecting...' : undefined)}
-						toolParams={activeToolParams}
-					/>
-				</ProseWrapper>
-			)}
-		</>
+	const generatingTool = shouldShowToolUI && (toolCallsToRender.length > 0 || isReActActionPhase) ? (
+		<div className="flex flex-col gap-2">
+			{(toolCallsToRender.length > 0 ? toolCallsToRender : (isReActActionPhase ? [{ name: 'detecting...', rawParams: {}, doneParams: [], id: 'detecting', isDone: false } as any] : [])).map((tc, idx) => {
+				const tcName = tc.name;
+				const tcParams = tc.rawParams;
+				
+				return (
+					<Fragment key={tc.id || idx}>
+						{/* Show EditToolSoFar for file-modifying tools */}
+						{isFileRelatedTool(tcName) ? (
+							<EditToolSoFar
+								key={tc.id || `streaming-${idx}`}
+								toolCallSoFar={tc}
+							/>
+						) : (
+							<ProseWrapper key={tc.id || `loading-${idx}`}>
+								<ToolLoadingIndicator
+									toolName={tcName}
+									toolParams={tcParams}
+								/>
+							</ProseWrapper>
+						)}
+					</Fragment>
+				);
+			})}
+		</div>
 	) : isGeneratingXMLToolCall ? (
 		// Show generic loading indicator for XML tool calls before parsing completes
 		<ProseWrapper>

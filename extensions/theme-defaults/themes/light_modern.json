@@ -145,6 +145,7 @@
 		"titleBar.border": "#E5E5E5",
 		"titleBar.inactiveBackground": "#F8F8F8",
 		"titleBar.inactiveForeground": "#8B949E",
+		"void.accent": "#005FB8",
 		"welcomePage.tileBackground": "#F3F3F3",
 		"widget.border": "#E5E5E5"
 	},

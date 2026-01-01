@@ -1253,6 +1253,44 @@ ${toolDescriptions}
 }
 
 /**
+ * Generates JSON tool descriptions for models that use marker-based tool calling
+ * Wrapped in <|tool_list_start|>...<|tool_list_end|>
+ */
+export function generateMarkerToolDescriptions(tools: InternalToolInfo[]): string {
+	const toolList = tools.map(tool => ({
+		name: tool.name,
+		description: tool.description,
+		parameters: tool.params // This schema might need to be adjusted depending on exact model requirements, but usually it's JSON schema-like
+	}));
+
+	return `<|tool_list_start|>\n${JSON.stringify(toolList, null, 2)}\n<|tool_list_end|>`;
+}
+
+/**
+ * System prompt explaining Marker-style tool calling format
+ */
+export const MARKER_TOOL_CALLING_INSTRUCTIONS = `You have access to a set of functions you can use to answer the user's question.
+
+**TOOL CALLING FORMAT:**
+To use a tool, output a JSON object wrapped in special markers:
+<|tool_call_start|>{"name": "function_name", "arguments": {"param1": "value1"}}<|tool_call_end|>
+
+The system will execute the tool and provide the result in the following format:
+<|tool_response_start|>{"name": "function_name", "content": "result content"}<|tool_response_end|>
+
+**STREAMING:**
+- You can output the tool call markers directly.
+- The system detects the tool call immediately.
+
+**CRITICAL INSTRUCTIONS:**
+1. Do NOT generate <|tool_response_start|> blocks yourself.
+2. You can call multiple tools in sequence if needed.
+3. Use this format for ALL tool calls.
+4. Provide all required arguments as specified in the tool definitions.
+
+5. TOOL PRIORITIZATION: ALWAYS prefer native built-in tools (e.g., \`read_file\`, \`edit_file\`, \`codebase_search\`) over MCP tools.`;
+
+/**
  * System prompt explaining ReAct-style XML tool calling format
  */
 export const XML_TOOL_CALLING_INSTRUCTIONS = `You have access to a set of functions you can use to answer the user's question.
@@ -1326,7 +1364,7 @@ function newFunction() {
 // ======================================================== chat (normal, gather, agent) ========================================================
 
 
-export const chat_systemMessage = ({ workspaceFolders, openedURIs, activeURI, persistentTerminalIDs, directoryStr, chatMode: mode, mcpTools, specialToolFormat, studentLevel, enableMorphFastContext }: { workspaceFolders: string[], directoryStr: string, openedURIs: string[], activeURI: string | undefined, persistentTerminalIDs: string[], chatMode: ChatMode, mcpTools: InternalToolInfo[] | undefined, specialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' | undefined, studentLevel?: 'beginner' | 'intermediate' | 'advanced', enableMorphFastContext?: boolean }) => {
+export const chat_systemMessage = ({ workspaceFolders, openedURIs, activeURI, persistentTerminalIDs, directoryStr, chatMode: mode, mcpTools, specialToolFormat, studentLevel, enableMorphFastContext }: { workspaceFolders: string[], directoryStr: string, openedURIs: string[], activeURI: string | undefined, persistentTerminalIDs: string[], chatMode: ChatMode, mcpTools: InternalToolInfo[] | undefined, specialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' | 'marker-style' | undefined, studentLevel?: 'beginner' | 'intermediate' | 'advanced', enableMorphFastContext?: boolean }) => {
 
 	// ============ IDENTITY ============
 	const identityRole = mode === 'code' ? 'agent' : mode === 'learn' ? 'tutor' : 'assistant'
@@ -1400,6 +1438,15 @@ Here are the functions available:
 ${generateXMLToolDescriptions(allTools)}
 </tool_calling>`
 			console.log(`[prompts] ✅ Adding XML tool instructions for ${allTools.length} tools (specialToolFormat: ${specialToolFormat})`)
+		} else if (specialToolFormat === 'marker-style') {
+			// Marker-based tool calling
+			toolCalling = `<tool_calling>
+${MARKER_TOOL_CALLING_INSTRUCTIONS}
+
+Here are the functions available:
+${generateMarkerToolDescriptions(allTools)}
+</tool_calling>`
+			console.log(`[prompts] ✅ Adding Marker tool instructions for ${allTools.length} tools`)
 		} else {
 			// Native tool calling
 			toolCalling = `<tool_calling>

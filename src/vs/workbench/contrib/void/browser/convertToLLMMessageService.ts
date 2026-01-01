@@ -286,6 +286,67 @@ const prepareGeminiMessages = (messages: AnthropicLLMChatMessage[]) => {
 	return messages2
 }
 
+// Convert messages for models using marker tokens (<|tool_call_start|>, etc.)
+const prepareMessages_marker_tools = (messages: SimpleLLMMessage[]): OpenAILLMChatMessage[] => {
+	const newMessages: OpenAILLMChatMessage[] = []
+
+	// Helper to append text to the last message if it's the right role
+	const appendToLast = (role: string, text: string) => {
+		const last = newMessages[newMessages.length - 1]
+		if (last && last.role === role && typeof last.content === 'string') {
+			last.content += '\n' + text
+			return true
+		}
+		return false
+	}
+
+	for (let i = 0; i < messages.length; i += 1) {
+		const currMsg = messages[i]
+
+		if (currMsg.role === 'assistant') {
+			newMessages.push({
+				role: 'assistant',
+				content: currMsg.content || '',
+			})
+			continue
+		}
+
+		if (currMsg.role === 'user') {
+			newMessages.push({
+				role: 'user',
+				content: currMsg.content,
+			})
+			continue
+		}
+
+		if (currMsg.role === 'tool') {
+			// 1. Append tool call to PREVIOUS assistant message
+			// <|tool_call_start|>{"name": "...", "arguments": {...}}<|tool_call_end|>
+			const callStr = `<|tool_call_start|>${JSON.stringify({ name: currMsg.name, arguments: currMsg.rawParams })}<|tool_call_end|>`
+			
+			// Try to append to last assistant message
+			if (!appendToLast('assistant', callStr)) {
+				// If no previous assistant message, insert a fake one (should rarely happen in valid flows)
+				newMessages.push({ role: 'assistant', content: callStr })
+			}
+
+			// 2. Add tool result as USER message (or append if multiple tools)
+			// <|tool_response_start|>{"name": "...", "content": "..."}<|tool_response_end|>
+			const resultStr = `<|tool_response_start|>${JSON.stringify({ name: currMsg.name, content: currMsg.content })}<|tool_response_end|>`
+			
+			// We typically want tool results to be distinct messages or grouped.
+			// For markers, they are usually just text blocks in the conversation.
+			newMessages.push({
+				role: 'user',
+				content: resultStr,
+			})
+			continue
+		}
+	}
+
+	return newMessages
+}
+
 
 // --- CHAT ---
 
@@ -304,7 +365,7 @@ const prepareOpenAIOrAnthropicMessages = ({
 	systemMessage: string,
 	aiInstructions: string,
 	supportsSystemMessage: false | 'system-role' | 'developer-role' | 'separated',
-	specialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style',
+	specialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' | 'marker-style',
 	supportsAnthropicReasoning: boolean,
 	contextWindow: number,
 	reservedOutputTokenSpace: number | null | undefined,
@@ -431,6 +492,9 @@ const prepareOpenAIOrAnthropicMessages = ({
 		// Convert to proper OpenAI format with tool_calls and tool_call_id
 		llmChatMessages = prepareMessages_openai_tools(messages as SimpleLLMMessage[])
 	}
+	else if (specialToolFormat === 'marker-style') {
+		llmChatMessages = prepareMessages_marker_tools(messages as SimpleLLMMessage[])
+	}
 	else {
 		throw new Error(`Model from provider "${providerName}" does not support native tool calling.`)
 	}
@@ -502,7 +566,7 @@ const prepareMessages = (params: {
 	systemMessage: string,
 	aiInstructions: string,
 	supportsSystemMessage: false | 'system-role' | 'developer-role' | 'separated',
-	specialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style',
+	specialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' | 'marker-style',
 	supportsAnthropicReasoning: boolean,
 	contextWindow: number,
 	reservedOutputTokenSpace: number | null | undefined,
@@ -530,6 +594,7 @@ export interface IConvertToLLMMessageService {
 	prepareLLMSimpleMessages: (opts: { simpleMessages: SimpleLLMMessage[], systemMessage: string, modelSelection: ModelSelection | null, featureName: FeatureName }) => { messages: LLMChatMessage[], separateSystemMessage: string | undefined }
 	prepareLLMChatMessages: (opts: { chatMessages: ChatMessage[], chatMode: ChatMode, modelSelection: ModelSelection | null }) => Promise<{ messages: LLMChatMessage[], separateSystemMessage: string | undefined, tokenUsage: { used: number, total: number, percentage: number } }>
 	prepareFIMMessage(opts: { messages: LLMFIMMessage, }): { prefix: string, suffix: string, stopTokens: string[] }
+	updateTokenRatio(modelName: string, estimatedTokens: number, actualTokens: number): void
 }
 
 export const IConvertToLLMMessageService = createDecorator<IConvertToLLMMessageService>('ConvertToLLMMessageService');
@@ -590,7 +655,7 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 
 
 	// system message
-	private _generateChatMessagesSystemMessage = async (chatMode: ChatMode, specialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' | undefined, modelSelection: ModelSelection | null) => {
+	private _generateChatMessagesSystemMessage = async (chatMode: ChatMode, specialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' | 'marker-style' | undefined, modelSelection: ModelSelection | null) => {
 		const workspaceFolders = this.workspaceContextService.getWorkspace().folders.map(f => f.uri.fsPath)
 
 		const openedURIs = this.modelService.getModels().filter(m => m.isAttachedToEditor()).map(m => m.uri.fsPath) || [];
@@ -624,7 +689,7 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		// Ensure key is present
 		enableMorphFastContext = enableMorphFastContext && hasMorphApiKey
 
-		const systemMessage = chat_systemMessage({ workspaceFolders, openedURIs, directoryStr, activeURI, persistentTerminalIDs, chatMode, mcpTools, specialToolFormat, studentLevel, enableMorphFastContext })
+		const systemMessage = chat_systemMessage({ workspaceFolders, openedURIs, directoryStr, activeURI, persistentTerminalIDs, chatMode, mcpTools, specialToolFormat: specialToolFormat as any, studentLevel, enableMorphFastContext })
 		return systemMessage
 	}
 
@@ -680,7 +745,7 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		} = getModelCapabilities(providerName, modelName, overridesOfModel)
 
 		// For models without native tool calling (XML tool calling), use OpenAI-style as default for message formatting
-		const ensuredSpecialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' = specialToolFormat || 'openai-style'
+		const ensuredSpecialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' | 'marker-style' = specialToolFormat || 'openai-style'
 
 		const modelSelectionOptions = this.voidSettingsService.state.optionsOfModelSelection[featureName][modelSelection.providerName]?.[modelSelection.modelName]
 
@@ -717,7 +782,7 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 
 		// For models without native tool calling (XML tool calling), use OpenAI-style as default for message formatting
 		// The actual tool calling will be handled via XML by the provider
-		const ensuredSpecialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' = specialToolFormat || 'openai-style'
+		const ensuredSpecialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' | 'marker-style' = specialToolFormat || 'openai-style'
 
 		const { disableSystemMessage } = this.voidSettingsService.state.globalSettings;
 		// Pass the ACTUAL specialToolFormat (can be undefined) to system message for XML tool calling
@@ -839,6 +904,10 @@ ${messages.prefix}`
 		const suffix = messages.suffix
 		const stopTokens = messages.stopTokens
 		return { prefix, suffix, stopTokens }
+	}
+
+	updateTokenRatio(modelName: string, estimatedTokens: number, actualTokens: number): void {
+		this.tokenCountingService.updateTokenRatio(modelName, estimatedTokens, actualTokens);
 	}
 
 

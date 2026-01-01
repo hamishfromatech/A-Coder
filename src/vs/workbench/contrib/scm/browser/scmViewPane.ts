@@ -1933,7 +1933,10 @@ class SCMInputWidget {
 
 	layout(): void {
 		const editorHeight = this.getContentHeight();
-		const toolbarWidth = this.getToolbarWidth();
+		let toolbarWidth = this.getToolbarWidth();
+		if (toolbarWidth > 0 && this.toolbarContainer.offsetWidth > toolbarWidth) {
+			toolbarWidth = this.toolbarContainer.offsetWidth;
+		}
 		const dimension = new Dimension(this.element.clientWidth - toolbarWidth, editorHeight);
 
 		if (dimension.width < 0) {

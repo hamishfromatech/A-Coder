@@ -106,12 +106,12 @@ export const AnimatedCheckmarkButton = ({ text, className }: { text?: string, cl
 
 // premium button component
 const SettingsButton = ({ children, disabled, onClick, className, variant = 'secondary' }: { children: React.ReactNode; disabled?: boolean; onClick: () => void; className?: string, variant?: 'primary' | 'secondary' | 'danger' }) => {
-	const baseClasses = "px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center justify-center gap-2 active:scale-[0.98]";
+	const baseClasses = "px-3 py-1 rounded-[2px] text-[13px] font-normal transition-all duration-100 flex items-center justify-center gap-2 active:opacity-80";
 
 	const variants = {
-		primary: "bg-void-accent hover:bg-void-accent/90 text-white shadow-md shadow-void-accent/10 disabled:opacity-50 disabled:active:scale-100",
-		secondary: "bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2 hover:border-void-border-1 text-void-fg-1 shadow-sm hover:shadow-md disabled:opacity-50 disabled:active:scale-100",
-		danger: "bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 hover:border-red-500/30 disabled:opacity-50 disabled:active:scale-100"
+		primary: "bg-void-vscode-button-bg hover:bg-void-vscode-button-hover-bg text-void-vscode-button-fg disabled:opacity-50",
+		secondary: "bg-void-vscode-button-secondary-bg hover:bg-void-vscode-button-secondary-hover-bg text-void-vscode-button-secondary-fg disabled:opacity-50",
+		danger: "bg-void-vscode-error-fg text-white hover:brightness-110 disabled:opacity-50"
 	};
 
 	return (
@@ -128,7 +128,7 @@ const SettingsButton = ({ children, disabled, onClick, className, variant = 'sec
 const AddButton = ({ disabled, text = 'Add', ...props }: { disabled?: boolean, text?: React.ReactNode } & React.ButtonHTMLAttributes<HTMLButtonElement>) => {
 	return <button
 		disabled={disabled}
-		className={`bg-void-accent px-4 py-1.5 text-white rounded-md text-sm font-medium shadow-sm transition-all duration-200 flex items-center gap-2 active:scale-[0.98] ${!disabled ? 'hover:bg-void-accent/90 hover:shadow' : 'opacity-50 cursor-not-allowed disabled:active:scale-100'}`}
+		className={`bg-void-vscode-button-bg px-3 py-1 text-void-vscode-button-fg rounded-[2px] text-[13px] font-normal shadow-sm transition-all duration-100 flex items-center gap-2 active:opacity-80 ${!disabled ? 'hover:bg-void-vscode-button-hover-bg hover:shadow' : 'opacity-50 cursor-not-allowed'}`}
 		{...props}
 	>
 		<Plus size={14} strokeWidth={2.5} />
@@ -1741,7 +1741,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 										<h2 className="text-xl font-medium text-void-fg-1">MCP Servers</h2>
 										<p className="text-sm text-void-fg-3 mt-1">Manage Model Context Protocol servers.</p>
 									</div>
-									<SettingsButton className='px-4 py-2' onClick={async () => { await mcpService.revealMCPConfigFile() }}>
+									<SettingsButton className='px-4 py-2' variant="primary" onClick={async () => { await mcpService.revealMCPConfigFile() }}>
 										Configure MCP
 									</SettingsButton>
 								</div>

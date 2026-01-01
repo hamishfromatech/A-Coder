@@ -167,7 +167,7 @@ export type VoidStaticModelInfo = { // not stateful
 	reservedOutputTokenSpace: number | null; // reserve this much space in the context window for output, defaults to 4096 if null
 
 	supportsSystemMessage: false | 'system-role' | 'developer-role' | 'separated'; // typically you should use 'system-role'. 'separated' means the system message is passed as a separate field (e.g. anthropic)
-	specialToolFormat?: 'openai-style' | 'anthropic-style' | 'gemini-style', // typically you should use 'openai-style'. null means "can't call tools by default", and asks the LLM to output XML in agent mode
+	specialToolFormat?: 'openai-style' | 'anthropic-style' | 'gemini-style' | 'marker-style', // typically you should use 'openai-style'. null means "can't call tools by default", and asks the LLM to output XML in agent mode
 	supportsFIM: boolean; // whether the model was specifically designed for autocomplete or "FIM" ("fill-in-middle" format)
 
 	defaultTemperature?: number; // recommended temperature for this model (e.g., 0.6 for Kimi K2 Instruct, 1.0 for Kimi K2 Thinking)

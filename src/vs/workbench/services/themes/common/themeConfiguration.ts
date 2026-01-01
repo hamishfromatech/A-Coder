@@ -238,7 +238,7 @@ export function updateColorThemeConfigurationSchemas(themes: IWorkbenchColorThem
 	const themeSpecificTokenColors: IJSONSchema = { properties: {} };
 	const themeSpecificSemanticTokenColors: IJSONSchema = { properties: {} };
 
-	const workbenchColors = { $ref: workbenchColorsSchemaId, additionalProperties: false };
+	const workbenchColors = { $ref: workbenchColorsSchemaId };
 	const tokenColors = { properties: tokenColorSchema.properties, additionalProperties: false };
 	for (const t of themes) {
 		// add theme specific color customization ("[Abyss]":{ ... })
