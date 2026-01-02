@@ -295,8 +295,9 @@
 }
 
 .scm-view .scm-input {
+	height: 100%;
 	display: flex;
-	align-items: flex-start;
+	align-items: center;
 	padding-left: 11px;
 }
 
@@ -323,8 +324,6 @@
 .scm-view .scm-editor .scm-editor-container {
 	flex-grow: 1;
 	order: 1;
-	min-width: 0;
-	min-height: 0;
 }
 
 .scm-view .scm-editor .scm-editor-toolbar {

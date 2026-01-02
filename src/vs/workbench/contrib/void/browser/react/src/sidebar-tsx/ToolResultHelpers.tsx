@@ -3,7 +3,7 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { AlertTriangle, File, Ban, Check, ChevronRight, CircleEllipsis, Pencil, Database, Loader2, SkipForward, X, Copy as CopyIcon, Play, Folder, Text } from 'lucide-react';
 import { useAccessor, useChatThreadsStreamState, useIsDark, useFullChatThreadsStreamState, useActiveURI } from '../util/services.js';
 import { URI } from '../../../../../../../base/common/uri.js';
@@ -460,8 +460,17 @@ export const ToolHeaderWrapper = ({
 	isRejected,
 	className,
 }: ToolHeaderParams) => {
-	const [isOpen_, setIsOpen] = useState(false);
-	const isExpanded = isOpen !== undefined ? isOpen : isOpen_
+	const [isOpen_, setIsOpen] = useState(isOpen !== undefined ? isOpen : false);
+
+	useEffect(() => {
+		if (isOpen !== undefined) {
+			setIsOpen(isOpen);
+		} else {
+			setIsOpen(false);
+		}
+	}, [isOpen]);
+
+	const isExpanded = isOpen_
 	const isDropdown = children !== undefined
 	const isClickable = !!(isDropdown || onClick)
 	const isDesc1Clickable = !!desc1OnClick
