@@ -25,7 +25,6 @@ export const approvalTypeOfBuiltinToolName: Partial<{ [T in BuiltinToolName]?: '
 	'edit_file': 'edits',
 	'update_walkthrough': 'edits',
 	'run_command': 'terminal',
-	'run_persistent_command': 'terminal',
 	'open_persistent_terminal': 'terminal',
 	'kill_persistent_terminal': 'terminal',
 }
@@ -78,6 +77,7 @@ export type BuiltinToolCallParams = {
 	'repo_get_commit_metadata': { repoId?: string, commitHash: string },
 	'repo_wait_for_embeddings': { repoId?: string, timeoutMs?: number },
 	'wait': { timeoutMs: number, persistentTerminalId: string },
+	'check_terminal_status': { timeoutMs: number, persistentTerminalId: string },
 	// ---
 	'rewrite_file': { uri: URI, newContent: string },
 	'edit_file': { uri: URI, originalUpdatedBlocks: string, tryFuzzyMatching?: boolean },
@@ -86,9 +86,8 @@ export type BuiltinToolCallParams = {
 	// ---
 	'run_code': { code: string, timeout: number | null },
 	// ---
-	'run_command': { command: string; cwd: string | null, terminalId: string },
+	'run_command': { command: string; cwd: string | null, isBackground: boolean, terminalId?: string },
 	'open_persistent_terminal': { cwd: string | null },
-	'run_persistent_command': { command: string; persistentTerminalId: string },
 	'kill_persistent_terminal': { persistentTerminalId: string },
 	// ---
 	'create_plan': { goal: string, tasks: Array<{ id: string; description: string; dependencies: string[] }> },
@@ -166,6 +165,7 @@ export type BuiltinToolResultType = {
 	'repo_get_commit_metadata': any,
 	'repo_wait_for_embeddings': { success: boolean },
 	'wait': { result: string; resolveReason: TerminalResolveReason; },
+	'check_terminal_status': { result: string; resolveReason: TerminalResolveReason; },
 	// ---
 	'rewrite_file': Promise<{ lintErrors: LintErrorItem[] | null }>,
 	'edit_file': Promise<{ lintErrors: LintErrorItem[] | null }>,
@@ -174,8 +174,7 @@ export type BuiltinToolResultType = {
 	// ---
 	'run_code': { success: boolean, result: any, error: string | null, logs: string[] },
 	// ---
-	'run_command': { result: string; resolveReason: TerminalResolveReason; },
-	'run_persistent_command': { result: string; resolveReason: TerminalResolveReason; },
+	'run_command': { result: string; resolveReason: TerminalResolveReason; terminalId?: string; },
 	'open_persistent_terminal': { persistentTerminalId: string },
 	'kill_persistent_terminal': {},
 	// ---

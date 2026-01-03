@@ -112,7 +112,7 @@ const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName, includ
 			apiKey: 'noop',
 			// Add specific configurations for better Ollama compatibility
 			defaultHeaders: {
-				'HTTP-User-Agent': 'Void/1.0.0'
+				'HTTP-User-Agent': 'A-Coder/1.0.0'
 			},
 			// Increase timeout for Ollama models which can be slower
 			timeout: 120000, // 2 minutes
@@ -137,8 +137,8 @@ const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName, includ
 			baseURL: 'https://openrouter.ai/api/v1',
 			apiKey: thisConfig.apiKey,
 			defaultHeaders: {
-				'HTTP-Referer': 'https://voideditor.com', // Optional, for including your app on openrouter.ai rankings.
-				'X-Title': 'Void', // Optional. Shows in rankings on openrouter.ai.
+				'HTTP-Referer': 'https://theatechcorporation.com', // Optional, for including your app on openrouter.ai rankings.
+				'X-Title': 'A-Coder', // Optional. Shows in rankings on openrouter.ai.
 			},
 			...commonPayloadOpts,
 		})
@@ -205,7 +205,7 @@ const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName, includ
 		return new OpenAI({ baseURL: 'https://api.mistral.ai/v1', apiKey: thisConfig.apiKey, ...commonPayloadOpts })
 	}
 
-	else throw new Error(`Void providerName was invalid: ${providerName}.`)
+	else throw new Error(`A-Coder providerName was invalid: ${providerName}.`)
 }
 
 

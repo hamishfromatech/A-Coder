@@ -26,8 +26,8 @@ export const MAX_CHILDREN_URIs_PAGE = 500
 
 // terminal tool info
 export const MAX_TERMINAL_CHARS = 100_000
-export const MAX_TERMINAL_INACTIVE_TIME = 8 // seconds
-export const MAX_TERMINAL_BG_COMMAND_TIME = 5
+export const MAX_TERMINAL_INACTIVE_TIME = 60 // seconds
+export const MAX_TERMINAL_BG_COMMAND_TIME = 60
 
 
 // Maximum character limits for prefix and suffix context
@@ -174,8 +174,6 @@ const paginationParam = {
 } as const
 
 
-
-const terminalDescHelper = `You can use this tool to run any command: sed, grep, etc. Do not edit any files with this tool; use edit_file instead. When working with git and other tools that open an editor (e.g. git diff), you should pipe to cat to get all results and not get stuck in vim.`
 
 const cwdHelper = 'Optional. The directory in which to run the command. Defaults to the first workspace folder.'
 
@@ -511,6 +509,19 @@ Line 200: export async function processData(input: string): Promise<Result>
 		},
 	},
 
+	check_terminal_status: {
+		name: 'check_terminal_status',
+		description: `Checks the status of a persistent terminal command immediately without waiting long.
+
+**When to use:** Use this to periodically check if a long-running command is still running or has finished, and to get the latest output. This is essentially a \`wait\` with a very short timeout.
+
+**What you'll receive:** The terminal's current output and status ("done" or "timeout").`,
+		params: {
+			persistent_terminal_id: { description: 'The ID of the persistent terminal to check.' },
+			timeout_ms: { description: 'Optional. How long to wait in milliseconds (default: 200).' },
+		}
+	},
+
 	// --- editing (create/delete) ---
 
 	create_file_or_folder: {
@@ -623,35 +634,29 @@ return { activeCount: filtered.length, sample: filtered.slice(0, 3) };
 
 	run_command: {
 		name: 'run_command',
-		description: `Runs a terminal command and waits for it to complete.
+		description: `Runs a terminal command. Can run in a temporary hidden terminal (default) or a visible persistent terminal.
 
-**What you'll receive:** The command's output (stdout/stderr) after it finishes.
+**What you'll receive:** The command's output.
 
-**When to use:** For commands that finish quickly (< ${MAX_TERMINAL_INACTIVE_TIME}s), like running tests, building code, or checking git status. ${terminalDescHelper}
+**Parameters:**
+- \`command\`: The command to run.
+- \`is_background\`: (Optional, Boolean)
+  - \`false\` (default): Runs in a temporary hidden terminal. Waits for the command to finish or timeout (60s). Best for quick checks like \`ls\`, \`git status\`, \`cat\`.
+  - \`true\`: Runs in a NEW persistent terminal (visible in UI). Waits for initial output (60s) but lets the command keep running. Best for long-running tasks like \`npm run dev\`. Returns a \`terminal_id\`.
+- \`terminal_id\`: (Optional, String) Runs the command in an EXISTING persistent terminal with this ID.
 
-**Do NOT use for:** Long-running processes like dev servers (use open_persistent_terminal instead).`,
+**When to use:**
+- Simple commands: \`run_command(command="ls -la")\`
+- Long-running tasks: \`run_command(command="npm run dev", is_background=true)\`
+- Use existing terminal: \`run_command(command="git status", terminal_id="1")\`
+`,
 		params: {
 			command: { description: 'The terminal command to run.' },
 			cwd: { description: cwdHelper },
+			is_background: { description: 'Optional. If true, runs in a new persistent terminal and allows it to run in the background. Default is false.' },
+			terminal_id: { description: 'Optional. The ID of an existing persistent terminal to run the command in.' },
 		},
 	},
-
-	run_persistent_command: {
-		name: 'run_persistent_command',
-		description: `Runs a command in a persistent terminal you previously created.
-
-**What you'll receive:** Output from the first ${MAX_TERMINAL_BG_COMMAND_TIME} seconds, then the command continues running in the background.
-
-**When to use:** For commands in a persistent terminal session (e.g., running commands in a dev server's terminal). ${terminalDescHelper}
-
-**Prerequisite:** You must first create a persistent terminal with open_persistent_terminal.`,
-		params: {
-			command: { description: 'The terminal command to run.' },
-			persistent_terminal_id: { description: 'The ID of the terminal created using open_persistent_terminal.' },
-		},
-	},
-
-
 
 	open_persistent_terminal: {
 		name: 'open_persistent_terminal',
@@ -1190,10 +1195,10 @@ const agentModeTools: BuiltinToolName[] = [
 	'rewrite_file',
 	// Terminal tools - run commands
 	'run_command',
-	'run_persistent_command',
 	'open_persistent_terminal',
 	'kill_persistent_terminal',
 	'wait',
+	'check_terminal_status',
 	// Task planning - track progress on multi-step tasks
 	'create_plan',
 	'update_task_status',
