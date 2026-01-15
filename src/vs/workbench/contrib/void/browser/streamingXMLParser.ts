@@ -162,6 +162,13 @@ export class StreamingXMLParser {
 		return this.thoughtContent;
 	}
 
+	/**
+	 * Returns true if the parser is in the middle of an XML or marker block
+	 */
+	public isParsingIncomplete(): boolean {
+		return this.state !== 'IDLE';
+	}
+
 	public parse(chunk: string, skipBufferAppend: boolean = false): RawToolCallObj[] | null {
 		if (!skipBufferAppend) {
 			this.buffer += chunk;

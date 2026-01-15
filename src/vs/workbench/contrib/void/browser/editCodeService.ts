@@ -1442,21 +1442,10 @@ class EditCodeService extends Disposable implements IEditCodeService {
 			console.log('[editCodeService] Morph enabled:', this._settingsService.state.globalSettings.enableMorphFastApply);
 			console.log('[editCodeService] Morph API key present:', !!this._settingsService.state.globalSettings.morphApiKey);
 	
-			// start diffzone
-			const res = this._startStreamingDiffZone({
-				uri,
-				streamRequestIdRef: { current: null },
-				startBehavior: 'keep-conflicts',
-				linkedCtrlKZone: null,
-				onWillUndo: () => { },
-			})
-			if (!res) return
-			const { diffZone, onFinishEdit } = res
-	
+			// add to history as a checkpoint, before we start modifying
+			const { onFinishEdit } = this._addToHistory(uri, { onWillUndo: () => {} })
 	
 			const onDone = () => {
-				diffZone._streamState = { isStreaming: false, }
-				this._onDidChangeStreamingInDiffZone.fire({ uri, diffareaid: diffZone.diffareaid })
 				this._refreshStylesAndDiffsInURI(uri)
 				onFinishEdit()
 	
@@ -1469,7 +1458,6 @@ class EditCodeService extends Disposable implements IEditCodeService {
 	
 			const onError = (e: { message: string; fullError: Error | null; }) => {
 				// this._notifyError(e)
-			onDone()
 				this._undoHistory(uri)
 				throw e.fullError || new Error(e.message)
 			}
@@ -1500,8 +1488,9 @@ class EditCodeService extends Disposable implements IEditCodeService {
 			catch (e) {
 				onError({ message: e + '', fullError: null })
 			}
-	
-			onDone()
+			finally {
+				onDone()
+			}
 		}
 
 	public instantlyRewriteFile({ uri, newContent, onProgress }: { uri: URI, newContent: string, onProgress?: (data: string) => void }) {
@@ -1965,79 +1954,319 @@ ${problematicCode}
 	}
 
 
-	private async _instantlyApplySRBlocks(uri: URI, blocksStr: string, tryFuzzyMatching: boolean = false, onProgress?: (data: string) => void) {
-		onProgress?.(`Extracting ORIGINAL/UPDATED blocks...`);
-		const blocks = extractSearchReplaceBlocks(blocksStr)
-		if (blocks.length === 0) throw new Error(`No ORIGINAL/UPDATED blocks were received!`)
-
-		const logMsg = `[editCodeService] Applying ${blocks.length} ORIGINAL/UPDATED blocks\n${blocks.map((b, i) => `Block ${i + 1}: orig=${b.orig.length} chars, final=${b.final.length} chars`).join('\n')}`
-		console.log(logMsg)
-		console.error(logMsg) // Also log to stderr so it shows in terminal
-
-		const { model } = this._voidModelService.getModel(uri)
-		if (!model) throw new Error(`Error applying ORIGINAL/UPDATED blocks: File does not exist.`)
-		const modelStr = model.getValue(EndOfLinePreference.LF)
-		// .split('\n').map(l => '\t' + l).join('\n') // for testing purposes only, remember to remove this
-		const modelStrLines = modelStr.split('\n')
+		private async _instantlyApplySRBlocks(uri: URI, blocksStr: string, tryFuzzyMatching: boolean = false, onProgress?: (data: string) => void) {
 
 
-		const replacements: { origStart: number; origEnd: number; block: ExtractedSearchReplaceBlock }[] = []
-		let lastYieldTime = Date.now()
-		for (let i = 0; i < blocks.length; i++) {
-			const b = blocks[i];
-			onProgress?.(`Processing block ${i + 1} of ${blocks.length}...`);
-			// PERFORMANCE: Yield to event loop if we've spent more than 16ms to prevent UI freezing
-			if (Date.now() - lastYieldTime > 16) {
-				await new Promise(resolve => setTimeout(resolve, 0));
-				lastYieldTime = Date.now();
+			onProgress?.(`Extracting ORIGINAL/UPDATED blocks...`);
+
+
+			const blocks = extractSearchReplaceBlocks(blocksStr)
+
+
+			if (blocks.length === 0) throw new Error(`No ORIGINAL/UPDATED blocks were received!`)
+
+
+	
+
+
+			const logMsg = `[editCodeService] Applying ${blocks.length} ORIGINAL/UPDATED blocks\n${blocks.map((b, i) => `Block ${i + 1}: orig=${b.orig.length} chars, final=${b.final.length} chars`).join('\n')}`
+
+
+			console.log(logMsg)
+
+
+			console.error(logMsg) // Also log to stderr so it shows in terminal
+
+
+	
+
+
+			const { model } = this._voidModelService.getModel(uri)
+
+
+			if (!model) throw new Error(`Error applying ORIGINAL/UPDATED blocks: File does not exist.`)
+
+
+			const modelStr = model.getValue(EndOfLinePreference.LF)
+
+
+			const modelStrLines = modelStr.split('\n')
+
+
+	
+
+
+	
+
+
+			const replacements: { origStart: number; origEnd: number; startLine: number; endLine: number; block: ExtractedSearchReplaceBlock }[] = []
+
+
+			let lastYieldTime = Date.now()
+
+
+			for (let i = 0; i < blocks.length; i++) {
+
+
+				const b = blocks[i];
+
+
+				onProgress?.(`Processing block ${i + 1} of ${blocks.length}...`);
+
+
+				// PERFORMANCE: Yield to event loop if we've spent more than 16ms to prevent UI freezing
+
+
+				if (Date.now() - lastYieldTime > 16) {
+
+
+					await new Promise(resolve => setTimeout(resolve, 0));
+
+
+					lastYieldTime = Date.now();
+
+
+				}
+
+
+	
+
+
+				const res = findTextInCode(b.orig, modelStr, tryFuzzyMatching, { returnType: 'lines' })
+
+
+				if (typeof res === 'string') {
+
+
+					console.error(`[editCodeService] Search/Replace failed: ${res}`)
+
+
+					console.error(`[editCodeService] Searching for:\n${b.orig}`)
+
+
+					throw new Error(this._errContentOfInvalidStr(res, b.orig, modelStr))
+
+
+				}
+
+
+	
+
+
+				let [startLine, endLine] = res
+
+
+				onProgress?.(`Found match for block ${i + 1} at lines ${startLine}-${endLine}.`);
+
+
+				
+
+
+				// Store 1-indexed lines for DiffZone
+
+
+				const replacement = { 
+
+
+					origStart: 0, 
+
+
+					origEnd: 0, 
+
+
+					startLine, 
+
+
+					endLine, 
+
+
+					block: b 
+
+
+				};
+
+
+	
+
+
+				const startLine0 = startLine - 1 // 0-index
+
+
+				const endLine0 = endLine - 1
+
+
+	
+
+
+				// including newline before start
+
+
+				replacement.origStart = (startLine0 !== 0 ?
+
+
+					modelStrLines.slice(0, startLine0).join('\n') + '\n'
+
+
+					: '').length
+
+
+	
+
+
+				// including endline at end
+
+
+				replacement.origEnd = modelStrLines.slice(0, endLine0 + 1).join('\n').length - 1
+
+
+	
+
+
+				replacements.push(replacement);
+
+
 			}
 
-			const res = findTextInCode(b.orig, modelStr, tryFuzzyMatching, { returnType: 'lines' })
-			if (typeof res === 'string') {
-				console.error(`[editCodeService] Search/Replace failed: ${res}`)
-				console.error(`[editCodeService] Searching for:\n${b.orig}`)
-				throw new Error(this._errContentOfInvalidStr(res, b.orig, modelStr))
+
+			
+
+
+			onProgress?.(`Applying all ${replacements.length} replacements...`);
+
+
+			// sort in increasing order
+
+
+			replacements.sort((a, b) => a.origStart - b.origStart)
+
+
+	
+
+
+			// ensure no overlap
+
+
+			for (let i = 1; i < replacements.length; i++) {
+
+
+				if (replacements[i].origStart <= replacements[i - 1].origEnd) {
+
+
+					throw new Error(this._errContentOfInvalidStr('Has overlap', replacements[i]?.block?.orig))
+
+
+				}
+
+
 			}
-			let [startLine, endLine] = res
-			onProgress?.(`Found match for block ${i + 1} at lines ${startLine}-${endLine}.`);
-			startLine -= 1 // 0-index
-			endLine -= 1
 
-			// including newline before start
-			const origStart = (startLine !== 0 ?
-				modelStrLines.slice(0, startLine).join('\n') + '\n'
-				: '').length
 
-			// including endline at end
-			const origEnd = modelStrLines.slice(0, endLine + 1).join('\n').length - 1
+	
 
-			replacements.push({ origStart, origEnd, block: b });
-		}
-		
-		onProgress?.(`Applying all ${replacements.length} replacements...`);
-		// sort in increasing order
-		replacements.sort((a, b) => a.origStart - b.origStart)
 
-		// ensure no overlap
-		for (let i = 1; i < replacements.length; i++) {
-			if (replacements[i].origStart <= replacements[i - 1].origEnd) {
-				throw new Error(this._errContentOfInvalidStr('Has overlap', replacements[i]?.block?.orig))
+			// Create individual DiffZones for each block BEFORE modifying the file
+
+
+			// This ensures that each block is treated as a separate change in the UI
+
+
+			for (const r of replacements) {
+
+
+				const adding: Omit<DiffZone, 'diffareaid'> = {
+
+
+					type: 'DiffZone',
+
+
+					originalCode: r.block.orig,
+
+
+					startLine: r.startLine,
+
+
+					endLine: r.endLine,
+
+
+					_URI: uri,
+
+
+					_streamState: {
+
+
+						isStreaming: false,
+
+
+					},
+
+
+					_diffOfId: {}, 
+
+
+					_removeStylesFns: new Set(),
+
+
+				}
+
+
+				this._addDiffArea(adding)
+
+
 			}
-		}
 
-		// apply each replacement from right to left (so indexes don't shift)
-		let newCode: string = modelStr
-		for (let i = replacements.length - 1; i >= 0; i--) {
-			const { origStart, origEnd, block } = replacements[i]
-			newCode = newCode.slice(0, origStart) + block.final + newCode.slice(origEnd + 1, Infinity)
-		}
 
-		this._writeURIText(uri, newCode,
-			'wholeFileRange',
-			{ shouldRealignDiffAreas: true }
-		)
-		onProgress?.(`Successfully applied all blocks to: ${uri.fsPath}`);
-	}
+			this._onDidAddOrDeleteDiffZones.fire({ uri })
+
+
+	
+
+
+			// apply each replacement from right to left (so indexes don't shift)
+
+
+			let newCode: string = modelStr
+
+
+			for (let i = replacements.length - 1; i >= 0; i--) {
+
+
+				const { origStart, origEnd, block } = replacements[i]
+
+
+				newCode = newCode.slice(0, origStart) + block.final + newCode.slice(origEnd + 1, Infinity)
+
+
+			}
+
+
+	
+
+
+					this._writeURIText(uri, newCode,
+
+
+	
+
+
+						'wholeFileRange',
+
+
+	
+
+
+						{ shouldRealignDiffAreas: false }
+
+
+	
+
+
+					)
+
+
+			onProgress?.(`Successfully applied all blocks to: ${uri.fsPath}`);
+
+
+		}
 
 	private async _applyWithMorph(uri: URI, originalUpdatedBlocks: string): Promise<void> {
 		// Extract the ORIGINAL/UPDATED blocks

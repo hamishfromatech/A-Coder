@@ -164,9 +164,11 @@ const prepareMessages_openai_tools = (messages: SimpleLLMMessage[]): OpenAILLMCh
 
 		if (currMsg.role === 'tool') {
 			// Convert to OpenAI tool format with tool_call_id
+			// We also include 'name' which is helpful for some proxies that translate to Gemini
 			newMessages.push({
 				role: 'tool',
 				tool_call_id: currMsg.id,
+				name: currMsg.name,
 				content: currMsg.content,
 			})
 			continue
@@ -225,7 +227,7 @@ const prepareMessages_anthropic_tools = (messages: SimpleLLMMessage[], supportsA
 			// turn each tool into a user message with tool results at the end
 			newMessages[i] = {
 				role: 'user',
-				content: [{ type: 'tool_result', tool_use_id: currMsg.id, content: currMsg.content }]
+				content: [{ type: 'tool_result', tool_use_id: currMsg.id, content: currMsg.content, name: currMsg.name }]
 			}
 			continue
 		}
@@ -274,9 +276,9 @@ const prepareGeminiMessages = (messages: AnthropicLLMChatMessage[]) => {
 						return { text: c.text }
 					}
 					else if (c.type === 'tool_result') {
-						const name = toolIdToName.get(c.tool_use_id)
+						const name = c.name || toolIdToName.get(c.tool_use_id)
 						if (!name) return null
-						return { functionResponse: { id: c.tool_use_id, name: name, response: { output: c.content } } }
+						return { functionResponse: { id: c.tool_use_id, name: name as ToolName, response: { output: c.content } } }
 					}
 					else return null
 				}).filter(m => !!m)

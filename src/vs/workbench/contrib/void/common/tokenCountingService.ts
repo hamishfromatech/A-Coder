@@ -295,6 +295,8 @@ export class TokenCountingService {
 			'gemini-1.5-pro': 1000000,
 			'gemini-1.5-flash': 1000000,
 			'gemini-2.0-flash': 1000000,
+			'gemini-3-flash': 1000000,
+			'gemini-3-flash-preview': 1000000,
 			'gemini-3-pro-preview': 1000000,
 			'gemini-3-pro': 1000000,
 			'nemotron-3-nano': 1000000,

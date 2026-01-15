@@ -134,6 +134,48 @@ const partitionReasoningContent = (fullText: string, existingReasoning?: string 
 	}
 }
 
+/**
+ * Heuristic to detect if the LLM message sounds "unfinished" or like it intended to call a tool but didn't.
+ * Returns 'silent' if we should auto-continue without a poke, 'poke' if we should add a user message.
+ */
+const detectDanglingAgenticIntent = (text: string, reasoning: string): 'none' | 'silent' | 'poke' => {
+	const combined = (text + ' ' + reasoning).trim();
+	if (!combined) return 'none';
+
+	// Patterns where the model is CLEARLY just about to emit a tool call or XML block
+	// We can silently continue these to avoid UI noise
+	const silentPatterns = [
+		// Ends with Action: but no content (ReAct style)
+		/Action:\s*$/i,
+		// Ends with a tool call opening but no content
+		/<function_calls>\s*$/is,
+		/<invoke\s+name="[^"]*"\s*>\s*$/is,
+		// Ends with "I will now use the [X] tool to [Y]:"
+		/(?:I will|I'll|Let me|I'm going to|I'll now|I will now)\s+(?:use|call|invoke|execute)\s+(?:the\s+)?(?:[a-zA-Z0-9_-]+)\s+tool\s+to\s+[^.!?]*:\s*$/i,
+		// Ends with a very specific "About to act" pattern
+		/(?:Based on the above,|Therefore,|So,|I'll start by|I will begin by)\s+(?:I will|I'll|I'm going to)\s+(?:now\s+)?(?:read|edit|search|run|check|fix|update|create|delete)\s+[^.!?]*:\s*$/i,
+	];
+
+	if (silentPatterns.some(p => p.test(combined))) return 'silent';
+
+	// Patterns indicating the LLM intended to call a tool but stopped at a more ambiguous point
+	const pokePatterns = [
+		// Interrupted intent to use a common tool at the end of a sentence
+		/(?:I will|I'll|Let me|I'm going to|I'll now|I will now)\s+(?:read|edit|search|run|check|fix|update|create|delete|list|get|inspect|use|call|invoke|open|execute)\b[^.!?]*$/i,
+		// ReAct style thought without action
+		/Thought:\s*(?!.*Action:)/is,
+		// Unclosed XML tags (already started but not finished)
+		/<function_calls>(?!.*<\/function_calls>)/is,
+		/<invoke\s+name="[^"]*"(?!.*<\/invoke>)/is,
+		// Ends with a plan step but no action follows
+		/Plan:\s*\d+\.\s+.*$/is,
+	];
+
+	if (pokePatterns.some(p => p.test(combined))) return 'poke';
+
+	return 'none';
+};
+
 
 const findStagingSelectionIndex = (currentSelections: StagingSelectionItem[] | undefined, newSelection: StagingSelectionItem): number | null => {
 	if (!currentSelections) return null
@@ -1086,6 +1128,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		const { overridesOfModel } = this._settingsService.state
 
 		let nMessagesSent = 0
+		let nPokesThisLoop = 0
 		let shouldSendAnotherMessage = true
 		let isRunningWhenEnd: IsRunningType = undefined
 
@@ -1213,29 +1256,40 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 							currentReActPhase = reactResult.phase;
 						}
 
-						// Detect repetition
-						const hasXMLToolCallInProgress = _rawTextBeforeStripping?.includes('<function_calls>');
-						if (!toolCalls && !hasXMLToolCallInProgress) {
-							const recentText = parsed.displayText.slice(-50);
-							if (recentText.length > 10) {
-								lastChunks.push(recentText);
-								if (lastChunks.length > MAX_CHUNKS_TO_TRACK) {
-									lastChunks.shift();
-								}
-
-								const repetitionCount = lastChunks.filter(chunk => chunk === recentText).length;
-								if (repetitionCount >= REPETITION_THRESHOLD) {
-									console.warn('[chatThreadService] Text repetition detected, aborting LLM...');
-									if (llmCancelToken) {
-										this._llmMessageService.abort(llmCancelToken);
-									}
-									return;
-								}
-							}
-						} else {
-							lastChunks = [];
-						}
-
+						                        // Detect repetition
+						                        const hasXMLToolCallInProgress = _rawTextBeforeStripping?.includes('<function_calls>');
+						                        const hasNativeToolCall = !!toolCalls && toolCalls.length > 0;
+						                        
+						                        if (!hasNativeToolCall && !hasXMLToolCallInProgress) {
+						                            // Combine display text and reasoning for repetition detection
+						                            // This prevents false positives when only reasoning is streaming
+						                            const combinedText = (parsed.displayText + " " + parsed.reasoningText).trim();
+						                            const recentText = combinedText.slice(-50);
+						                            
+						                            if (recentText.length > 10) {
+						                                // Only add if the text has actually changed to avoid false positives 
+						                                // from redundant onText calls (e.g. from provider heartbeats)
+						                                if (lastChunks.length === 0 || lastChunks[lastChunks.length - 1] !== recentText) {
+						                                    lastChunks.push(recentText);
+						                                    if (lastChunks.length > MAX_CHUNKS_TO_TRACK) {
+						                                        lastChunks.shift();
+						                                    }
+						                                }
+						
+						                                const repetitionCount = lastChunks.filter(chunk => chunk === recentText).length;
+						                                if (repetitionCount >= REPETITION_THRESHOLD) {
+						                                    console.warn(`[chatThreadService] Text repetition detected. Count: ${repetitionCount}, Text: "${recentText.substring(0, 100)}..."`);
+						                                    console.warn(`[chatThreadService] Repetition threshold reached (${REPETITION_THRESHOLD}), aborting LLM...`);
+						                                    if (llmCancelToken) {
+						                                        this._llmMessageService.abort(llmCancelToken);
+						                                    }
+						                                    return;
+						                                }
+						                            }
+						                        } else {
+						                            // Reset tracker when tools are detected
+						                            lastChunks = [];
+						                        }
 						// Use tool calls from ReAct parser if available, otherwise use native tool calls
 						let parsedToolCalls = toolCalls;
 						if (!parsedToolCalls && reactResult?.toolCalls) {
@@ -1520,6 +1574,44 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				// The LLM knows when it needs to use tools - if it responds with just text, it's done.
 				else if (!isEmptyResponse && textContent.length > 0 && textContent !== '(empty message)') {
 					if (chatMode === 'code') {
+
+						// Detect interrupted responses (dangling intent or unfinished XML)
+						const isInterruptedXML = reactParser.isParsingIncomplete();
+						const danglingIntent = detectDanglingAgenticIntent(info.fullText, info.fullReasoning);
+
+						if ((isInterruptedXML || danglingIntent !== 'none') && nPokesThisLoop < 3) {
+							nPokesThisLoop += 1;
+							
+							if (danglingIntent === 'silent') {
+								console.log(`[chatThreadService] Agent mode: Detected obvious 'About to Act' pattern, silently auto-continuing...`)
+								// Silent auto-continue: just start another turn without adding a user message
+								shouldSendAnotherMessage = true;
+							} else {
+								console.log(`[chatThreadService] Agent mode: Detected interrupted response (XML incomplete: ${isInterruptedXML}, intent: ${danglingIntent}). Poking model...`)
+								this._addMessageToThread(threadId, {
+									role: 'user',
+									content: 'Your last response seemed interrupted or you mentioned an action without calling the corresponding tool. Please continue and call the tool now. Do not repeat your thought process, just proceed with the tool call.',
+									displayContent: 'Continuing interrupted response...',
+									selections: null,
+									state: defaultMessageState
+								})
+								shouldSendAnotherMessage = true;
+							}
+							break; // Break retry loop to start new turn
+						}
+
+						// If the response is very short after a tool call, it might be an accidental termination
+						// (e.g. just saying "Done." or "Okay." without actually being finished)
+						const isVeryShortResponse = textContent.length < 25;
+						const lastMessageWasToolResult = chatMessages.length > 0 && chatMessages[chatMessages.length - 1].role === 'tool';
+
+						if (isVeryShortResponse && lastMessageWasToolResult && nPokesThisLoop < 3) {
+							console.log(`[chatThreadService] Agent mode: Model returned short response (${textContent.length} chars) after tool call, silently auto-continuing...`)
+							nPokesThisLoop += 1;
+							shouldSendAnotherMessage = true;
+							break;
+						}
+
 						// No tool call = task complete. This is how Claude Code, Continue, and other agents work.
 						// The LLM will call tools when it needs to take action. Text-only means it's finished.
 						console.log(`[chatThreadService] Agent mode: Text-only response (no tool call) - task complete`)

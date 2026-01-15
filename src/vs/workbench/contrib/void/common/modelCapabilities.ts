@@ -99,8 +99,9 @@ export const defaultModelsOfProvider = {
 		'grok-3-mini-fast'
 	],
 	gemini: [ // https://ai.google.dev/gemini-api/docs/models/gemini
+		'gemini-3-pro-preview',
+		'gemini-3-flash-preview',
 		'gemini-2.5-pro-exp-03-25',
-		'gemini-2.5-flash-preview-04-17',
 		'gemini-2.0-flash',
 		'gemini-2.0-flash-lite',
 		'gemini-2.5-pro-preview-05-06',
@@ -440,27 +441,14 @@ const extensiveModelOptionsFallback: VoidStaticProviderInfo['modelOptionsFallbac
 
 	if (lower.includes('gemini') && (lower.includes('2.5') || lower.includes('2-5'))) return toFallback(geminiModelOptions, 'gemini-2.5-pro-exp-03-25')
 
-	// Gemini 3 Pro Preview via Ollama Cloud - uses effort_slider for thinking_level
-	if (lower.includes('gemini') && lower.includes('3') && lower.includes('pro')) return {
-		modelName,
-		recognizedModelName: 'gemini-3-pro-preview',
-		contextWindow: 1_000_000, // 1M context window
-		reservedOutputTokenSpace: 64_000, // 64K token output capacity
-		cost: { input: 0, output: 0 },
-		downloadable: false,
-		supportsFIM: false,
-		supportsSystemMessage: 'system-role' as const,
-		specialToolFormat: 'openai-style' as const,
-		reasoningCapabilities: {
-			supportsReasoning: true,
-			canTurnOffReasoning: true,
-			canIOReasoning: true,
-			reasoningSlider: {
-				type: 'effort_slider' as const,
-				values: ['low', 'medium', 'high'],
-				default: 'medium'
-			},
-		},
+	// Gemini 3 models
+	if (lower.includes('gemini') && lower.includes('3')) {
+		const recognizedName = lower.includes('flash') ? 'gemini-3-flash-preview' : 'gemini-3-pro-preview'
+		return {
+			...toFallback(geminiModelOptions, recognizedName as any),
+			modelName,
+			recognizedModelName: recognizedName,
+		}
 	}
 
 	if (lower.includes('claude-3-5') || lower.includes('claude-3.5')) return toFallback(anthropicModelOptions, 'claude-3-5-sonnet-20241022')
@@ -1013,7 +1001,38 @@ const xAISettings: VoidStaticProviderInfo = {
 
 // ---------------- GEMINI ----------------
 const geminiModelOptions = { // https://ai.google.dev/gemini-api/docs/pricing
-	// https://ai.google.dev/gemini-api/docs/thinking#set-budget
+	'gemini-3-pro-preview': {
+		contextWindow: 1_000_000,
+		reservedOutputTokenSpace: 64_000,
+		cost: { input: 0, output: 0 },
+		downloadable: false,
+		supportsFIM: false,
+		supportsSystemMessage: 'separated',
+		specialToolFormat: 'gemini-style',
+		reasoningCapabilities: {
+			supportsReasoning: true,
+			canTurnOffReasoning: true,
+			canIOReasoning: true,
+			reasoningSlider: { type: 'effort_slider', values: ['low', 'high'], default: 'high' },
+			reasoningReservedOutputTokenSpace: 64000,
+		},
+	},
+	'gemini-3-flash-preview': {
+		contextWindow: 1_000_000,
+		reservedOutputTokenSpace: 64_000,
+		cost: { input: 0, output: 0 },
+		downloadable: false,
+		supportsFIM: false,
+		supportsSystemMessage: 'separated',
+		specialToolFormat: 'gemini-style',
+		reasoningCapabilities: {
+			supportsReasoning: true,
+			canTurnOffReasoning: true,
+			canIOReasoning: true,
+			reasoningSlider: { type: 'effort_slider', values: ['low', 'high'], default: 'high' },
+			reasoningReservedOutputTokenSpace: 64000,
+		},
+	},
 	'gemini-2.5-pro-preview-05-06': {
 		contextWindow: 1_048_576,
 		reservedOutputTokenSpace: 8_192,
@@ -1588,6 +1607,26 @@ const ollamaModelOptions = {
 		},
 		defaultTemperature: 1.0, // Strongly recommended to keep at default for Gemini 3
 	},
+	'gemini-3-flash-preview:cloud': {
+		contextWindow: 1_000_000,
+		reservedOutputTokenSpace: 64_000,
+		cost: { input: 0, output: 0 },
+		downloadable: false,
+		supportsFIM: false,
+		supportsSystemMessage: 'system-role',
+		specialToolFormat: 'openai-style',
+		reasoningCapabilities: {
+			supportsReasoning: true,
+			canTurnOffReasoning: true,
+			canIOReasoning: true,
+			reasoningSlider: {
+				type: 'effort_slider',
+				values: ['low', 'high'],
+				default: 'high'
+			},
+		},
+		defaultTemperature: 1.0,
+	},
 
 } as const satisfies Record<string, VoidStaticModelInfo>
 
@@ -1595,7 +1634,11 @@ export const ollamaRecommendedModels = ['qwen2.5-coder:1.5b', 'llama3.1', 'qwq',
 
 
 const vLLMSettings: VoidStaticProviderInfo = {
-	modelOptionsFallback: (modelName) => extensiveModelOptionsFallback(modelName, { downloadable: { sizeGb: 'not-known' } }),
+	modelOptionsFallback: (modelName) => {
+		const res = extensiveModelOptionsFallback(modelName, { downloadable: { sizeGb: 'not-known' } })
+		if (res) res.specialToolFormat = 'openai-style'
+		return res
+	},
 	modelOptions: {},
 	providerReasoningIOSettings: {
 		// reasoning: OAICompat + response.choices[0].delta.reasoning_content // https://docs.vllm.ai/en/stable/features/reasoning_outputs.html#streaming-chat-completions
@@ -1605,7 +1648,11 @@ const vLLMSettings: VoidStaticProviderInfo = {
 }
 
 const lmStudioSettings: VoidStaticProviderInfo = {
-	modelOptionsFallback: (modelName) => extensiveModelOptionsFallback(modelName, { downloadable: { sizeGb: 'not-known' }, contextWindow: 4_096 }),
+	modelOptionsFallback: (modelName) => {
+		const res = extensiveModelOptionsFallback(modelName, { downloadable: { sizeGb: 'not-known' }, contextWindow: 4_096 })
+		if (res) res.specialToolFormat = 'openai-style'
+		return res
+	},
 	modelOptions: {},
 	providerReasoningIOSettings: {
 		input: { includeInPayload: openAICompatIncludeInPayloadReasoning },
@@ -1615,7 +1662,11 @@ const lmStudioSettings: VoidStaticProviderInfo = {
 }
 
 const ollamaSettings: VoidStaticProviderInfo = {
-	modelOptionsFallback: (modelName) => extensiveModelOptionsFallback(modelName, { downloadable: { sizeGb: 'not-known' } }),
+	modelOptionsFallback: (modelName) => {
+		const res = extensiveModelOptionsFallback(modelName, { downloadable: { sizeGb: 'not-known' } })
+		if (res) res.specialToolFormat = 'openai-style'
+		return res
+	},
 	modelOptions: ollamaModelOptions,
 	providerReasoningIOSettings: {
 		// Ollama exposes reasoning in a `thinking` field when think=true is set
@@ -1627,7 +1678,11 @@ const ollamaSettings: VoidStaticProviderInfo = {
 }
 
 const openaiCompatible: VoidStaticProviderInfo = {
-	modelOptionsFallback: (modelName) => extensiveModelOptionsFallback(modelName),
+	modelOptionsFallback: (modelName) => {
+		const res = extensiveModelOptionsFallback(modelName)
+		if (res) res.specialToolFormat = 'openai-style'
+		return res
+	},
 	modelOptions: {},
 	providerReasoningIOSettings: {
 		// reasoning: we have no idea what endpoint they used, so we can't consistently parse out reasoning
@@ -1637,7 +1692,11 @@ const openaiCompatible: VoidStaticProviderInfo = {
 }
 
 const liteLLMSettings: VoidStaticProviderInfo = { // https://docs.litellm.ai/docs/reasoning_content
-	modelOptionsFallback: (modelName) => extensiveModelOptionsFallback(modelName, { downloadable: { sizeGb: 'not-known' } }),
+	modelOptionsFallback: (modelName) => {
+		const res = extensiveModelOptionsFallback(modelName, { downloadable: { sizeGb: 'not-known' } })
+		if (res) res.specialToolFormat = 'openai-style'
+		return res
+	},
 	modelOptions: {},
 	providerReasoningIOSettings: {
 		input: { includeInPayload: openAICompatIncludeInPayloadReasoning },

@@ -37,7 +37,7 @@ export type AnthropicLLMChatMessage = {
 } | {
 	role: 'user',
 	content: string | (
-		{ type: 'text'; text: string; } | { type: 'tool_result'; tool_use_id: string; content: string; }
+		{ type: 'text'; text: string; } | { type: 'tool_result'; tool_use_id: string; content: string; name?: string; }
 	)[]
 }
 export type OpenAILLMChatMessage = {
@@ -53,6 +53,7 @@ export type OpenAILLMChatMessage = {
 	role: 'tool',
 	content: string;
 	tool_call_id: string;
+	name?: string;
 }
 
 export type GeminiLLMChatMessage = {
