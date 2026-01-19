@@ -1,0 +1,128 @@
+# Plan
+
+The `Plan` component provides a flexible system for displaying AI-generated execution plans with collapsible content. Perfect for showing multi-step workflows, task breakdowns, and implementation strategies with support for streaming content and loading states.
+
+<Preview path="plan" />
+
+## Installation
+
+<ElementsInstaller path="plan" />
+
+## Features
+
+* Collapsible content with smooth animations
+* Streaming support with shimmer loading states
+* Built on shadcn/ui Card and Collapsible components
+* TypeScript support with comprehensive type definitions
+* Customizable styling with Tailwind CSS
+* Responsive design with mobile-friendly interactions
+* Keyboard navigation and accessibility support
+* Theme-aware with automatic dark mode support
+* Context-based state management for streaming
+
+## Props
+
+### `<Plan />`
+
+<TypeTable
+  type={{
+  isStreaming: {
+    description: 'Whether content is currently streaming. Enables shimmer animations on title and description.',
+    type: 'boolean',
+    default: 'false',
+  },
+  defaultOpen: {
+    description: 'Whether the plan is expanded by default.',
+    type: 'boolean',
+  },
+  '...props': {
+    description: 'Any other props are spread to the Collapsible component.',
+    type: 'React.ComponentProps<typeof Collapsible>',
+  },
+}}
+/>
+
+### `<PlanHeader />`
+
+<TypeTable
+  type={{
+  '...props': {
+    description: 'Any other props are spread to the CardHeader component.',
+    type: 'React.ComponentProps<typeof CardHeader>',
+  },
+}}
+/>
+
+### `<PlanTitle />`
+
+<TypeTable
+  type={{
+  children: {
+    description: 'The title text. Displays with shimmer animation when isStreaming is true.',
+    type: 'string',
+  },
+  '...props': {
+    description: 'Any other props (except children) are spread to the CardTitle component.',
+    type: 'Omit<React.ComponentProps<typeof CardTitle>, "children">',
+  },
+}}
+/>
+
+### `<PlanDescription />`
+
+<TypeTable
+  type={{
+  children: {
+    description: 'The description text. Displays with shimmer animation when isStreaming is true.',
+    type: 'string',
+  },
+  '...props': {
+    description: 'Any other props (except children) are spread to the CardDescription component.',
+    type: 'Omit<React.ComponentProps<typeof CardDescription>, "children">',
+  },
+}}
+/>
+
+### `<PlanTrigger />`
+
+<TypeTable
+  type={{
+  '...props': {
+    description: 'Any other props are spread to the CollapsibleTrigger component. Renders as a Button with chevron icon.',
+    type: 'React.ComponentProps<typeof CollapsibleTrigger>',
+  },
+}}
+/>
+
+### `<PlanContent />`
+
+<TypeTable
+  type={{
+  '...props': {
+    description: 'Any other props are spread to the CardContent component.',
+    type: 'React.ComponentProps<typeof CardContent>',
+  },
+}}
+/>
+
+### `<PlanFooter />`
+
+<TypeTable
+  type={{
+  '...props': {
+    description: 'Any other props are spread to the div element.',
+    type: 'React.ComponentProps<"div">',
+  },
+}}
+/>
+
+### `<PlanAction />`
+
+<TypeTable
+  type={{
+  '...props': {
+    description: 'Any other props are spread to the CardAction component.',
+    type: 'React.ComponentProps<typeof CardAction>',
+  },
+}}
+/>
