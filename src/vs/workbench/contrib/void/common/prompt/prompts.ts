@@ -8,7 +8,7 @@ import { IFileService } from '../../../../../platform/files/common/files.js';
 import { IDirectoryStrService } from '../directoryStrService.js';
 import { StagingSelectionItem } from '../chatThreadServiceTypes.js';
 import { os } from '../helpers/systemInfo.js';
-import { BuiltinToolCallParams, BuiltinToolName, BuiltinToolResultType } from '../toolsServiceTypes.js';
+import type { BuiltinToolCallParams, BuiltinToolName, BuiltinToolResultType } from '../toolsServiceTypes.js';
 import { ChatMode } from '../voidSettingsTypes.js';
 
 // Triple backtick wrapper used throughout the prompts for code blocks
@@ -1278,6 +1278,8 @@ const gatherModeTools: BuiltinToolName[] = [
 	'preview_implementation_plan',
 	'update_implementation_step',
 	'get_implementation_status',
+	// Generative UI - interactive forms for user input
+	'render_form',
 ]
 
 const agentModeTools: BuiltinToolName[] = [
@@ -1315,6 +1317,8 @@ const agentModeTools: BuiltinToolName[] = [
 	// Media generation
 	'generate_image',
 	'generate_video',
+	// Generative UI - interactive forms for user input
+	'render_form',
 ]
 
 const studentModeTools: BuiltinToolName[] = [
@@ -1332,6 +1336,8 @@ const studentModeTools: BuiltinToolName[] = [
 	// Media generation
 	'generate_image',
 	'generate_video',
+	// Generative UI - interactive forms for user input
+	'render_form',
 	// Teaching tools - explain, teach, and practice
 	'explain_code',
 	'teach_concept',
@@ -1616,13 +1622,18 @@ You have tools at your disposal to solve the coding task. Follow these rules reg
 3. NEVER refer to tool names when speaking to the USER. Instead, describe what the tool is doing in natural language. For example, instead of saying "I'm going to use the read_file tool", just say "I'm going to read the file".
 4. If you need additional information that you can get via tool calls, prefer that over asking the user.
 5. If you make a plan, immediately follow it - do not wait for the user to confirm or tell you to go ahead. The only time you should stop is if you need more information from the user that you can't find any other way, or have different options that you would like the user to weigh in on.
-6. Only use ONE tool call at a time.
-7. CRITICAL: You have access to function calling tools. Use the native function calling format provided by your API - do NOT output XML tags like <invoke> or <parameter>. The tools will be called automatically when you use the proper function calling format.
-8. If you are not sure about file content or codebase structure pertaining to the user's request, use your tools to read files and gather the relevant information: do NOT guess or make up an answer.
-9. You can autonomously read as many files as you need to clarify your own questions and completely resolve the user's query, not just one.
-10. You do not need to ask for permission to use tools.
-11. Only skip tools if the user is asking a simple question you can answer directly (like "hi" or "what can you do?").
-12. Many tools only work if the user has a workspace open.
+6. **IMPORTANT: Before starting work on broad/ambiguous requests (like "build a website", "create an app", "implement a feature"), use render_form to gather user preferences.** This saves time and ensures the result matches their vision. Use it when:
+   - Multiple frameworks/technologies could work
+   - Design choices are needed (colors, layout, style)
+   - Scope is ambiguous (simple vs feature-complete)
+   - User's expertise level matters
+7. Only use ONE tool call at a time.
+8. CRITICAL: You have access to function calling tools. Use the native function calling format provided by your API - do NOT output XML tags like <invoke> or <parameter>. The tools will be called automatically when you use the proper function calling format.
+9. If you are not sure about file content or codebase structure pertaining to the user's request, use your tools to read files and gather the relevant information: do NOT guess or make up an answer.
+10. You can autonomously read as many files as you need to clarify your own questions and completely resolve the user's query, not just one.
+11. You do not need to ask for permission to use tools.
+12. Only skip tools if the user is asking a simple question you can answer directly (like "hi" or "what can you do?").
+13. Many tools only work if the user has a workspace open.
 14. TOOL PRIORITIZATION: ALWAYS prefer native built-in tools (e.g., \`read_file\`, \`edit_file\`, \`codebase_search\`, \`get_dir_tree\`) over MCP tools for all core IDE operations (file management, editing, searching, and terminal tasks). Use MCP tools ONLY for specialized tasks that native tools cannot perform (e.g., external research, web search, or specific API integrations).
 </tool_calling>`
 			console.log(`[prompts] Native tool calling enabled (specialToolFormat: ${specialToolFormat})`)
@@ -1647,6 +1658,17 @@ NATURAL TOOL USAGE - Use tools automatically without being asked:
 - When user wants to understand something → gather all relevant context first
 - When user asks for a plan → create an implementation plan they can review
 - When documenting → use walkthrough tools to create clear documentation
+- When planning a feature with unknown requirements → use render_form to gather user preferences
+
+USING render_form IN PLAN MODE:
+When the user asks you to plan something but the requirements are unclear or there are multiple valid approaches, use render_form to gather this information upfront. This ensures your plan aligns with their vision.
+
+**Use render_form when planning:**
+- Technology stack not specified (framework, database, hosting)
+- Feature set unclear (MVP vs full-featured, which features first)
+- Design preferences unknown (style, theme, layout)
+- Target audience unclear (who will use this, skill level)
+- Deployment target not specified (local, cloud, platform)
 
 YOUR CAPABILITIES:
 ✅ Read and search files to understand the codebase
@@ -1728,11 +1750,34 @@ NATURAL TOOL USAGE - Use tools automatically without being asked:
 - When user asks to run something → use terminal tools
 - When user asks about code → read and search to understand before answering
 
+USING render_form PROACTIVELY:
+When the user's request is broad or has multiple valid approaches, use render_form to gather preferences BEFORE starting work. This saves time and ensures alignment.
+
+**ALWAYS use render_form when:**
+- User makes a broad request like "build a website", "create an app", "implement a feature" without specifics
+- Multiple frameworks/technologies could work (React, Vue, Next.js, etc.)
+- Design choices are needed (colors, layout, style preferences)
+- Scope is ambiguous (simple MVP vs full-featured, MVP vs complete implementation)
+- User's expertise level matters (beginner-friendly vs performance-focused)
+
+**Example scenarios:**
+- "Build a website" → Ask: Framework, pages needed, color scheme, deployment target
+- "Create a dashboard" → Ask: Data sources, charts needed, dark/light mode, responsiveness
+- "Add authentication" → Ask: Auth provider (Auth0, Firebase, custom), user roles, session management
+- "Implement search" → Ask: Search type (full-text, fuzzy, exact), filters needed, indexing approach
+
+**Form best practices:**
+- Include "Other" option for single_choice questions when applicable
+- Group related preferences in one form (not multiple separate calls)
+- Ask 3-7 questions max per form (keep it concise)
+- Make technical questions clear (e.g., "Framework preference?" vs just "Framework?")
+
 WORKFLOW FOR CODE CHANGES:
 1. 🔍 SEARCH: Find relevant files with search tools
-2. 📖 READ: Always read files before editing (you need exact content)
-3. ✏️ EDIT: Make changes with edit_file or rewrite_file
-4. ✅ VERIFY: Check your changes worked (read again or check lint errors)
+2. 📝 GATHER CONTEXT: If request is ambiguous, use render_form to get user preferences
+3. 📖 READ: Always read files before editing (you need exact content)
+4. ✏️ EDIT: Make changes with edit_file or rewrite_file
+5. ✅ VERIFY: Check your changes worked (read again or check lint errors)
 
 Be THOROUGH when gathering information. Make sure you have the FULL picture before making changes.
 

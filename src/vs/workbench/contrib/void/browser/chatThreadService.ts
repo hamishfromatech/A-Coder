@@ -984,7 +984,14 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 			const approvalType = isBuiltInTool ? approvalTypeOfBuiltinToolName[toolName] : 'MCP tools'
 			if (approvalType) {
 				const autoApprove = this._settingsService.state.globalSettings.autoApprove[approvalType]
-				this._addMessageToThread(threadId, { role: 'tool', type: 'tool_request', content: '(Awaiting user permission...)', result: null, name: toolName, params: toolParams, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature })
+				const content = toolName === 'render_form' ? 'Please complete the form below.' : '(Awaiting user permission...)'
+				this._addMessageToThread(threadId, { role: 'tool', type: 'tool_request', content, result: null, name: toolName, params: toolParams, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature })
+
+				// Special case: render_form never executes - it stays in tool_request state so the UI can display the form
+				if (toolName === 'render_form') {
+					return { awaitingUserApproval: true }
+				}
+
 				if (!autoApprove) {
 					return { awaitingUserApproval: true }
 				}
