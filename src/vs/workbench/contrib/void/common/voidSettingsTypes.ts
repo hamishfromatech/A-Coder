@@ -577,3 +577,125 @@ export interface MCPUserStateOfName {
 export interface MCPUserState {
 	isOn: boolean;
 }
+
+// ======================================================== Learning Progress Types ========================================================
+
+export type ExerciseType = 'fill_blank' | 'fix_bug' | 'write_function' | 'extend_code';
+
+export interface LessonProgress {
+	lessonId: string;
+	title: string;
+	completed: boolean;
+	sectionsRead: string[]; // IDs of completed sections
+	exercisesAttempted: { [exerciseId: string]: ExerciseAttempt };
+	quizResults: QuizResult[];
+	totalScore: number;
+	timeSpent: number; // in seconds
+	lastAccessed: number; // timestamp
+}
+
+export interface ExerciseAttempt {
+	exerciseId: string;
+	type: ExerciseType;
+	attempts: number;
+	solved: boolean;
+	hintsUsed: number;
+	timeSpent: number; // in seconds
+	firstAttemptTime: number; // timestamp
+	lastAttemptTime: number; // timestamp
+}
+
+export interface QuizResult {
+	quizId: string;
+	title: string;
+	score: number;
+	totalPoints: number;
+	percentage: number;
+	questionsCorrect: number;
+	totalQuestions: number;
+	timestamp: number;
+}
+
+export interface HintUsage {
+	exerciseId: string;
+	hintLevel: number; // 1-4
+	timestamp: number;
+}
+
+export interface ThreadLearningProgress {
+	threadId: string;
+	lessons: { [lessonId: string]: LessonProgress };
+	exercises: { [exerciseId: string]: ExerciseAttempt };
+	quizzes: QuizResult[];
+	hints: HintUsage[];
+	streakCount: number; // consecutive days learning
+	badges: Badge[];
+	totalLessonsCompleted: number;
+	totalExercisesSolved: number;
+	totalTimeSpent: number; // in seconds
+	startDate: number; // timestamp
+	lastUpdated: number; // timestamp
+}
+
+export interface Badge {
+	id: string;
+	name: string;
+	description: string;
+	icon: string;
+	unlockedAt: number;
+	category: 'lessons' | 'exercises' | 'quizzes' | 'streaks' | 'milestones';
+}
+
+export interface LearningSettings {
+	preferredFontSize: 'small' | 'medium' | 'large';
+	preferredCodeTheme: 'light' | 'dark' | 'auto';
+	enableCelebrations: boolean;
+	enableSoundEffects: boolean;
+	enableAnimations: boolean;
+	enableReducedMotion: boolean;
+	enableHighContrast: boolean;
+}
+
+export const defaultLearningSettings: LearningSettings = {
+	preferredFontSize: 'medium',
+	preferredCodeTheme: 'auto',
+	enableCelebrations: true,
+	enableSoundEffects: false,
+	enableAnimations: true,
+	enableReducedMotion: false,
+	enableHighContrast: false,
+};
+
+export interface GlobalLearningProgress {
+	threads: { [threadId: string]: ThreadLearningProgress };
+	settings: LearningSettings;
+	bookmarks: { [lessonId: string]: string[] }; // lesson ID -> section IDs
+	notes: { [lessonId: string]: { [sectionId: string]: string } }; // lesson ID -> section ID -> note
+	globalStats: {
+		totalLessonsCompleted: number;
+		totalExercisesSolved: number;
+		totalQuizzesTaken: number;
+		totalTimeSpent: number;
+		currentStreak: number;
+		longestStreak: number;
+		lastLearningDate: number;
+		lastUpdated: number;
+	};
+}
+
+export const defaultGlobalLearningProgress: GlobalLearningProgress = {
+	threads: {},
+	settings: defaultLearningSettings,
+	bookmarks: {},
+	notes: {},
+	globalStats: {
+		totalLessonsCompleted: 0,
+		totalExercisesSolved: 0,
+		totalQuizzesTaken: 0,
+		totalTimeSpent: 0,
+		currentStreak: 0,
+		longestStreak: 0,
+		lastLearningDate: 0,
+		lastUpdated: 0,
+	},
+};

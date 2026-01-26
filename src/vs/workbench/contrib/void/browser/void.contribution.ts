@@ -92,3 +92,6 @@ import '../common/voidUpdateService.js'
 
 // model service
 import '../common/voidModelService.js'
+
+// learning progress service
+import '../common/learningProgressService.js'
