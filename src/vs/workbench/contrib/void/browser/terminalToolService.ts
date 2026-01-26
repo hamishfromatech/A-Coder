@@ -334,12 +334,30 @@ export class TerminalToolService extends Disposable implements ITerminalToolServ
 			this.temporaryTerminalInstanceOfId[params.terminalId] = terminal
 		}
 
+		// Track if interrupt was called to resolve immediately
+		let wasInterrupted = false;
+		let resolveInterruptPromise: (() => void) | null = null;
+
 		const interrupt = () => {
-			terminal.dispose()
-			if (!isPersistent)
-				delete this.temporaryTerminalInstanceOfId[params.terminalId]
-			else
-				delete this.persistentTerminalInstanceOfId[params.persistentTerminalId]
+			if (wasInterrupted) return; // Already interrupted
+			wasInterrupted = true;
+
+			// Send SIGINT (Ctrl+C) to interrupt the running command
+			// This sends the interrupt signal to the shell to stop the current process
+			terminal.sendText('\x03', false);
+
+			// For persistent terminals, don't dispose - just interrupt the command
+			// Terminal stays alive for future commands
+			if (isPersistent) {
+				return;
+			}
+
+			// For temporary terminals, also dispose and clean up
+			terminal.dispose();
+			delete this.temporaryTerminalInstanceOfId[params.terminalId];
+
+			// Resolve the interrupt promise so the waitForResult completes immediately
+			resolveInterruptPromise?.();
 		}
 
 		const waitForResult = async () => {
@@ -377,13 +395,16 @@ export class TerminalToolService extends Disposable implements ITerminalToolServ
 			})
 
 
-			// send the command now that listeners are attached
-			await terminal.sendText(command, true)
+			// Create a promise that resolves when interrupt is called
+			const waitUntilInterruptPromise = new Promise<void>(resolve => {
+				resolveInterruptPromise = resolve;
+			});
 
-			const waitUntilInterrupt = isPersistent ?
+			const waitUntilTimeout = isPersistent ?
 				// timeout after X seconds
 				new Promise<void>((res) => {
 					setTimeout(() => {
+						if (wasInterrupted) return; // Don't set timeout reason if interrupted
 						resolveReason = { type: 'timeout' };
 						res()
 					}, MAX_TERMINAL_BG_COMMAND_TIME * 1000)
@@ -393,8 +414,10 @@ export class TerminalToolService extends Disposable implements ITerminalToolServ
 					let globalTimeoutId: ReturnType<typeof setTimeout>;
 					const resetTimer = () => {
 						clearTimeout(globalTimeoutId);
+						if (wasInterrupted) return; // Don't reset timer if interrupted
 						globalTimeoutId = setTimeout(() => {
-							if (resolveReason) return
+							if (resolveReason) return // already resolved
+							if (wasInterrupted) return; // Don't set timeout reason if interrupted
 
 							resolveReason = { type: 'timeout' };
 							res();
@@ -406,14 +429,21 @@ export class TerminalToolService extends Disposable implements ITerminalToolServ
 					resetTimer();
 				})
 
-			// wait for result
-			await Promise.any([waitUntilDone, waitUntilInterrupt])
+			// send the command now that listeners are attached
+			await terminal.sendText(command, true)
+
+			// wait for result: command done, interrupt, or timeout
+			await Promise.any([waitUntilDone, waitUntilInterruptPromise, waitUntilTimeout])
 				.finally(() => disposables.forEach(d => d.dispose()))
 
-
-
-			// read result if timed out, since we didn't get it (could clean this code up but it's ok)
-			if (resolveReason?.type === 'timeout') {
+			// If interrupted, read the current terminal output and mark as interrupted
+			if (wasInterrupted && !resolveReason) {
+				const terminalId = isPersistent ? params.persistentTerminalId : params.terminalId
+				result = await this.readTerminal(terminalId)
+				resolveReason = { type: 'timeout' }; // Use timeout to indicate incomplete execution
+			}
+			// Otherwise read result if timed out, since we didn't get it
+			else if (resolveReason?.type === 'timeout') {
 				const terminalId = isPersistent ? params.persistentTerminalId : params.terminalId
 				result = await this.readTerminal(terminalId)
 			}
