@@ -1,0 +1,118 @@
+name: Automated Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        type: boolean
+        description: Create as prerelease (beta/preview build)
+        default: false
+      increment_type:
+        type: choice
+        description: Version increment type
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+      release_notes:
+        type: string
+        description: Release notes (leave empty for auto-generated from commits)
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Get current voidRelease
+        id: get_release
+        run: |
+          CURRENT_RELEASE=$(jq -r '.voidRelease' product.json)
+          echo "current_release=$CURRENT_RELEASE" >> $GITHUB_OUTPUT
+          echo "Current voidRelease: $CURRENT_RELEASE"
+
+      - name: Increment voidRelease
+        id: increment
+        run: |
+          CURRENT="${{ steps.get_release.outputs.current_release }}"
+          # Convert to number and increment by 1
+          NEXT=$(printf "%04d" $((10#$CURRENT + 1)))
+          echo "next_release=$NEXT" >> $GITHUB_OUTPUT
+          echo "New voidRelease: $NEXT"
+
+      - name: Update product.json with new release number
+        run: |
+          NEW_RELEASE="${{ steps.increment.outputs.next_release }}"
+          jq --arg rel "$NEW_RELEASE" '.voidRelease = $rel' product.json > product.json.tmp
+          mv product.json.tmp product.json
+          echo "Updated voidRelease to: $NEW_RELEASE"
+
+      - name: Get version info
+        id: version
+        run: |
+          BASE_VERSION=$(jq -r '.version' package.json)
+          VOID_VERSION=$(jq -r '.voidVersion' product.json)
+          VOID_RELEASE="${{ steps.increment.outputs.next_release }}"
+          RELEASE_TAG="${BASE_VERSION}.${VOID_RELEASE}"
+          echo "base_version=$BASE_VERSION" >> $GITHUB_OUTPUT
+          echo "void_version=$VOID_VERSION" >> $GITHUB_OUTPUT
+          echo "void_release=$VOID_RELEASE" >> $GITHUB_OUTPUT
+          echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+          echo "Full version tag: $RELEASE_TAG"
+
+      - name: Generate release notes
+        id: notes
+        if: github.event.inputs.release_notes == ''
+        run: |
+          BASE_VERSION="${{ steps.version.outputs.base_version }}"
+          # Find the previous release tag
+          PREV_TAG=$(git tag -l "${BASE_VERSION}.*" --sort=-v:refname | head -n 2 | tail -n 1)
+          echo "Previous tag: $PREV_TAG"
+
+          if [ -z "$PREV_TAG" ]; then
+            NOTES="## Changes since previous release\n\n$(git log --pretty=format:"- %s" HEAD~10..HEAD)"
+          else
+            NOTES="## Changes since $PREV_TAG\n\n$(git log --pretty=format:"- %s" $PREV_TAG..HEAD)"
+          fi
+
+          # Escape for JSON
+          NOTES=$(echo "$NOTES" | sed 's/"/\\"/g' | tr '\n' '\\n')
+          echo "notes=$NOTES" >> $GITHUB_OUTPUT
+
+      - name: Commit version bump
+        run: |
+          NEW_RELEASE="${{ steps.increment.outputs.next_release }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add product.json
+          git commit -m "chore: bump voidRelease to $NEW_RELEASE"
+          git push origin dev
+
+      - name: Create tag
+        run: |
+          TAG="${{ steps.version.outputs.release_tag }}"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.release_tag }}
+          name: A-Coder ${{ steps.version.outputs.release_tag }}
+          body: ${{ github.event.inputs.release_notes != '' && github.event.inputs.release_notes || steps.notes.outputs.notes }}
+          draft: false
+          prerelease: ${{ github.event.inputs.prerelease }}
+          generate_release_notes: ${{ github.event.inputs.release_notes == '' }}
+
+      - name: Trigger builder workflows
+        run: |
+          echo "Release ${{ steps.version.outputs.release_tag }} created successfully!"
+          echo "Builder workflows will be triggered automatically via the release event."

@@ -3,7 +3,7 @@ from __future__ import annotations
 import os, sys, json, datetime, pathlib, textwrap, requests
 from openai import OpenAI
 
-REPO = "voideditor/void"
+REPO = "hamishfromatech/A-Coder"
 CACHE_FILE = pathlib.Path(".github/triage_cache.json")
 STAMP_FILE = pathlib.Path(".github/last_triage.txt")
 
@@ -17,7 +17,14 @@ THEMES_MD = textwrap.dedent("""\
 7. 🗃 Meta: Feature Comparison, Structure, and Naming
 """).strip()
 
-client  = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+# Configure for Ollama Cloud API (OpenAI-compatible endpoint)
+OLLAMA_API_KEY = os.environ.get("OLLAMA_API_KEY", "")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gpt-oss:120b")
+
+client = OpenAI(
+    api_key=OLLAMA_API_KEY,
+    base_url="https://ollama.com/v1",
+)
 headers = {"Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}"}
 
 
