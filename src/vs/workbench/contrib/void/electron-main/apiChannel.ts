@@ -1,10 +1,20 @@
 /*--------------------------------------------------------------------------------------
  *  Copyright 2025 Glass Devtools, Inc. All rights reserved.
- *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
+ *  Licensed under the Apache License, Version 2.0 See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
 import { IServerChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { Event, Emitter } from '../../../../base/common/event.js';
+
+/**
+ * Type for pending requests that may aggregate responses from multiple renderers
+ */
+interface PendingRequest {
+	resolve: (result: any) => void;
+	reject: (error: any) => void;
+	responses?: any[];
+	aggregate?: (responses: any[]) => any;
+}
 
 /**
  * API Channel for IPC communication between main and renderer processes
@@ -17,8 +27,11 @@ export class ApiChannel implements IServerChannel {
 	private apiServiceManager: any | null = null;
 
 	// Store pending requests
-	private readonly pendingRequests = new Map<string, { resolve: (result: any) => void, reject: (error: any) => void }>();
+	private readonly pendingRequests = new Map<string, PendingRequest>();
 	private requestIdCounter = 0;
+
+	// Track registered renderers for aggregating responses from multiple windows
+	private rendererCount = 0;
 
 	constructor() { }
 
@@ -67,8 +80,9 @@ export class ApiChannel implements IServerChannel {
 			return { success: false, reason: 'API server not running' };
 		}
 
-		// Handle renderer registration
+		// Handle renderer registration - track how many renderers are available
 		if (command === 'registerRenderer') {
+			this.rendererCount++;
 			return { success: true };
 		}
 
@@ -77,11 +91,22 @@ export class ApiChannel implements IServerChannel {
 			const { requestId, result, error } = params;
 			const pending = this.pendingRequests.get(requestId);
 			if (pending) {
-				this.pendingRequests.delete(requestId);
-				if (error) {
-					pending.reject(new Error(error));
+				// Check if this is an aggregated request waiting for multiple responses
+				if (pending.aggregate && pending.responses) {
+					pending.responses.push(result);
+					if (pending.responses.length >= this.rendererCount) {
+						// All renderers have responded, resolve with aggregated result
+						this.pendingRequests.delete(requestId);
+						pending.resolve(pending.aggregate(pending.responses));
+					}
 				} else {
-					pending.resolve(result);
+					// Single response mode - first response wins
+					this.pendingRequests.delete(requestId);
+					if (error) {
+						pending.reject(new Error(error));
+					} else {
+						pending.resolve(result);
+					}
 				}
 			}
 			return;
@@ -90,22 +115,64 @@ export class ApiChannel implements IServerChannel {
 		// Forward all other API requests to the renderer process
 		const requestId = `req_${++this.requestIdCounter}`;
 
+		// For getWorkspace, aggregate responses from all renderers
+		const shouldAggregate = command === 'getWorkspace';
+
 		return new Promise((resolve, reject) => {
 			// Store the promise handlers
-			this.pendingRequests.set(requestId, { resolve, reject });
+			this.pendingRequests.set(requestId, {
+				resolve,
+				reject,
+				responses: shouldAggregate ? [] : undefined,
+				aggregate: shouldAggregate ? (responses: any[]) => {
+					// Aggregate workspace responses from all renderers
+					const allFolders: any[] = [];
+					const allOpenFiles: any[] = [];
+					let activeFile: any = null;
 
-			// Fire the event to the renderer
+					for (const response of responses) {
+						if (response.workspace) {
+							if (response.workspace.folders) {
+								allFolders.push(...response.workspace.folders);
+							}
+							if (response.workspace.openFiles) {
+								allOpenFiles.push(...response.workspace.openFiles);
+							}
+							// Use the first non-null active file
+							if (!activeFile && response.workspace.activeFile) {
+								activeFile = response.workspace.activeFile;
+							}
+						}
+					}
+
+					return {
+						workspace: {
+							folders: allFolders,
+							openFiles: allOpenFiles,
+							activeFile,
+						}
+					};
+				} : undefined
+			});
+
+			// Fire the event to all renderers
 			this._onApiRequest.fire({
 				method: command,
 				params,
 				requestId
 			});
 
-			// Set a timeout in case the renderer doesn't respond
+			// Set a timeout in case the renderer(s) don't respond
 			setTimeout(() => {
-				if (this.pendingRequests.has(requestId)) {
+				const pending = this.pendingRequests.get(requestId);
+				if (pending) {
 					this.pendingRequests.delete(requestId);
-					reject(new Error(`Timeout waiting for renderer response to ${command}`));
+					// If aggregating and we have at least one response, use that
+					if (pending.aggregate && pending.responses && pending.responses.length > 0) {
+						resolve(pending.aggregate(pending.responses));
+					} else {
+						reject(new Error(`Timeout waiting for renderer response to ${command}`));
+					}
 				}
 			}, 30000); // 30 second timeout
 		});
