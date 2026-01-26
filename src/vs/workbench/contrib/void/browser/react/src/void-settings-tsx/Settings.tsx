@@ -2127,7 +2127,13 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 																<code className="flex-1 text-xs font-mono text-void-fg-2 truncate">{token}</code>
 																<button
 																	type="button"
-																	onClick={() => clipboardService.writeText(token)}
+																	onClick={async () => {
+																		try {
+																			await clipboardService.writeText(token);
+																		} catch (e) {
+																			console.error('Failed to copy token:', e);
+																		}
+																	}}
 																	className="text-blue-400 hover:text-blue-300 transition-colors"
 																	title="Copy token"
 																>
