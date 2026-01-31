@@ -314,7 +314,7 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 				readS.globalSettings.imageGenerationBaseUrl = 'http://localhost:11434/v1';
 			}
 			if (readS.globalSettings.imageGenerationModel === undefined) {
-				readS.globalSettings.imageGenerationModel = 'sd';
+				readS.globalSettings.imageGenerationModel = 'x/flux2-klein:4b';
 			}
 			if (readS.globalSettings.enableMediaGeneration === undefined) {
 				readS.globalSettings.enableMediaGeneration = true;
