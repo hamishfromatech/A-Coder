@@ -1962,8 +1962,9 @@ For each module include:
 				// Get relative path for display
 				const relativePath = safeFilename;
 
-				// Create markdown with relative path
-				const markdown = `![Generated Image](${relativePath})`;
+				// Create markdown with full file URI for proper rendering
+				const fileUrl = imageUri.toString();
+				const markdown = `![Generated Image](${fileUrl})`;
 
 				return { result: { url: relativePath, markdown } };
 			},
