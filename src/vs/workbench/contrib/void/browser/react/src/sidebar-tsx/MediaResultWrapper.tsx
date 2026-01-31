@@ -4,24 +4,24 @@
  *--------------------------------------------------------------------------------------*/
 
 import React from 'react';
-import { Loader2, Image as ImageIcon, Film } from 'lucide-react';
+import { Loader2, Image as ImageIcon } from 'lucide-react';
 import { useAccessor, useChatThreadsStreamState } from '../util/services.js';
 import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js';
 import { BuiltinToolName } from '../../../../common/toolsServiceTypes.js';
-import { 
-	ToolHeaderWrapper, 
-	ToolChildrenWrapper, 
-	SmallProseWrapper, 
-	BottomChildren, 
-	CodeChildren, 
-	getTitle, 
+import {
+	ToolHeaderWrapper,
+	ToolChildrenWrapper,
+	SmallProseWrapper,
+	BottomChildren,
+	CodeChildren,
+	getTitle,
 	toolNameToDesc,
 	ResultWrapper,
 	ToolHeaderParams
 } from './ToolResultHelpers.js';
 
-// Wrapper for image and video generation results
-export const MediaResultWrapper: ResultWrapper<'generate_image' | 'generate_video'> = ({ toolMessage, threadId }) => {
+// Wrapper for image generation results
+export const MediaResultWrapper: ResultWrapper<'generate_image'> = ({ toolMessage, threadId }) => {
 	const accessor = useAccessor()
 	const streamState = useChatThreadsStreamState(threadId)
 
@@ -29,7 +29,7 @@ export const MediaResultWrapper: ResultWrapper<'generate_image' | 'generate_vide
 	const { desc1, desc1Info } = toolNameToDesc(toolMessage.name as BuiltinToolName, toolMessage.params, accessor)
 
 	const isRejected = toolMessage.type === 'rejected'
-	const icon = toolMessage.name === 'generate_image' ? <ImageIcon size={12} strokeWidth={2.5} /> : <Film size={12} strokeWidth={2.5} />
+	const icon = <ImageIcon size={12} strokeWidth={2.5} />
 	const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError: false, icon, isRejected }
 
 	if (toolMessage.type === 'running_now') {

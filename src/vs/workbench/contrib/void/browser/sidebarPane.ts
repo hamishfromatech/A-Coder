@@ -112,6 +112,8 @@ const container = viewContainerRegistry.registerViewContainer({
 	ctorDescriptor: new SyncDescriptor(ViewPaneContainer, [VOID_VIEW_CONTAINER_ID, {
 		mergeViewWithContainerWhenSingleView: true,
 		orientation: Orientation.HORIZONTAL,
+		// Allow HTTP connections to localhost for image generation
+		csp: 'default-src \'self\'; connect-src \'self\' http://localhost:* https: ws: wss:; script-src \'self\' \'unsafe-eval\' \'unsafe-inline\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data: https: http: blob:; font-src \'self\' data:;',
 	}]),
 	hideIfEmpty: false,
 	order: 1,

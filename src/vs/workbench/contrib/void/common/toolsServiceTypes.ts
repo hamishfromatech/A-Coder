@@ -128,23 +128,10 @@ export type BuiltinToolCallParams = {
 	'list_skills': {},
 	'generate_image': {
 		prompt: string;
-		model?: string;
+		filename?: string;
 		width?: number;
 		height?: number;
-		seed?: number;
-		enhance?: boolean;
-		negative_prompt?: string;
-		safe?: boolean;
 		quality?: 'low' | 'medium' | 'high' | 'hd';
-		transparent?: boolean;
-	},
-	'generate_video': {
-		prompt: string;
-		model?: string;
-		duration?: number;
-		aspectRatio?: '16:9' | '9:16';
-		audio?: boolean;
-		image?: string;
 	},
 	// --- Generative UI (Forms & Questions) ---
 	'render_form': {
@@ -253,7 +240,6 @@ export type BuiltinToolResultType = {
 	'load_skill': { skill_name: string, instructions: string, success: boolean },
 	'list_skills': { skills: Array<{ name: string, description: string }> },
 	'generate_image': { url: string, markdown: string },
-	'generate_video': { url: string, markdown: string },
 	// --- Generative UI (Forms & Questions)
 	'render_form': { template: string },
 	// --- Learn Mode (Quizzes)

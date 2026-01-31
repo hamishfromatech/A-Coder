@@ -789,30 +789,13 @@ export class ToolsService implements IToolsService {
 			},
 
 			generate_image: (params: RawToolParamsObj) => {
-				const { prompt, model, width, height, seed, enhance, negative_prompt, safe, quality, transparent } = params;
+				const { prompt, filename, width, height, quality } = params;
 				return {
 					prompt: validateStr('prompt', prompt),
-					model: typeof model === 'string' ? model : undefined,
+					filename: typeof filename === 'string' ? filename : undefined,
 					width: validateNumber(width, { default: null }) ?? undefined,
 					height: validateNumber(height, { default: null }) ?? undefined,
-					seed: validateNumber(seed, { default: null }) ?? undefined,
-					enhance: validateBoolean(enhance, { default: false }),
-					negative_prompt: typeof negative_prompt === 'string' ? negative_prompt : undefined,
-					safe: validateBoolean(safe, { default: false }),
 					quality: (typeof quality === 'string' && ['low', 'medium', 'high', 'hd'].includes(quality)) ? quality as any : undefined,
-					transparent: validateBoolean(transparent, { default: false }),
-				};
-			},
-
-			generate_video: (params: RawToolParamsObj) => {
-				const { prompt, model, duration, aspect_ratio, audio, image } = params;
-				return {
-					prompt: validateStr('prompt', prompt),
-					model: typeof model === 'string' ? model : undefined,
-					duration: validateNumber(duration, { default: null }) ?? undefined,
-					aspectRatio: (typeof aspect_ratio === 'string' && ['16:9', '9:16'].includes(aspect_ratio)) ? aspect_ratio as any : undefined,
-					audio: validateBoolean(audio, { default: false }),
-					image: typeof image === 'string' ? image : undefined,
 				};
 			},
 
@@ -1922,56 +1905,83 @@ For each module include:
 				return { result: { skills } };
 			},
 
-			generate_image: async ({ prompt, model, width, height, seed, enhance, negative_prompt, safe, quality, transparent }, opts) => {
+			generate_image: async ({ prompt, filename, width, height, quality }, opts) => {
 				const settings = this._voidSettingsService.state.globalSettings;
-				const apiKey = settings.pollinationsApiKey;
-				const defaultModel = settings.pollinationsImageModel;
+				const baseUrl = settings.imageGenerationBaseUrl;
+				const defaultModel = settings.imageGenerationModel.trim();
 
-				opts?.onData?.(`Generating image with Pollinations.ai...`);
+				// Get workspace root
+				const workspaceRoot = this._workspaceContextService.getWorkspace().folders[0]?.uri;
+				if (!workspaceRoot) {
+					throw new Error('No workspace folder open');
+				}
 
-				const baseUrl = 'https://gen.pollinations.ai/image/';
-				const encodedPrompt = encodeURIComponent(prompt);
-				const url = new URL(`${baseUrl}${encodedPrompt}`);
+				opts?.onData?.(`Generating image...`);
 
-				if (model || defaultModel) url.searchParams.append('model', model || defaultModel);
-				if (width) url.searchParams.append('width', width.toString());
-				if (height) url.searchParams.append('height', height.toString());
-				if (seed !== undefined && seed !== null) url.searchParams.append('seed', seed.toString());
-				if (enhance) url.searchParams.append('enhance', 'true');
-				if (negative_prompt) url.searchParams.append('negative_prompt', negative_prompt);
-				if (safe) url.searchParams.append('safe', 'true');
-				if (quality) url.searchParams.append('quality', quality);
-				if (transparent) url.searchParams.append('transparent', 'true');
-				if (apiKey) url.searchParams.append('key', apiKey);
+				// Construct size parameter from width and height
+				let size = '1024x1024';
+				if (width && height) {
+					size = `${width}x${height}`;
+				}
 
-				const finalUrl = url.toString();
-				const markdown = `![Generated Image](${finalUrl})`;
+				// Build request body for OpenAI-compatible API
+				const requestBody: any = {
+					prompt: prompt,
+					model: defaultModel,
+					n: 1,
+					size: size,
+					response_format: 'b64_json',
+				};
 
-				return { result: { url: finalUrl, markdown } };
-			},
+				// Add optional parameters that Ollama supports
+				if (quality) requestBody.quality = quality;
 
-			generate_video: async ({ prompt, model, duration, aspectRatio, audio, image }, opts) => {
-				const settings = this._voidSettingsService.state.globalSettings;
-				const apiKey = settings.pollinationsApiKey;
-				const defaultModel = settings.pollinationsVideoModel;
+				// Make API request
+				const url = `${baseUrl}/images/generations`;
+				const response = await fetch(url, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify(requestBody),
+				});
 
-				opts?.onData?.(`Generating video with Pollinations.ai...`);
+				if (!response.ok) {
+					const errorText = await response.text();
+					throw new Error(`Image generation failed: ${response.status} ${response.statusText} - ${errorText}`);
+				}
 
-				const baseUrl = 'https://gen.pollinations.ai/image/';
-				const encodedPrompt = encodeURIComponent(prompt);
-				const url = new URL(`${baseUrl}${encodedPrompt}`);
+				const data = await response.json();
+				const b64Json = data?.data?.[0]?.b64_json;
 
-				if (model || defaultModel) url.searchParams.append('model', model || defaultModel);
-				if (duration) url.searchParams.append('duration', duration.toString());
-				if (aspectRatio) url.searchParams.append('aspectRatio', aspectRatio);
-				if (audio) url.searchParams.append('audio', 'true');
-				if (image) url.searchParams.append('image', image);
-				if (apiKey) url.searchParams.append('key', apiKey);
+				if (!b64Json) {
+					throw new Error('No image data returned from API');
+				}
 
-				const finalUrl = url.toString();
-				const markdown = `[Generated Video](${finalUrl})`;
+				// Generate unique filename - use provided filename or create timestamp-based one
+				const timestamp = Date.now();
+				const safeFilename = filename
+					? `${filename.replace(/[^a-zA-Z0-9-_]/g, '_')}-${timestamp}.png`
+					: `generated-image-${timestamp}.png`;
 
-				return { result: { url: finalUrl, markdown } };
+				// Create file URI
+				const imageUri = workspaceRoot.with({ path: `${workspaceRoot.path}/${safeFilename}` });
+
+				// Convert base64 to VSBuffer and write file
+				const binaryString = atob(b64Json);
+				const bytes = new Uint8Array(binaryString.length);
+				for (let i = 0; i < binaryString.length; i++) {
+					bytes[i] = binaryString.charCodeAt(i);
+				}
+				await this._fileService.writeFile(imageUri, VSBuffer.wrap(bytes));
+
+				// Get relative path for display
+				const relativePath = safeFilename;
+
+				// Create markdown with relative path
+				const markdown = `![Generated Image](${relativePath})`;
+
+				return { result: { url: relativePath, markdown } };
 			},
 
 			render_form: async ({ title, description, questions }, opts) => {
@@ -2344,10 +2354,6 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 				
 				            generate_image: (params, result) => {
 				                return `Successfully generated image for prompt: "${params.prompt}"\n\n${result.markdown}`;
-				            },
-				
-				            generate_video: (params, result) => {
-				                return `Successfully generated video for prompt: "${params.prompt}"\n\n${result.markdown}`;
 				            },
 
 				            render_form: (params, result) => {

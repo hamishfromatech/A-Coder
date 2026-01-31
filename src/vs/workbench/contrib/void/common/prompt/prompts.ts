@@ -1155,7 +1155,7 @@ Each call advances to the next hint level automatically.`,
 
 	generate_image: {
 		name: 'generate_image',
-		description: `Generates an image from a text prompt using AI. Best for creating visual assets, icons, or illustrations for your project or lessons.
+		description: `Generates an image from a text prompt using an OpenAI-compatible image generation API (e.g., Ollama). Best for creating visual assets, icons, or illustrations for your project or lessons.
 
 **What you'll receive:** A Markdown string containing the generated image URL, which will render directly in the chat.
 
@@ -1165,28 +1165,10 @@ Each call advances to the next hint level automatically.`,
 - To enhance educational content with illustrations`,
 		params: {
 			prompt: { description: 'The text description of the image to generate. Be descriptive for better results.' },
-			model: { description: 'Optional. The image model to use (e.g., flux, zimage, turbo).' },
+			filename: { description: 'Optional. The filename to save the image as (without extension). Default is a timestamp-based name.' },
 			width: { description: 'Optional. Image width in pixels. Default is 1024.' },
 			height: { description: 'Optional. Image height in pixels. Default is 1024.' },
-			seed: { description: 'Optional. Random seed for reproducibility. Use -1 for random.' },
-			enhance: { description: 'Optional. Whether to let AI improve your prompt. Default is false.' },
-		}
-	},
-
-	generate_video: {
-		name: 'generate_video',
-		description: `Generates a short video from a text prompt or image using AI.
-
-**What you'll receive:** A Markdown string containing the generated video URL.
-
-**When to use:**
-- When you need a short animation or video clip
-- To demonstrate dynamic concepts or movements`,
-		params: {
-			prompt: { description: 'The text description of the video to generate.' },
-			model: { description: 'Optional. The video model to use (e.g., veo, seedance).' },
-			duration: { description: 'Optional. Video duration in seconds. veo: 4/6/8, seedance: 2-10.' },
-			aspect_ratio: { description: 'Optional. Video aspect ratio: "16:9" or "9:16".' },
+			quality: { description: 'Optional. Image quality: low, medium, high, or hd.' },
 		}
 	},
 
@@ -1371,7 +1353,6 @@ const agentModeTools: BuiltinToolName[] = [
 	'open_walkthrough_preview',
 	// Media generation
 	'generate_image',
-	'generate_video',
 	// Generative UI - interactive forms for user input
 	'render_form',
 ]
@@ -1390,7 +1371,6 @@ const studentModeTools: BuiltinToolName[] = [
 	'list_skills',
 	// Media generation
 	'generate_image',
-	'generate_video',
 	// Generative UI - interactive forms for user input
 	'render_form',
 	'create_quiz',
@@ -1426,7 +1406,7 @@ export const availableTools = (chatMode: ChatMode | null, mcpTools: InternalTool
 		// Filter fast_context if disabled
 		if (toolName === 'fast_context' && !options?.enableMorphFastContext) return false;
 		// Filter media generation tools if disabled
-		if ((toolName === 'generate_image' || toolName === 'generate_video') && !options?.enableMediaGeneration) return false;
+		if (toolName === 'generate_image' && !options?.enableMediaGeneration) return false;
 		return true;
 	});
 
@@ -1775,7 +1755,7 @@ YOUR CAPABILITIES:
 ✅ Provide progressive hints (not immediate answers)
 ✅ Create structured lesson plans
 ✅ Create and edit files for exercises/demos
-✅ Generate images and videos to illustrate concepts (using generate_image and generate_video)
+✅ Generate images to illustrate concepts (using generate_image)
 
 NEVER:
 - Write code without explanation
@@ -2577,7 +2557,7 @@ Analyze the user's request and determine:
    - Execution tools: run_code, run_terminal_command
    - Context tools: fast_context, outline_file
    - Plan tools: create_implementation_plan, update_implementation_step
-   - Other: render_form, generate_image, generate_video
+   - Other: render_form, generate_image
 
 3. **What parameters are needed?**
    - Identify file paths, search terms, command inputs, etc.
@@ -2618,7 +2598,6 @@ OTHER TOOLS:
 - render_form: Display interactive forms for user input
 - create_quiz: Create interactive quizzes to test knowledge
 - generate_image: Generate images from text
-- generate_video: Generate videos from text
 </available_tools>
 
 <output_format>

@@ -309,10 +309,20 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 			if (readS.globalSettings.apiTokens === undefined) readS.globalSettings.apiTokens = [];
 			if (readS.globalSettings.apiTunnelUrl === undefined) readS.globalSettings.apiTunnelUrl = undefined;
 
-			// add Pollinations.ai settings (1.5.0+)
-			if (readS.globalSettings.pollinationsApiKey === undefined) readS.globalSettings.pollinationsApiKey = '';
-			if (readS.globalSettings.pollinationsImageModel === undefined) readS.globalSettings.pollinationsImageModel = 'flux';
-			if (readS.globalSettings.pollinationsVideoModel === undefined) readS.globalSettings.pollinationsVideoModel = 'veo';
+			// image generation settings (1.5.0+)
+			if (readS.globalSettings.imageGenerationBaseUrl === undefined) {
+				readS.globalSettings.imageGenerationBaseUrl = 'http://localhost:11434/v1';
+			}
+			if (readS.globalSettings.imageGenerationModel === undefined) {
+				readS.globalSettings.imageGenerationModel = 'sd';
+			}
+			if (readS.globalSettings.enableMediaGeneration === undefined) {
+				readS.globalSettings.enableMediaGeneration = true;
+			}
+			// clean up old pollinations settings if they exist
+			delete (readS.globalSettings as any).pollinationsApiKey;
+			delete (readS.globalSettings as any).pollinationsImageModel;
+			delete (readS.globalSettings as any).pollinationsVideoModel;
 		}
 		catch (e) {
 			readS = defaultState()

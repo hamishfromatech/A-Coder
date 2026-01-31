@@ -473,10 +473,9 @@ export type GlobalSettings = {
 	morphModel: 'morph-v3-fast' | 'morph-v3-large' | 'auto'; // Morph model to use
 	enableToolResultTOON: boolean;
 	maxAgentIterations: number; // Maximum number of iterations in agent mode
-	pollinationsApiKey: string; // API key for Pollinations.ai
-	pollinationsImageModel: string; // Default image model for Pollinations.ai
-	pollinationsVideoModel: string; // Default video model for Pollinations.ai
-	enableMediaGeneration: boolean; // Enable/disable image and video generation tools
+	imageGenerationBaseUrl: string; // Base URL for OpenAI-compatible image generation API
+	imageGenerationModel: string; // Default model for image generation
+	enableMediaGeneration: boolean; // Enable/disable image generation tool
 	enableToolOrchestration: boolean; // Enable/disable universal tool orchestration
 	// Mobile API settings
 	apiEnabled: boolean; // Enable/disable the Mobile API server
@@ -512,10 +511,9 @@ export const defaultGlobalSettings: GlobalSettings = {
 	morphModel: 'auto',
 	enableToolResultTOON: false,
 	maxAgentIterations: 50,
-	pollinationsApiKey: '',
-	pollinationsImageModel: 'flux',
-	pollinationsVideoModel: 'veo',
 	enableMediaGeneration: true, // Media generation enabled by default
+	imageGenerationBaseUrl: 'http://localhost:11434/v1', // Default to Ollama
+	imageGenerationModel: 'x/flux2-klein:4b', // Default model for image generation
 	enableToolOrchestration: false, // Tool orchestration disabled by default (requires setup)
 	// Mobile API defaults
 	apiEnabled: false, // Disabled by default for security
