@@ -22,6 +22,16 @@ export interface IMainProcessSettingsService {
 	};
 
 	/**
+	 * Update API settings (called via IPC from renderer process)
+	 */
+	updateApiSettings(settings: Partial<{
+		enabled: boolean;
+		port: number;
+		tokens: string[];
+		tunnelUrl?: string;
+	}>): void;
+
+	/**
 	 * Event fired when settings change
 	 */
 	onDidChangeSettings: Event<void>;

@@ -241,12 +241,19 @@ export class ApiServiceBridge extends Disposable implements IApiServiceBridge {
 	 */
 	private async updateMainProcessSettings(settings: any) {
 		try {
-			const settingsChannel = this.mainProcessService.getChannel('void-channel-settings');
-			await settingsChannel.call('updateApiSettings', {
+			// Use the existing void-channel-api instead of a separate settings channel
+			const apiChannel = this.mainProcessService.getChannel('void-channel-api');
+			const updateData = {
 				enabled: settings.apiEnabled,
 				port: settings.apiPort,
 				tokens: settings.apiTokens,
 				tunnelUrl: settings.apiTunnelUrl,
+			};
+			await apiChannel.call('updateApiSettings', updateData);
+			console.log('[API Bridge] Updated main process API settings:', {
+				enabled: updateData.enabled,
+				port: updateData.port,
+				tokensCount: updateData.tokens?.length || 0
 			});
 		} catch (err) {
 			console.error('[API Bridge] Failed to update main process settings:', err);

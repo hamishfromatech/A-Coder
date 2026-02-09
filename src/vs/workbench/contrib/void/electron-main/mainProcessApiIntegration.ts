@@ -42,6 +42,10 @@ export class MainProcessApiIntegration extends Disposable implements IMainProces
 	}
 
 	private async initializeApiServer() {
+		// Get initial settings and sync tokens to auth service
+		const settings = this.settingsService.getApiSettings();
+		this.apiAuthService.setTokens(settings.tokens);
+
 		// Create API service manager with dynamic settings function
 		this.apiServiceManager = new ApiServiceManager(
 			() => this.settingsService.getApiSettings(),
@@ -49,7 +53,6 @@ export class MainProcessApiIntegration extends Disposable implements IMainProces
 		);
 
 		// Start if enabled
-		const settings = this.settingsService.getApiSettings();
 		if (settings.enabled) {
 			try {
 				await this.apiServiceManager.start();
@@ -65,6 +68,9 @@ export class MainProcessApiIntegration extends Disposable implements IMainProces
 		}
 
 		const settings = this.settingsService.getApiSettings();
+
+		// Sync tokens to the auth service
+		this.apiAuthService.setTokens(settings.tokens);
 
 		if (settings.enabled) {
 			try {

@@ -440,6 +440,7 @@ export interface IChatThreadService {
 	approveLatestToolRequest(threadId: string, toolId?: string): void;
 	rejectLatestToolRequest(threadId: string, toolId?: string): void;
 	skipLatestToolRequest(threadId: string, toolId?: string): void;
+	submitToolResult(threadId: string, toolId: string, result: any): void;
 
 	// jump to history
 	jumpToCheckpointBeforeMessageIdx(opts: { threadId: string, messageIdx: number, jumpToUserModified: boolean }): void;
@@ -871,6 +872,56 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		this._updateLatestTool(threadId, { role: 'tool', type: 'rejected', params: params, name: name, content: skipMessage, result: null, id, rawParams, mcpServerName })
 
 		// Continue the agent loop instead of stopping
+		this._wrapRunAgentToNotify(
+			this._runChatAgent({ threadId, ...this._currentModelSelectionProps() })
+			, threadId
+		)
+	}
+
+	submitToolResult(threadId: string, toolId: string, result: any) {
+		const thread = this.state.allThreads[threadId]
+		if (!thread) return // should never happen
+
+		// Find the tool request message
+		const toolMsgIdx = findLastIdx(thread.messages, m => m.role === 'tool' && m.type === 'tool_request' && m.id === toolId);
+		if (toolMsgIdx === -1) {
+			console.warn(`[chatThreadService] submitToolResult: Tool request not found for toolId ${toolId}`);
+			return;
+		}
+
+		const toolMsg = thread.messages[toolMsgIdx] as ToolMessage<ToolName> & { type: 'tool_request' };
+		const { name, rawParams, mcpServerName, thought_signature } = toolMsg;
+
+		console.log(`[chatThreadService] submitToolResult: Submitting result for tool ${name} (id: ${toolId})`);
+
+		// Format the result as a string for the LLM
+		let toolResultStr: string;
+		try {
+			toolResultStr = JSON.stringify(result, null, 2);
+		} catch (error) {
+			toolResultStr = String(result);
+		}
+
+		console.log(`[chatThreadService] submitToolResult: Result: ${toolResultStr.substring(0, 200)}${toolResultStr.length > 200 ? '...' : ''}`);
+
+		// Update the tool message with the result (type: 'success')
+		this._updateLatestTool(threadId, {
+			role: 'tool',
+			type: 'success',
+			name: name,
+			params: toolMsg.params,
+			result: result,
+			content: toolResultStr,
+			id: toolId,
+			rawParams: rawParams,
+			mcpServerName: mcpServerName,
+			thought_signature: thought_signature
+		});
+
+		// Resume the agent directly (without re-executing the tool)
+		// We use _runChatAgent without callThisToolFirst so it just continues
+		// processing with the tool result we just added to the thread
+		console.log(`[chatThreadService] submitToolResult: Resuming agent for thread ${threadId}`);
 		this._wrapRunAgentToNotify(
 			this._runChatAgent({ threadId, ...this._currentModelSelectionProps() })
 			, threadId

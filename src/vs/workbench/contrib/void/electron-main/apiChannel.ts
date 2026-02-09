@@ -5,6 +5,7 @@
 
 import { IServerChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { Event, Emitter } from '../../../../base/common/event.js';
+import { IMainProcessSettingsService } from './mainProcessSettingsService.js';
 
 /**
  * Type for pending requests that may aggregate responses from multiple renderers
@@ -25,6 +26,7 @@ export class ApiChannel implements IServerChannel {
 
 	private readonly _onApiRequest = new Emitter<{ method: string, params: any, requestId: string }>();
 	private apiServiceManager: any | null = null;
+	private settingsService: IMainProcessSettingsService | null = null;
 
 	// Store pending requests
 	private readonly pendingRequests = new Map<string, PendingRequest>();
@@ -40,6 +42,13 @@ export class ApiChannel implements IServerChannel {
 	 */
 	setApiServiceManager(manager: any): void {
 		this.apiServiceManager = manager;
+	}
+
+	/**
+	 * Set the settings service (called from main process)
+	 */
+	setSettingsService(service: IMainProcessSettingsService): void {
+		this.settingsService = service;
 	}
 
 	listen(_: unknown, event: string): Event<any> {
@@ -67,7 +76,11 @@ export class ApiChannel implements IServerChannel {
 			return this.apiServiceManager.restart();
 		}
 		if (command === 'updateApiSettings' && this.apiServiceManager) {
-			// Update settings and restart if needed
+			// Update the settings in the main process settings service
+			if (this.settingsService) {
+				this.settingsService.updateApiSettings(params);
+			}
+			// Restart the server with the new settings
 			return this.apiServiceManager.restart();
 		}
 

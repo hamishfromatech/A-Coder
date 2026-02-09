@@ -1271,7 +1271,9 @@ export class CodeApplication extends Disposable {
 			const apiServiceManager = apiIntegration.getApiServiceManager();
 			if (apiServiceManager) {
 				const apiChannel = apiServiceManager.getChannel();
+				const settingsService = accessor.get(IMainProcessSettingsService);
 				(apiChannel as any).setApiServiceManager(apiServiceManager); // Allow IPC control of API server
+				(apiChannel as any).setSettingsService(settingsService); // Allow settings updates from renderer
 				return apiChannel;
 			}
 			throw new Error('API Service Manager not found');

@@ -347,22 +347,18 @@ export const QuizResultWrapper: ResultWrapper<'create_quiz'> = ({ toolMessage, t
 			setQuizResults(results);
 			setShowResults(true);
 
-			// Format answers as JSON for the LLM to review
-			const formattedAnswers = JSON.stringify(answers, null, 2);
-			const userMessage = `[QUIZ ANSWERS]
-Quiz Title: ${params.title}
-Score: ${results.score}/${results.totalPoints}
-Percentage: ${results.totalPoints > 0 ? Math.round((results.score / results.totalPoints) * 100) : 0}%
+			// Format answers for the LLM to review
+			const quizResult = {
+				title: params.title,
+				score: results.score,
+				totalPoints: results.totalPoints,
+				percentage: results.totalPoints > 0 ? Math.round((results.score / results.totalPoints) * 100) : 0,
+				answers: answers
+			};
 
-Answers:
-${formattedAnswers}`;
-
-			// Send the user's quiz answers to the AI for review
-			if (chatThreadsService && chatThreadsService.addUserMessageAndStreamResponse) {
-				await chatThreadsService.addUserMessageAndStreamResponse({
-					userMessage,
-					threadId,
-				});
+			// Submit the quiz answers as a tool result - bypasses the message queue
+			if (chatThreadsService && chatThreadsService.submitToolResult) {
+				chatThreadsService.submitToolResult(threadId, toolMessage.id, quizResult);
 			}
 		} catch (error) {
 			console.error('[QuizResultWrapper] Error submitting quiz:', error);

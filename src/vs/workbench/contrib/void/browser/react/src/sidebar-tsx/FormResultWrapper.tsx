@@ -175,15 +175,6 @@ const QuestionItem = ({ question, value, onChange }: { question: Question; value
 	}
 };
 
-// Format user responses as JSON for the LLM to parse
-const formatUserResponses = (questions: Question[], responses: Record<string, any>): string => {
-	const formatted: Record<string, any> = {};
-	for (const q of questions) {
-		formatted[q.id] = responses[q.id];
-	}
-	return JSON.stringify(formatted, null, 2);
-};
-
 export const FormResultWrapper: ResultWrapper<'render_form'> = ({ toolMessage, threadId }) => {
 	const accessor = useAccessor();
 	const streamState = useChatThreadsStreamState(threadId);
@@ -249,16 +240,15 @@ export const FormResultWrapper: ResultWrapper<'render_form'> = ({ toolMessage, t
 		setIsSubmitting(true);
 
 		try {
-			// Format responses as a user message to the AI
-			const formattedResponses = formatUserResponses(params.questions, responses);
-			const userMessage = `[FORM RESPONSES]\n${formattedResponses}`;
+			// Format responses as JSON for the LLM to parse
+			const formattedResponses: Record<string, any> = {};
+			for (const q of params.questions) {
+				formattedResponses[q.id] = responses[q.id];
+			}
 
-			// Send the user's form responses to the AI - this will resume the agent
-			if (chatThreadsService && chatThreadsService.addUserMessageAndStreamResponse) {
-				await chatThreadsService.addUserMessageAndStreamResponse({
-					userMessage,
-					threadId,
-				});
+			// Submit the form responses as a tool result - bypasses the message queue
+			if (chatThreadsService && chatThreadsService.submitToolResult) {
+				chatThreadsService.submitToolResult(threadId, toolMessage.id, formattedResponses);
 			}
 		} catch (error) {
 			console.error('[FormResultWrapper] Error submitting form:', error);
