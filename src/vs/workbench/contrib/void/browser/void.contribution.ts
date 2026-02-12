@@ -39,6 +39,7 @@ import './convertToLLMMessageWorkbenchContrib.js'
 // tools
 import './toolsService.js'
 import './terminalToolService.js'
+import './webviewToolService.js'
 
 // register Thread History
 import './chatThreadService.js'

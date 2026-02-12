@@ -176,6 +176,16 @@ export const titleOfBuiltinToolName = {
 	'generate_image': { done: 'Image generated', proposed: 'Generate image', running: loadingTitleWrapper('Generating image') },
 	'render_form': { done: 'Form rendered', proposed: 'Render form', running: loadingTitleWrapper('Rendering form') },
 	'create_quiz': { done: 'Quiz completed', proposed: 'Create quiz', running: loadingTitleWrapper('Creating quiz') },
+	// Browser / Webview tools
+	'open_url': { done: 'URL opened', proposed: 'Open URL', running: loadingTitleWrapper('Opening URL') },
+	'fetch_url': { done: 'URL fetched', proposed: 'Fetch URL', running: loadingTitleWrapper('Fetching URL') },
+	'open_devtools': { done: 'DevTools opened', proposed: 'Open DevTools', running: loadingTitleWrapper('Opening DevTools') },
+	'click_element': { done: 'Element clicked', proposed: 'Click element', running: loadingTitleWrapper('Clicking element') },
+	'get_page_text': { done: 'Page text extracted', proposed: 'Extract page text', running: loadingTitleWrapper('Extracting page text') },
+	'webview_screenshot': { done: 'Screenshot captured', proposed: 'Take screenshot', running: loadingTitleWrapper('Capturing screenshot') },
+	'search_web': { done: 'Web search complete', proposed: 'Search web', running: loadingTitleWrapper('Searching web') },
+	'browse_resources': { done: 'Resources browsed', proposed: 'Browse resources', running: loadingTitleWrapper('Browsing resources') },
+	'type_into_element': { done: 'Typed into element', proposed: 'Type into element', running: loadingTitleWrapper('Typing into element') },
 } as const satisfies Record<BuiltinToolName, { done: any, proposed: any, running: any }>
 
 export const getTitle = (toolMessage: Pick<ChatMessage & { role: 'tool' }, 'name' | 'type' | 'mcpServerName'>): React.ReactNode => {
@@ -395,6 +405,43 @@ export const toolNameToDesc = (toolName: BuiltinToolName, _toolParams: BuiltinTo
 			const toolParams = _toolParams as BuiltinToolCallParams['create_quiz']
 			return { desc1: toolParams.title || `${toolParams.questions.length} question(s)` }
 		},
+		// Browser / Webview tools
+		'open_url': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['open_url']
+			return { desc1: toolParams.url }
+		},
+		'fetch_url': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['fetch_url']
+			return { desc1: toolParams.url }
+		},
+		'open_devtools': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['open_devtools']
+			return { desc1: toolParams.webview_id }
+		},
+		'click_element': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['click_element']
+			return { desc1: toolParams.selector, desc1Info: toolParams.webview_id }
+		},
+		'get_page_text': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['get_page_text']
+			return { desc1: toolParams.webview_id }
+		},
+		'webview_screenshot': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['webview_screenshot']
+			return { desc1: toolParams.webview_id }
+		},
+		'search_web': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['search_web']
+			return { desc1: `"${toolParams.query}"` }
+		},
+		'browse_resources': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['browse_resources']
+			return { desc1: toolParams.url }
+		},
+		'type_into_element': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['type_into_element']
+			return { desc1: toolParams.selector, desc1Info: `"${toolParams.text}"` }
+		},
 	}
 	try { return x[toolName]?.() || { desc1: '' } }
 	catch { return { desc1: '' } }
@@ -404,7 +451,7 @@ export const toolNameToDesc = (toolName: BuiltinToolName, _toolParams: BuiltinTo
 
 export const ToolChildrenWrapper = ({ children, className }: { children: React.ReactNode, className?: string }) => {
 	return <div className={`${className ? className : ''} cursor-default select-none border-t border-void-border-2/50`}>
-		<div className='px-2 min-w-full overflow-hidden'>
+		<div className='px-2 min-w-full overflow-y-auto max-h-[600px]'>
 			{children}
 		</div>
 	</div>

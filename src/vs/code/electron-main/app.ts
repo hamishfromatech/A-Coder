@@ -137,6 +137,8 @@ import { CodeExecutionChannel } from '../../workbench/contrib/void/electron-main
 import { MorphChannel } from '../../workbench/contrib/void/electron-main/morphChannel.js';
 import { TokenCountingChannel } from '../../workbench/contrib/void/electron-main/tokenCountingChannel.js';
 import { ImageGenerationChannel } from '../../workbench/contrib/void/electron-main/imageGenerationChannel.js';
+import { BrowserChannel } from '../../workbench/contrib/void/electron-main/browserChannel.js';
+import { BrowserWindowChannel } from '../../workbench/contrib/void/electron-main/browserWindowChannel.js';
 import { MainProcessApiIntegration } from '../../workbench/contrib/void/electron-main/mainProcessApiIntegration.js';
 import { IMainProcessApiIntegration } from '../../workbench/contrib/void/electron-main/mainProcessApiIntegration.js';
 import { MainProcessSettingsService, IMainProcessSettingsService } from '../../workbench/contrib/void/electron-main/mainProcessSettingsService.js';
@@ -1263,6 +1265,12 @@ export class CodeApplication extends Disposable {
 
 		// Void - Image Generation
 		mainProcessElectronServer.registerChannel('void-channel-image-generation', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new ImageGenerationChannel())));
+
+		// Void - Browser / Webview
+		mainProcessElectronServer.registerChannel('void-channel-browser', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new BrowserChannel())));
+
+		// Void - Browser Window (for browser tools)
+		mainProcessElectronServer.registerChannel('void-channel-browser-window', new BrowserWindowChannel());
 
 		// Void - Mobile API
 		// The API server is now managed by MainProcessApiIntegration service

@@ -67,6 +67,7 @@ import { MediaResultWrapper } from './MediaResultWrapper.js';
 import { SkillsResultWrapper } from './SkillsResultWrapper.js';
 import { FormResultWrapper } from './FormResultWrapper.js';
 import { QuizResultWrapper } from './QuizResultWrapper.js';
+import { WebviewResultWrapper } from './WebviewResultWrapper.js';
 import WalkthroughResultWrapper from './WalkthroughResultWrapper.js';
 
 
@@ -1858,6 +1859,15 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 	'generate_video': { resultWrapper: MediaResultWrapper as ResultWrapper<'generate_video'> },
 	'render_form': { resultWrapper: FormResultWrapper as ResultWrapper<'render_form'> },
 	'create_quiz': { resultWrapper: QuizResultWrapper as ResultWrapper<'create_quiz'> },
+	// Browser / Webview tools
+	'open_url': { resultWrapper: WebviewResultWrapper as ResultWrapper<'open_url'> },
+	'fetch_url': { resultWrapper: WebviewResultWrapper as ResultWrapper<'fetch_url'> },
+	'open_devtools': { resultWrapper: WebviewResultWrapper as ResultWrapper<'open_devtools'> },
+	'click_element': { resultWrapper: WebviewResultWrapper as ResultWrapper<'click_element'> },
+	'get_page_text': { resultWrapper: WebviewResultWrapper as ResultWrapper<'get_page_text'> },
+	'webview_screenshot': { resultWrapper: WebviewResultWrapper as ResultWrapper<'webview_screenshot'> },
+	'search_web': { resultWrapper: WebviewResultWrapper as ResultWrapper<'search_web'> },
+	'browse_resources': { resultWrapper: WebviewResultWrapper as ResultWrapper<'browse_resources'> },
 };
 
 

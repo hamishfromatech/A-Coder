@@ -9,6 +9,19 @@ export type TerminalResolveReason = { type: 'timeout' } | { type: 'done', exitCo
 
 export type LintErrorItem = { code: string, message: string, startLineNumber: number, endLineNumber: number }
 
+// Webview tool types
+export type WebviewId = string // Format: 'wv1', 'wv2', etc.
+
+export interface WebviewMetadata {
+	id: WebviewId;
+	url: string;
+	title: string;
+	createdAt: number;
+	webviewInput?: any; // WebviewInput reference
+	isLocalFile?: boolean;
+	isHtmlContent?: boolean;
+}
+
 // Partial of IFileStat
 export type ShallowDirectoryItem = {
 	uri: URI;
@@ -18,7 +31,7 @@ export type ShallowDirectoryItem = {
 }
 
 
-export const approvalTypeOfBuiltinToolName: Partial<{ [T in BuiltinToolName]?: 'edits' | 'terminal' | 'MCP tools' | 'forms' | 'quizzes' }> = {
+export const approvalTypeOfBuiltinToolName: Partial<{ [T in BuiltinToolName]?: 'edits' | 'terminal' | 'MCP tools' | 'forms' | 'quizzes' | 'browser' }> = {
 	'create_file_or_folder': 'edits',
 	'delete_file_or_folder': 'edits',
 	'rewrite_file': 'edits',
@@ -29,6 +42,9 @@ export const approvalTypeOfBuiltinToolName: Partial<{ [T in BuiltinToolName]?: '
 	'kill_persistent_terminal': 'terminal',
 	'render_form': 'forms',
 	'create_quiz': 'quizzes',
+	'open_url': 'browser',
+	'open_html': 'browser',
+	'click_element': 'browser',
 }
 
 
@@ -161,6 +177,17 @@ export type BuiltinToolCallParams = {
 		total_points?: number; // Total points for the quiz
 		time_limit_seconds?: number; // Optional time limit
 	},
+	// --- Browser / Webview Tools ---
+	'open_url': { url: string, title?: string },
+	'open_html': { html: string, title?: string },
+	'fetch_url': { url: string, extract_text: boolean },
+	'open_devtools': { webview_id: WebviewId },
+	'click_element': { webview_id: WebviewId, selector: string },
+	'get_page_text': { webview_id: WebviewId, selector?: string },
+	'webview_screenshot': { webview_id: WebviewId, filename?: string, question?: string },
+	'type_into_element': { webview_id: WebviewId, selector: string, text: string },
+	'search_web': { query: string, num_results?: number },
+	'browse_resources': { url: string, resource_type?: 'css' | 'js' | 'images' | 'all' },
 }
 
 // RESULT OF TOOL CALL
@@ -244,6 +271,17 @@ export type BuiltinToolResultType = {
 	'render_form': { template: string },
 	// --- Learn Mode (Quizzes)
 	'create_quiz': { quiz_id: string, template: string },
+	// --- Browser / Webview Tools ---
+	'open_url': { webviewId: WebviewId, title: string },
+	'open_html': { webviewId: WebviewId, title: string },
+	'fetch_url': { html: string, text?: string },
+	'open_devtools': { message: string },
+	'click_element': { message: string },
+	'get_page_text': { text: string },
+	'webview_screenshot': { imageData: string, filePath?: string, visionAnalysis: string },
+	'type_into_element': { message: string },
+	'search_web': { results: Array<{ title: string, url: string, snippet: string }> },
+	'browse_resources': { resources: Array<{ type: string, url: string, size: number }> },
 }
 
 

@@ -77,8 +77,11 @@ export const EditToolResultWrapper: ResultWrapper<'edit_file' | 'rewrite_file'> 
 
 	// Calculate diff stats (only for rewrite_file with full content)
 	let diffStatsElement: React.ReactNode = null;
-	// Note: edit_file now uses old_string/new_string, not originalUpdatedBlocks
-	const content = toolMessage.name === 'edit_file' ? (toolMessage.params as any).old_string : (toolMessage.params as any).newContent;
+	// For edit_file, construct diff format from old_string/new_string
+	// For rewrite_file, use newContent
+	const content = toolMessage.name === 'edit_file'
+		? `<<<<<<< ORIGINAL\n${params.old_string}\n=======\n${params.new_string}\n>>>>>>> UPDATED`
+		: params.newContent;
 
 	if (toolMessage.type === 'running_now' && toolMessage.name === 'rewrite_file' && content) {
 		// Only calculate stats for rewrite_file since edit_file now does simple replacement

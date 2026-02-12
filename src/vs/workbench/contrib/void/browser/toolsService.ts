@@ -27,6 +27,9 @@ import { PlanningService, TaskStatus as PlanTaskStatus } from '../common/plannin
 import { ImplementationPlanningService, ImplementationPlan, ImplementationStep, StepStatus as ImplStepStatus } from '../common/implementationPlanningService.js'
 import { IAgentManagerService } from './agentManager.contribution.js'
 import { IPathService } from '../../../services/path/common/pathService.js'
+import { IWebviewToolService } from './webviewToolService.js'
+import { IVisionService } from './visionService.js'
+import { ICommandService } from '../../../../platform/commands/common/commands.js'
 
 
 // tool use for AI
@@ -201,6 +204,9 @@ export class ToolsService implements IToolsService {
 		@IMorphService private readonly _morphService: IMorphService,
 		@IAgentManagerService private readonly _agentManagerService: IAgentManagerService,
 		@IPathService private readonly _pathService: IPathService,
+		@IWebviewToolService private readonly _webviewToolService: IWebviewToolService,
+		@IVisionService private readonly _visionService: IVisionService,
+		@ICommandService private readonly _commandService: ICommandService,
 	) {
 		const queryBuilder = this._instantiationService.createInstance(QueryBuilder);
 		this._toonService = new ToonService();
@@ -873,6 +879,96 @@ export class ToolsService implements IToolsService {
 					questions: validatedQuestions.length > 0 ? validatedQuestions : [{ id: 'q1', question: 'What is 2 + 2?', type: 'single_choice' as const, options: ['3', '4', '5', '6'], correct_answer: '4', points: 10 }],
 					total_points: typeof total_points === 'number' ? total_points : validatedQuestions.reduce((sum, q) => sum + (q.points || 10), 0),
 					time_limit_seconds: typeof time_limit_seconds === 'number' ? time_limit_seconds : undefined,
+				};
+			},
+			// --- Browser / Webview Tools ---
+			open_url: (params: RawToolParamsObj) => {
+				const { url, title } = params;
+				const validatedUrl = validateStr('url', url);
+				if (!validatedUrl.startsWith('http://') && !validatedUrl.startsWith('https://')) {
+					throw new Error('URL must start with http:// or https://');
+				}
+				return {
+					url: validatedUrl,
+					title: typeof title === 'string' ? title : undefined,
+				};
+			},
+			open_html: (params: RawToolParamsObj) => {
+				const { html, title } = params;
+				const validatedHtml = validateStr('html', html);
+				// HTML can be quite long, don't add length limit
+				return {
+					html: validatedHtml,
+					title: typeof title === 'string' ? title : undefined,
+				};
+			},
+			fetch_url: (params: RawToolParamsObj) => {
+				const { url, extract_text: extractTextUnknown } = params;
+				const validatedUrl = validateStr('url', url);
+				if (!validatedUrl.startsWith('http://') && !validatedUrl.startsWith('https://')) {
+					throw new Error('URL must start with http:// or https://');
+				}
+				const extractText = validateBoolean(extractTextUnknown, { default: false });
+				return {
+					url: validatedUrl,
+					extract_text: extractText,
+				};
+			},
+			open_devtools: (params: RawToolParamsObj) => {
+				const { webview_id: webviewIdUnknown } = params;
+				const webview_id = validateStr('webview_id', webviewIdUnknown);
+				return { webview_id };
+			},
+			click_element: (params: RawToolParamsObj) => {
+				const { webview_id: webviewIdUnknown, selector: selectorUnknown } = params;
+				const webview_id = validateStr('webview_id', webviewIdUnknown);
+				const selector = validateStr('selector', selectorUnknown);
+				return { webview_id, selector };
+			},
+			get_page_text: (params: RawToolParamsObj) => {
+				const { webview_id: webviewIdUnknown, selector: selectorUnknown } = params;
+				const webview_id = validateStr('webview_id', webviewIdUnknown);
+				const selector = typeof selectorUnknown === 'string' ? selectorUnknown : undefined;
+				return { webview_id, selector };
+			},
+			webview_screenshot: (params: RawToolParamsObj) => {
+				const { webview_id: webviewIdUnknown, filename: filenameUnknown, question: questionUnknown } = params;
+				const webview_id = validateStr('webview_id', webviewIdUnknown);
+				const filename = typeof filenameUnknown === 'string' ? filenameUnknown : undefined;
+				const question = typeof questionUnknown === 'string' ? questionUnknown : undefined;
+				return { webview_id, filename, question };
+			},
+			type_into_element: (params: RawToolParamsObj) => {
+				const { webview_id: webviewIdUnknown, selector: selectorUnknown, text: textUnknown } = params;
+				const webview_id = validateStr('webview_id', webviewIdUnknown);
+				const selector = validateStr('selector', selectorUnknown);
+				const text = validateStr('text', textUnknown);
+				return { webview_id, selector, text };
+			},
+			search_web: (params: RawToolParamsObj) => {
+				const { query, num_results: numResultsUnknown } = params;
+				const validatedQuery = validateStr('query', query);
+				const num_results = validateNumber(numResultsUnknown, { default: 10 });
+				if (num_results !== null && (num_results < 1 || num_results > 20)) {
+					throw new Error('num_results must be between 1 and 20');
+				}
+				return {
+					query: validatedQuery,
+					num_results: num_results ?? 10,
+				};
+			},
+			browse_resources: (params: RawToolParamsObj) => {
+				const { url, resource_type: resourceTypeUnknown } = params;
+				const validatedUrl = validateStr('url', url);
+				if (!validatedUrl.startsWith('http://') && !validatedUrl.startsWith('https://')) {
+					throw new Error('URL must start with http:// or https://');
+				}
+				const resource_type = (typeof resourceTypeUnknown === 'string' && ['css', 'js', 'images', 'all'].includes(resourceTypeUnknown))
+					? resourceTypeUnknown as 'css' | 'js' | 'images' | 'all'
+					: 'all';
+				return {
+					url: validatedUrl,
+					resource_type,
 				};
 			},
 
@@ -1987,6 +2083,224 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 
 				return { result: { quiz_id: quizId, template } };
 			},
+			// --- Browser / Webview Tools ---
+			open_url: async ({ url, title }, opts) => {
+				opts?.onData?.(`Opening URL: ${url}...`);
+
+				try {
+					// Detect if this is a local file path or VS Code URI
+					const isLocalFile = url.startsWith('file://') || url.startsWith('/') || url.match(/^[a-zA-Z]:\\/);
+					const isVSCodeUri = url.startsWith('vscode-file:') || url.startsWith('vscode-resource:') || url.includes('a-coder');
+
+					if (isLocalFile || isVSCodeUri) {
+						// Use VS Code webview for local files (full JavaScript access)
+						const webviewId = await this._webviewToolService.createWebview({ url, title });
+						opts?.onData?.(`Webview ${webviewId} opened for local file.`);
+						return { result: { webviewId, title: title || url, isLocal: true } };
+					} else {
+						// Use BrowserWindow for external websites (separate window)
+						const channel = this._mainProcessService.getChannel('void-channel-browser-window');
+						const response = await channel.call('openBrowserWindow', { url, title }) as { success: boolean; data?: { windowId: string, title: string }; error?: string };
+
+						if (!response.success) {
+							throw new Error(response.error || 'Failed to open browser window');
+						}
+
+						const { windowId, title: windowTitle } = response.data!;
+						opts?.onData?.(`Browser window ${windowId} opened.`);
+						return { result: { webviewId: windowId, title: windowTitle, isLocal: false } };
+					}
+				} catch (error) {
+					throw new Error(`Failed to open URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
+				}
+			},
+			open_html: async ({ html, title }, opts) => {
+				opts?.onData?.(`Opening HTML content...`);
+
+				try {
+					// Create a webview with the HTML content directly
+					const webviewId = await this._webviewToolService.createHtmlWebview(html, title);
+					opts?.onData?.(`HTML content opened in webview ${webviewId}.`);
+					return { result: { webviewId, title: title || 'HTML Preview' } };
+				} catch (error) {
+					throw new Error(`Failed to open HTML: ${error instanceof Error ? error.message : 'Unknown error'}`);
+				}
+			},
+			fetch_url: async ({ url, extract_text }, opts) => {
+				opts?.onData?.(`Fetching URL: ${url}...`);
+
+				try {
+					const channel = this._mainProcessService.getChannel('void-channel-browser');
+					const response = await channel.call('fetchUrl', { url, extractText: extract_text }) as { success: boolean; data?: { html: string; text?: string }; error?: string };
+
+					if (!response.success) {
+						throw new Error(response.error || 'Failed to fetch URL');
+					}
+
+					const { html, text } = response.data!;
+					const result: BuiltinToolResultType['fetch_url'] = { html, text };
+
+					return { result };
+				} catch (error) {
+					throw new Error(`Failed to fetch URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
+				}
+			},
+			open_devtools: async ({ webview_id }, opts) => {
+				opts?.onData?.(`Opening DevTools for webview ${webview_id}...`);
+
+				if (!this._webviewToolService.webviewExists(webview_id)) {
+					throw new Error(`Webview with ID ${webview_id} does not exist. Use open_url first.`);
+				}
+
+				const webviewInput = this._webviewToolService.getWebviewInput(webview_id);
+				if (!webviewInput) {
+					throw new Error(`Webview input not found for ID ${webview_id}`);
+				}
+
+				// Focus the webview first
+				await this._webviewToolService.focusWebview(webview_id);
+
+				// Open DevTools for the webview
+				await this._commandService.executeCommand('workbench.action.webview.openDeveloperTools');
+
+				return { result: { message: `DevTools opened for webview ${webview_id}` } };
+			},
+			click_element: async ({ webview_id, selector }, opts) => {
+				opts?.onData?.(`Clicking element: ${selector}...`);
+
+				try {
+					// Use browser-window channel to click element (works with visible BrowserWindow)
+					const channel = this._mainProcessService.getChannel('void-channel-browser-window');
+					const response = await channel.call('clickElement', { windowId: webview_id, selector }) as { success: boolean; data?: { message: string }; error?: string };
+
+					if (!response.success) {
+						throw new Error(response.error || 'Failed to click element');
+					}
+
+					return { result: { message: response.data!.message } };
+				} catch (error) {
+					throw new Error(`Failed to click element: ${error instanceof Error ? error.message : 'Unknown error'}`);
+				}
+			},
+			get_page_text: async ({ webview_id, selector }, opts) => {
+				opts?.onData?.(`Extracting page text...`);
+
+				try {
+					// Use browser-window channel to get text (works with visible BrowserWindow)
+					const channel = this._mainProcessService.getChannel('void-channel-browser-window');
+					const response = await channel.call('getPageText', { windowId: webview_id, selector }) as { success: boolean; data?: { text: string }; error?: string };
+
+					if (!response.success) {
+						throw new Error(response.error || 'Failed to extract page text');
+					}
+
+					return { result: { text: response.data!.text } };
+				} catch (error) {
+					throw new Error(`Failed to extract page text: ${error instanceof Error ? error.message : 'Unknown error'}`);
+				}
+			},
+			webview_screenshot: async ({ webview_id, filename, question }, opts) => {
+				opts?.onData?.(`Capturing screenshot...`);
+
+				if (!this._webviewToolService.webviewExists(webview_id)) {
+					throw new Error(`Webview with ID ${webview_id} does not exist. Use open_url first.`);
+				}
+
+				const webviewMetadata = this._webviewToolService.getWebviewMetadata(webview_id);
+				if (!webviewMetadata) {
+					throw new Error(`Webview metadata not found for ID ${webview_id}`);
+				}
+
+				try {
+					// Capture the page using the browser channel
+					const channel = this._mainProcessService.getChannel('void-channel-browser');
+					const response = await channel.call('capturePage', { url: webviewMetadata.url }) as { success: boolean; data?: { imageData: string }; error?: string };
+
+					if (!response.success) {
+						throw new Error(response.error || 'Failed to capture screenshot');
+					}
+
+					const imageData = response.data!.imageData; // data:image/png;base64,xxx
+
+					// Remove data URL prefix for vision service
+					const base64Data = imageData.replace(/^data:image\/png;base64,/, '');
+
+					// Process screenshot with vision model
+					const imageAttachment = {
+						base64: base64Data,
+						mimeType: 'image/png',
+						name: filename || 'screenshot.png'
+					};
+
+					const visionAnalysis = await this._visionService.processImages(
+						[imageAttachment],
+						question || 'Describe what you see in this screenshot.'
+					);
+
+					return {
+						result: {
+							imageData,
+							filePath: filename || undefined,
+							visionAnalysis
+						}
+					};
+				} catch (error) {
+					throw new Error(`Failed to capture screenshot: ${error instanceof Error ? error.message : 'Unknown error'}`);
+				}
+			},
+			type_into_element: async ({ webview_id, selector, text }, opts) => {
+				opts?.onData?.(`Typing into element: ${selector}...`);
+
+				try {
+					// Use browser-window channel to type into element (works with visible BrowserWindow)
+					const channel = this._mainProcessService.getChannel('void-channel-browser-window');
+					const response = await channel.call('typeIntoElement', { windowId: webview_id, selector, text }) as { success: boolean; data?: { message: string }; error?: string };
+
+					if (!response.success) {
+						throw new Error(response.error || 'Failed to type into element');
+					}
+
+					return { result: { message: response.data!.message } };
+				} catch (error) {
+					throw new Error(`Failed to type into element: ${error instanceof Error ? error.message : 'Unknown error'}`);
+				}
+			},
+			search_web: async ({ query, num_results }, opts) => {
+				opts?.onData?.(`Searching for: ${query}...`);
+
+				try {
+					const channel = this._mainProcessService.getChannel('void-channel-browser');
+					const response = await channel.call('searchWeb', { query, numResults: num_results }) as { success: boolean; data?: { results: Array<{ title: string, url: string, snippet: string }> }; error?: string };
+
+					if (!response.success) {
+						throw new Error(response.error || 'Failed to search web');
+					}
+
+					const { results } = response.data!;
+
+					return { result: { results } };
+				} catch (error) {
+					throw new Error(`Failed to search web: ${error instanceof Error ? error.message : 'Unknown error'}`);
+				}
+			},
+			browse_resources: async ({ url, resource_type }, opts) => {
+				opts?.onData?.(`Browsing resources for: ${url}...`);
+
+				try {
+					const channel = this._mainProcessService.getChannel('void-channel-browser');
+					const response = await channel.call('browseResources', { url, resourceType: resource_type }) as { success: boolean; data?: { resources: Array<{ type: string, url: string, size: number }> }; error?: string };
+
+					if (!response.success) {
+						throw new Error(response.error || 'Failed to browse resources');
+					}
+
+					const { resources } = response.data!;
+
+					return { result: { resources } };
+				} catch (error) {
+					throw new Error(`Failed to browse resources: ${error instanceof Error ? error.message : 'Unknown error'}`);
+				}
+			},
 
 		}
 
@@ -2331,6 +2645,79 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 
 				            create_quiz: (params, result) => {
 				                return result.template || 'Quiz created successfully. The student can now answer the questions.';
+				            },
+				            // --- Browser / Webview Tools ---
+				            open_url: (params, result) => {
+				                return `Opened URL: ${params.url}\nWebview ID: ${result.webviewId}\nTitle: ${result.title}`;
+				            },
+				            open_html: (params, result) => {
+				                const htmlPreview = params.html.substring(0, 200).replace(/\n/g, ' ');
+				                return `Opened HTML content\nWebview ID: ${result.webviewId}\nTitle: ${result.title}\n\n**Preview:**\n${htmlPreview}...`;
+				            },
+				            fetch_url: (params, result) => {
+				                if (result.text) {
+				                    return `Fetched content from: ${params.url}\n\n**Extracted Text:**\n${result.text.substring(0, 5000)}${result.text.length > 5000 ? '\n\n... (truncated)' : ''}\n\n**Full HTML available (${result.html.length} characters)**`;
+				                }
+				                return `Fetched HTML from: ${params.url}\n**Length:** ${result.html.length} characters`;
+				            },
+				            open_devtools: (params, result) => {
+				                return result.message;
+				            },
+				            click_element: (params, result) => {
+				                return result.message;
+				            },
+				            get_page_text: (params, result) => {
+				                const header = params.selector
+				                    ? `Text extracted from element: ${params.selector}\n\n`
+				                    : 'Page text extracted:\n\n';
+				                const text = result.text.length > 10000
+				                    ? result.text.substring(0, 10000) + '\n\n... (truncated)'
+				                    : result.text;
+				                return header + text;
+				            },
+				            webview_screenshot: (params, result) => {
+				                let output = `Screenshot captured for webview: ${params.webview_id}\n\n`;
+				                if (params.filename) {
+				                    output += `Saved as: ${params.filename}\n\n`;
+				                }
+				                if (params.question) {
+				                    output += `**Question:** ${params.question}\n\n`;
+				                }
+				                output += `**Vision Analysis:**\n${result.visionAnalysis}`;
+				                return output;
+				            },
+				            type_into_element: (params, result) => {
+				                return result.message || `Typed "${params.text}" into element: ${params.selector}`;
+				            },
+				            search_web: (params, result) => {
+				                let output = `Search results for: "${params.query}"\n\n`;
+				                result.results.forEach((r, i) => {
+				                    output += `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet.substring(0, 200)}...\n\n`;
+				                });
+				                return output;
+				            },
+				            browse_resources: (params, result) => {
+				                let output = `Resources loaded from: ${params.url}\n\n`;
+				                if (result.resources.length === 0) {
+				                    return output + 'No resources found.';
+				                }
+				                // Group by type
+				                const grouped: Record<string, typeof result.resources> = {};
+				                for (const r of result.resources) {
+				                    if (!grouped[r.type]) grouped[r.type] = [];
+				                    grouped[r.type].push(r);
+				                }
+				                for (const [type, resources] of Object.entries(grouped)) {
+				                    output += `**${type.toUpperCase()}:** ${resources.length}\n`;
+				                    resources.slice(0, 5).forEach(r => {
+				                        output += `  - ${r.url}\n`;
+				                    });
+				                    if (resources.length > 5) {
+				                        output += `  ... and ${resources.length - 5} more\n`;
+				                    }
+				                    output += '\n';
+				                }
+				                return output;
 				            },
 				        }
 				    }
