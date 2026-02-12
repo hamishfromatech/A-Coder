@@ -110,7 +110,7 @@ jobs:
           body: ${{ github.event.inputs.release_notes != '' && github.event.inputs.release_notes || steps.notes.outputs.notes }}
           draft: false
           prerelease: ${{ github.event.inputs.prerelease }}
-          generate_release_notes: ${{ github.event.inputs.release_notes == '' }}
+          generate_release_notes: false
 
       - name: Trigger builder workflows
         run: |

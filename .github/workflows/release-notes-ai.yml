@@ -1,0 +1,92 @@
+name: Generate AI Release Notes
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        type: string
+        required: true
+        description: The release tag to generate notes for (e.g., 1.85.0021)
+
+jobs:
+  generate-notes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install openai requests
+
+      - name: Get release info (dispatch mode)
+        if: github.event_name == 'workflow_dispatch'
+        id: release_dispatch
+        run: |
+          RELEASE_TAG="${{ github.event.inputs.release_tag }}"
+          echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Get release info (release event)
+        if: github.event_name == 'release'
+        id: release_event
+        run: |
+          RELEASE_TAG="${{ github.event.release.tag_name }}"
+          echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Generate release notes
+        id: generate
+        env:
+          GITHUB_TOKEN: ${{ secrets.STRONGER_GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.release_dispatch.outputs.release_tag || steps.release_event.outputs.release_tag }}
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+          OLLAMA_MODEL: qwen3-coder-next:cloud
+        run: |
+          NOTES=$(python .github/scripts/release_notes_generator.py)
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Update GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          body: ${{ steps.generate.outputs.notes }}
+          body_file: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.STRONGER_GITHUB_TOKEN }}
+
+      - name: Comment on release (dispatch mode)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.STRONGER_GITHUB_TOKEN }}
+          script: |
+            const release = await github.rest.repos.getReleaseByTag({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag: '${{ steps.release_dispatch.outputs.release_tag }}'
+            });
+
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: release.data.id,
+              body: `${{ steps.generate.outputs.notes }}`
+            });
+
+            console.log(`Updated release notes for ${{ steps.release_dispatch.outputs.release_tag }}`);
