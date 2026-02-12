@@ -2148,22 +2148,38 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 			open_devtools: async ({ webview_id }, opts) => {
 				opts?.onData?.(`Opening DevTools for webview ${webview_id}...`);
 
-				if (!this._webviewToolService.webviewExists(webview_id)) {
-					throw new Error(`Webview with ID ${webview_id} does not exist. Use open_url first.`);
+				// Check if this is a BrowserWindow (bw*) or VS Code webview (wv*)
+				const isBrowserWindow = webview_id.startsWith('bw');
+
+				if (isBrowserWindow) {
+					// Use browser-window channel for BrowserWindow DevTools
+					const channel = this._mainProcessService.getChannel('void-channel-browser-window');
+					const response = await channel.call('openDevTools', { windowId: webview_id }) as { success: boolean; data?: { message: string }; error?: string };
+
+					if (!response.success) {
+						throw new Error(response.error || `BrowserWindow ${webview_id} does not exist. Use open_url first.`);
+					}
+
+					return { result: { message: response.data!.message } };
+				} else {
+					// Use VS Code webview for local files
+					if (!this._webviewToolService.webviewExists(webview_id)) {
+						throw new Error(`Webview with ID ${webview_id} does not exist. Use open_url first.`);
+					}
+
+					const webviewInput = this._webviewToolService.getWebviewInput(webview_id);
+					if (!webviewInput) {
+						throw new Error(`Webview input not found for ID ${webview_id}`);
+					}
+
+					// Focus the webview first
+					await this._webviewToolService.focusWebview(webview_id);
+
+					// Open DevTools for the webview
+					await this._commandService.executeCommand('workbench.action.webview.openDeveloperTools');
+
+					return { result: { message: `DevTools opened for webview ${webview_id}` } };
 				}
-
-				const webviewInput = this._webviewToolService.getWebviewInput(webview_id);
-				if (!webviewInput) {
-					throw new Error(`Webview input not found for ID ${webview_id}`);
-				}
-
-				// Focus the webview first
-				await this._webviewToolService.focusWebview(webview_id);
-
-				// Open DevTools for the webview
-				await this._commandService.executeCommand('workbench.action.webview.openDeveloperTools');
-
-				return { result: { message: `DevTools opened for webview ${webview_id}` } };
 			},
 			click_element: async ({ webview_id, selector }, opts) => {
 				opts?.onData?.(`Clicking element: ${selector}...`);
@@ -2202,25 +2218,43 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 			webview_screenshot: async ({ webview_id, filename, question }, opts) => {
 				opts?.onData?.(`Capturing screenshot...`);
 
-				if (!this._webviewToolService.webviewExists(webview_id)) {
-					throw new Error(`Webview with ID ${webview_id} does not exist. Use open_url first.`);
-				}
-
-				const webviewMetadata = this._webviewToolService.getWebviewMetadata(webview_id);
-				if (!webviewMetadata) {
-					throw new Error(`Webview metadata not found for ID ${webview_id}`);
-				}
+				// Check if this is a BrowserWindow (bw*) or VS Code webview (wv*)
+				const isBrowserWindow = webview_id.startsWith('bw');
 
 				try {
-					// Capture the page using the browser channel
-					const channel = this._mainProcessService.getChannel('void-channel-browser');
-					const response = await channel.call('capturePage', { url: webviewMetadata.url }) as { success: boolean; data?: { imageData: string }; error?: string };
+					let imageData: string;
 
-					if (!response.success) {
-						throw new Error(response.error || 'Failed to capture screenshot');
+					if (isBrowserWindow) {
+						// Use browser-window channel for BrowserWindow screenshots
+						const channel = this._mainProcessService.getChannel('void-channel-browser-window');
+						const response = await channel.call('captureWindowScreenshot', { windowId: webview_id }) as { success: boolean; data?: { imageData: string }; error?: string };
+
+						if (!response.success) {
+							throw new Error(response.error || `BrowserWindow ${webview_id} does not exist. Use open_url first.`);
+						}
+
+						imageData = response.data!.imageData;
+					} else {
+						// Use VS Code webview for local files
+						if (!this._webviewToolService.webviewExists(webview_id)) {
+							throw new Error(`Webview with ID ${webview_id} does not exist. Use open_url first.`);
+						}
+
+						const webviewMetadata = this._webviewToolService.getWebviewMetadata(webview_id);
+						if (!webviewMetadata) {
+							throw new Error(`Webview metadata not found for ID ${webview_id}`);
+						}
+
+						// Capture the page using the browser channel
+						const channel = this._mainProcessService.getChannel('void-channel-browser');
+						const response = await channel.call('capturePage', { url: webviewMetadata.url }) as { success: boolean; data?: { imageData: string }; error?: string };
+
+						if (!response.success) {
+							throw new Error(response.error || 'Failed to capture screenshot');
+						}
+
+						imageData = response.data!.imageData;
 					}
-
-					const imageData = response.data!.imageData; // data:image/png;base64,xxx
 
 					// Remove data URL prefix for vision service
 					const base64Data = imageData.replace(/^data:image\/png;base64,/, '');

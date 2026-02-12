@@ -15,6 +15,7 @@ import { separateOutFirstLine } from '../../../../common/helpers/util.js'
 import { BlockCode } from '../util/inputs.js'
 import { CodespanLocationLink } from '../../../../common/chatThreadServiceTypes.js'
 import { getBasename, getRelative, voidOpenFileFn } from '../sidebar-tsx/ToolResultHelpers.js'
+import { MermaidDiagram } from './MermaidDiagram.js'
 
 
 export type ChatMessageLocation = {
@@ -287,6 +288,17 @@ const RenderToken = ({ token, inPTag, codeURI, chatMessageLocation, tokenIdx, ..
 		const contents = firstLineIsURI ? (remainingContents?.trimStart() || '') : t.text // exclude first-line URI from contents
 
 		if (!contents) return null
+
+		// Check if this is a Mermaid diagram
+		const isMermaid = t.lang === 'mermaid' || t.lang === 'mmd' || contents.trim().startsWith('flowchart') ||
+			contents.trim().startsWith('sequenceDiagram') || contents.trim().startsWith('classDiagram') ||
+			contents.trim().startsWith('stateDiagram') || contents.trim().startsWith('erDiagram') ||
+			contents.trim().startsWith('gantt') || contents.trim().startsWith('pie') ||
+			contents.trim().startsWith('mindmap') || contents.trim().startsWith('timeline')
+
+		if (isMermaid) {
+			return <MermaidDiagram code={contents} className="my-4" />
+		}
 
 		// figure out langauge and URI
 		let uri: URI | null

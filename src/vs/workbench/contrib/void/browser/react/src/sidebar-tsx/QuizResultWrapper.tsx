@@ -3,10 +3,11 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Check, Circle, Brain, Send, AlertTriangle, RotateCcw, Trophy, X } from 'lucide-react';
 import { useAccessor, useChatThreadsStreamState } from '../util/services.js';
 import { BuiltinToolName } from '../../../../common/toolsServiceTypes.js';
+import { ILearningProgressService } from '../../../../common/learningProgressService.js';
 import {
 	ToolHeaderWrapper,
 	ToolChildrenWrapper,
@@ -359,6 +360,27 @@ export const QuizResultWrapper: ResultWrapper<'create_quiz'> = ({ toolMessage, t
 			// Submit the quiz answers as a tool result - bypasses the message queue
 			if (chatThreadsService && chatThreadsService.submitToolResult) {
 				chatThreadsService.submitToolResult(threadId, toolMessage.id, quizResult);
+			}
+
+			// Save quiz result to LearningProgressService
+			const learningProgressService = accessor.get('ILearningProgressService');
+			if (learningProgressService && learningProgressService.addQuizResult) {
+				try {
+					await learningProgressService.addQuizResult(threadId, {
+						quizId: toolMessage.id,
+						title: params.title,
+						score: results.score,
+						totalPoints: results.totalPoints,
+						percentage: results.totalPoints > 0 ? Math.round((results.score / results.totalPoints) * 100) : 0,
+						answers,
+						results,
+						completedAt: Date.now()
+					});
+					console.log('[QuizResultWrapper] Quiz result saved to LearningProgressService');
+				} catch (err) {
+					console.error('[QuizResultWrapper] Error saving quiz result:', err);
+					// Don't fail the quiz submission if progress saving fails
+				}
 			}
 		} catch (error) {
 			console.error('[QuizResultWrapper] Error submitting quiz:', error);

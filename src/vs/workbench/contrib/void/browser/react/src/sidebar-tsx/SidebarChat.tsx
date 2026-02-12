@@ -69,6 +69,9 @@ import { FormResultWrapper } from './FormResultWrapper.js';
 import { QuizResultWrapper } from './QuizResultWrapper.js';
 import { WebviewResultWrapper } from './WebviewResultWrapper.js';
 import WalkthroughResultWrapper from './WalkthroughResultWrapper.js';
+import { TeachingResultWrapper } from './TeachingResultWrapper.js';
+import { LearningDashboard } from './LearningDashboard.js';
+import { QuizMe } from './QuizMe.js';
 
 
 // Lazy-loaded components - MUST be at module level to avoid re-creating on every render
@@ -1847,12 +1850,12 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 	'update_implementation_step': { resultWrapper: (params: WrapperProps<'update_implementation_step'>) => (<React.Suspense fallback={null}><LazyImplementationPlanPreviewWrapper {...params} /></React.Suspense>) },
 	'get_implementation_status': { resultWrapper: (params: WrapperProps<'get_implementation_status'>) => (<React.Suspense fallback={null}><LazyImplementationPlanPreviewWrapper {...params} /></React.Suspense>) },
 	'open_walkthrough_preview': { resultWrapper: WalkthroughResultWrapper as ResultWrapper<'open_walkthrough_preview'> },
-	'explain_code': { resultWrapper: DefaultToolResultWrapper },
-	'teach_concept': { resultWrapper: DefaultToolResultWrapper },
-	'create_exercise': { resultWrapper: DefaultToolResultWrapper },
-	'check_answer': { resultWrapper: DefaultToolResultWrapper },
-	'give_hint': { resultWrapper: DefaultToolResultWrapper },
-	'create_lesson_plan': { resultWrapper: DefaultToolResultWrapper },
+	'explain_code': { resultWrapper: TeachingResultWrapper as ResultWrapper<'explain_code'> },
+	'teach_concept': { resultWrapper: TeachingResultWrapper as ResultWrapper<'teach_concept'> },
+	'create_exercise': { resultWrapper: TeachingResultWrapper as ResultWrapper<'create_exercise'> },
+	'check_answer': { resultWrapper: TeachingResultWrapper as ResultWrapper<'check_answer'> },
+	'give_hint': { resultWrapper: TeachingResultWrapper as ResultWrapper<'give_hint'> },
+	'create_lesson_plan': { resultWrapper: TeachingResultWrapper as ResultWrapper<'create_lesson_plan'> },
 	'load_skill': { resultWrapper: SkillsResultWrapper as ResultWrapper<'load_skill'> },
 	'list_skills': { resultWrapper: SkillsResultWrapper as ResultWrapper<'list_skills'> },
 	'generate_image': { resultWrapper: MediaResultWrapper as ResultWrapper<'generate_image'> },
@@ -2493,6 +2496,12 @@ export const SidebarChat = () => {
 
 	// MCP Server Modal state
 	const [isMCPModalOpen, setIsMCPModalOpen] = useState(false)
+
+	// Learning Dashboard state
+	const [showLearningDashboard, setShowLearningDashboard] = useState(false)
+
+	// Quiz Me (spaced repetition) state
+	const [showQuizMe, setShowQuizMe] = useState(false)
 
 	// Task Plan state
 	const [tasks, setTasks] = useState<TaskPlan[]>([])
@@ -3368,6 +3377,24 @@ export const SidebarChat = () => {
 						</div>
 					</div>
 					<div className='flex gap-2 items-center'>
+						{/* Quiz Me Button */}
+						<button
+							onClick={() => setShowQuizMe(true)}
+							className='flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-500/20 to-blue-500/20 hover:from-purple-500/30 hover:to-blue-500/30 text-purple-400 hover:text-purple-300 rounded-lg text-xs font-medium transition-colors border border-purple-500/30'
+							title='Review concepts with spaced repetition'
+						>
+							<Brain size={14} />
+							<span>Quiz Me</span>
+						</button>
+						{/* Learning Dashboard Button */}
+						<button
+							onClick={() => setShowLearningDashboard(true)}
+							className='flex items-center gap-1.5 px-3 py-1.5 bg-void-bg-2 hover:bg-void-bg-3 text-void-fg-2 hover:text-void-fg-1 rounded-lg text-xs font-medium transition-colors border border-void-border-2'
+							title='View your learning progress'
+						>
+							<Trophy size={14} />
+							<span>My Progress</span>
+						</button>
 						{/* Buttons moved to CommandBarInChat */}
 					</div>
 				</div>
@@ -3405,6 +3432,27 @@ export const SidebarChat = () => {
 				isOpen={isMCPModalOpen}
 				onClose={() => setIsMCPModalOpen(false)}
 			/>
+
+			{/* Learning Dashboard Modal */}
+			{showLearningDashboard && threadId && (
+				<LearningDashboard
+					threadId={threadId}
+					onClose={() => setShowLearningDashboard(false)}
+				/>
+			)}
+
+			{/* Quiz Me Modal */}
+			{showQuizMe && threadId && (
+				<QuizMe
+					threadId={threadId}
+					onClose={() => setShowQuizMe(false)}
+					onSelectTopic={(topic: string) => {
+						setInstructionsAreEmpty(false);
+						setInputValue(topic);
+						textAreaRef.current?.focus();
+					}}
+				/>
+			)}
 		</Fragment>
 	)
 }

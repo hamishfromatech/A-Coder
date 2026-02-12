@@ -232,10 +232,46 @@ export const WebviewResultWrapper: ResultWrapper<WebviewToolName> = ({ toolMessa
 				break;
 
 			default:
-				// open_devtools, click_element - just show the message
+				// open_devtools, click_element - show the message with helpful context
+				const isError = result.error !== undefined;
+				const showHelpfulMessage = toolName === 'open_devtools' || toolName === 'webview_screenshot';
+
 				componentParams.children = (
 					<ToolChildrenWrapper>
-						<div className="text-xs text-void-fg-2 py-2">{result.message}</div>
+						<div className="py-2">
+							{isError ? (
+								<div className={`
+									p-3 rounded-lg border
+									${showHelpfulMessage ? 'bg-orange-500/10 border-orange-500/30' : 'bg-red-500/10 border-red-500/30'}
+								`}>
+									<div className="flex items-start gap-2 mb-2">
+										{showHelpfulMessage ? (
+											<ImageIcon size={16} className="text-orange-500 flex-shrink-0" />
+										) : (
+											<Database size={16} className="text-red-500 flex-shrink-0" />
+										)}
+										<div className="flex-1">
+											<div className={`text-sm font-semibold ${showHelpfulMessage ? 'text-orange-500' : 'text-red-500'}`}>
+												{showHelpfulMessage ? 'Webview Required' : 'Action Failed'}
+											</div>
+											<div className="text-xs text-void-fg-2 mt-1">{result.message}</div>
+										</div>
+									</div>
+									{showHelpfulMessage && (
+										<div className="mt-3 pt-3 border-t border-orange-500/20">
+											<div className="text-[10px] text-void-fg-3 mb-1">To fix this:</div>
+											<ol className="text-xs text-void-fg-2 space-y-1 ml-3 list-decimal">
+												<li>Use the "Open URL" command first to create a webview</li>
+												<li>Then use screenshot or devtools on that webview</li>
+												<li>Example: "Open https://example.com, then take screenshot"</li>
+											</ol>
+										</div>
+									)}
+								</div>
+							) : (
+								<div className="text-xs text-void-fg-2 py-2">{result.message}</div>
+							)}
+						</div>
 					</ToolChildrenWrapper>
 				);
 				componentParams.isOpen = true;

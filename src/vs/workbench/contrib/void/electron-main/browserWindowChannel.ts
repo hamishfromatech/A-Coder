@@ -42,6 +42,9 @@ export class BrowserWindowChannel implements IServerChannel {
 			case 'closeBrowserWindow': return this.handleCloseBrowserWindow(arg);
 			case 'focusBrowserWindow': return this.handleFocusBrowserWindow(arg);
 			case 'listBrowserWindows': return this.handleListBrowserWindows();
+			case 'getWindowInfo': return this.handleGetWindowInfo(arg);
+			case 'captureWindowScreenshot': return this.handleCaptureWindowScreenshot(arg);
+			case 'openDevTools': return this.handleOpenDevTools(arg);
 			case 'clickElement': return this.handleClickElement(arg);
 			case 'typeIntoElement': return this.handleTypeIntoElement(arg);
 			case 'getPageText': return this.handleGetPageText(arg);
@@ -211,6 +214,119 @@ export class BrowserWindowChannel implements IServerChannel {
 			success: true,
 			data: { windows }
 		};
+	}
+
+	private handleGetWindowInfo(request: { windowId: string }): BrowserWindowChannelResponse {
+		const { windowId } = request;
+
+		const browserWindow = this.browserWindows.get(windowId);
+		if (!browserWindow) {
+			return {
+				success: false,
+				error: `BrowserWindow with ID ${windowId} does not exist`
+			};
+		}
+
+		if (browserWindow.isDestroyed()) {
+			this.browserWindows.delete(windowId);
+			return {
+				success: false,
+				error: `BrowserWindow with ID ${windowId} has been destroyed`
+			};
+		}
+
+		return {
+			success: true,
+			data: {
+				windowId,
+				title: browserWindow.getTitle(),
+				url: browserWindow.webContents.getURL()
+			}
+		};
+	}
+
+	private async handleCaptureWindowScreenshot(request: { windowId: string }): Promise<BrowserWindowChannelResponse> {
+		const { windowId } = request;
+
+		const browserWindow = this.browserWindows.get(windowId);
+		if (!browserWindow) {
+			return {
+				success: false,
+				error: `BrowserWindow with ID ${windowId} does not exist`
+			};
+		}
+
+		if (browserWindow.isDestroyed()) {
+			this.browserWindows.delete(windowId);
+			return {
+				success: false,
+				error: `BrowserWindow with ID ${windowId} has been destroyed`
+			};
+		}
+
+		try {
+			// Wait for page to be fully loaded
+			await new Promise<void>((resolve) => {
+				if (browserWindow.webContents.isLoading()) {
+					browserWindow.webContents.once('did-stop-loading', resolve);
+				} else {
+					resolve();
+				}
+			});
+
+			// Wait a bit for JavaScript to execute
+			await new Promise(resolve => setTimeout(resolve, 1000));
+
+			// Capture screenshot
+			const image = await browserWindow.webContents.capturePage();
+
+			// Convert to PNG base64
+			const imageData = image.toDataURL();
+
+			return {
+				success: true,
+				data: { imageData }
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Unknown error'
+			};
+		}
+	}
+
+	private handleOpenDevTools(request: { windowId: string }): BrowserWindowChannelResponse {
+		const { windowId } = request;
+
+		const browserWindow = this.browserWindows.get(windowId);
+		if (!browserWindow) {
+			return {
+				success: false,
+				error: `BrowserWindow with ID ${windowId} does not exist`
+			};
+		}
+
+		if (browserWindow.isDestroyed()) {
+			this.browserWindows.delete(windowId);
+			return {
+				success: false,
+				error: `BrowserWindow with ID ${windowId} has been destroyed`
+			};
+		}
+
+		try {
+			browserWindow.webContents.openDevTools();
+
+			return {
+				success: true,
+				data: { message: `DevTools opened for BrowserWindow ${windowId}` }
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Unknown error'
+			};
+		}
 	}
 
 	private async handleClickElement(request: any): Promise<BrowserWindowChannelResponse> {
