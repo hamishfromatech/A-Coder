@@ -292,7 +292,7 @@ const QuizQuestionItem = ({ question, value, onChange, showResult, result }: {
 			{showResult && question.explanation && (
 				<div className="mt-3 px-3 py-2 bg-void-bg-2/50 border border-void-border-2/50 rounded-lg">
 					<div className="text-xs text-void-fg-3 leading-relaxed">
-						<span className="font-medium text-void-fg-2">\u{1F4A1} Explanation: </span>
+						<span className="font-medium text-void-fg-2">{'\u{1F4A1}'} Explanation: </span>
 						{question.explanation}
 					</div>
 				</div>
@@ -372,9 +372,9 @@ export const QuizResultWrapper: ResultWrapper<'create_quiz'> = ({ toolMessage, t
 						score: results.score,
 						totalPoints: results.totalPoints,
 						percentage: results.totalPoints > 0 ? Math.round((results.score / results.totalPoints) * 100) : 0,
-						answers,
-						results,
-						completedAt: Date.now()
+						questionsCorrect: results.correctCount || 0,
+						totalQuestions: params.questions.length,
+						timestamp: Date.now()
 					});
 					console.log('[QuizResultWrapper] Quiz result saved to LearningProgressService');
 				} catch (err) {

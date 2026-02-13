@@ -71,7 +71,7 @@ const RevertConfirmationModal = ({
 						This will revert your files to the state at this checkpoint.
 					</p>
 					<div className="p-3 bg-void-bg-4 rounded-md border border-void-border-3">
-						<p className="text-xs text-yellow-500 font-medium mb-1">\u{26A0}\u{FE0F} Warning</p>
+						<p className="text-xs text-yellow-500 font-medium mb-1">{"\u{26A0}\u{FE0F}"} Warning</p>
 						<p className="text-xs text-void-fg-3">
 							Any changes made after this checkpoint will be lost. This action cannot be undone.
 						</p>

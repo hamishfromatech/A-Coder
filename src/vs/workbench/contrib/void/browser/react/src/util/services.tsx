@@ -57,6 +57,7 @@ import { IMCPModalService } from '../../../mcpModalService.js';
 import { IStorageService, StorageScope } from '../../../../../../../platform/storage/common/storage.js'
 import { OPT_OUT_KEY } from '../../../../common/storageKeys.js'
 import { IAgentManagerService } from '../../../agentManager.contribution.js'
+import { ILearningProgressService } from '../../../../common/learningProgressService.js'
 
 
 // normally to do this you'd use a useEffect that calls .onDidChangeState(), but useEffect mounts too late and misses initial state changes
@@ -295,6 +296,7 @@ const getReactAccessor = (accessor: ServicesAccessor) => {
 		IMCPModalService: accessor.get(IMCPModalService),
 		IAgentManagerService: accessor.get(IAgentManagerService),
 
+		ILearningProgressService: accessor.get(ILearningProgressService),
 		IStorageService: accessor.get(IStorageService),
 
 	} as const
