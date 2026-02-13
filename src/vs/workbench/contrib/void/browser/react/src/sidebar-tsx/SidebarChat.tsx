@@ -577,7 +577,7 @@ const detailOfChatMode: Record<ChatMode, string> = {
 	'chat': 'Conversation only, no tools',
 	'plan': 'Research, plan & document',
 	'code': 'Edit files & run commands',
-	'learn': '📚 Learn to code with a tutor',
+	'learn': '\u{1F4DA} Learn to code with a tutor',
 }
 
 const nameOfStudentLevel = {
@@ -3299,7 +3299,7 @@ export const SidebarChat = () => {
 			<ErrorBoundary>
 				{/* Logo - different for student mode */}
 				{currentChatMode === 'learn' ? (
-					<div className='text-6xl mb-6'>🎓</div>
+					<div className='text-6xl mb-6'>\u{1F393}</div>
 				) : (
 					<VoidIcon size={96} opacity={0.9} className="mb-8" />
 				)}
@@ -3333,7 +3333,7 @@ export const SidebarChat = () => {
 				{/* Student mode quick tips */}
 				{currentChatMode === 'learn' && (
 					<div className="mt-6 p-4 bg-void-bg-2 rounded-xl max-w-sm text-sm">
-						<div className="font-medium text-void-fg-2 mb-2">💡 Try asking:</div>
+						<div className="font-medium text-void-fg-2 mb-2">\u{1F4A1} Try asking:</div>
 						<ul className="text-void-fg-3 space-y-1">
 							<li>"What is a function?"</li>
 							<li>"Explain this code to me"</li>
@@ -3385,11 +3385,11 @@ export const SidebarChat = () => {
 					{/* Student mode progress indicator */}
 					<div className='flex items-center gap-3 text-xs'>
 						<div className='flex items-center gap-1.5 text-purple-400'>
-							<span>🎯</span>
+							<span>\u{1F3AF}</span>
 							<span>{activeExerciseCount} active</span>
 						</div>
 						<div className='flex items-center gap-1.5 text-green-400'>
-							<span>✅</span>
+							<span>\u{2705}</span>
 							<span>{completedExerciseCount} completed</span>
 						</div>
 					</div>

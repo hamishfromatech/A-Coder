@@ -259,7 +259,7 @@ const toOpenAICompatibleTool = (toolInfo: InternalToolInfo) => {
 			description: description,
 			parameters: {
 				type: 'object',
-				properties: paramsWithType, // ✅ FIX: Use paramsWithType instead of params to include type field for llama.cpp compatibility
+				properties: paramsWithType, // \u{2705} FIX: Use paramsWithType instead of params to include type field for llama.cpp compatibility
 				// required: Object.keys(params), // in strict mode, all params are required and additionalProperties is false
 				// additionalProperties: false,
 			},
@@ -317,7 +317,7 @@ const findJsonObjectEnd = (str: string): number => {
 // convert LLM tool call to our tool format
 const rawToolCallObjOfParamsStr = (name: string, toolParamsStr: string, id: string, thought_signature?: string): RawToolCallObj | null => {
 	if (!toolParamsStr) {
-		console.log(`[sendLLMMessage] ⚠️ Tool call "${name}" has empty parameters string`)
+		console.log(`[sendLLMMessage] \u{26A0}\u{FE0F} Tool call "${name}" has empty parameters string`)
 		return null
 	}
 
@@ -333,12 +333,12 @@ const rawToolCallObjOfParamsStr = (name: string, toolParamsStr: string, id: stri
 			const firstObject = toolParamsStr.substring(0, firstObjectEnd + 1)
 			try {
 				input = JSON.parse(firstObject)
-				console.log(`[sendLLMMessage] ⚠️ LLM sent concatenated tool calls, extracting first one for "${name}"`)
+				console.log(`[sendLLMMessage] \u{26A0}\u{FE0F} LLM sent concatenated tool calls, extracting first one for "${name}"`)
 			} catch (e2) {
 				// Fallback to partial JSON parser for very malformed but mostly complete JSON
 				input = parsePartialJSON(toolParamsStr)
 				if (Object.keys(input as object).length === 0) {
-					console.log(`[sendLLMMessage] ⚠️ Failed to parse tool parameters for "${name}":`, e)
+					console.log(`[sendLLMMessage] \u{26A0}\u{FE0F} Failed to parse tool parameters for "${name}":`, e)
 					return null
 				}
 			}
@@ -346,14 +346,14 @@ const rawToolCallObjOfParamsStr = (name: string, toolParamsStr: string, id: stri
 			// Fallback to partial JSON parser
 			input = parsePartialJSON(toolParamsStr)
 			if (Object.keys(input as object).length === 0) {
-				console.log(`[sendLLMMessage] ⚠️ Failed to parse tool parameters for "${name}":`, e)
+				console.log(`[sendLLMMessage] \u{26A0}\u{FE0F} Failed to parse tool parameters for "${name}":`, e)
 				return null
 			}
 		}
 	}
 
 	if (input === null || typeof input !== 'object') {
-		console.log(`[sendLLMMessage] ⚠️ Tool call "${name}" parsed to invalid type:`, typeof input)
+		console.log(`[sendLLMMessage] \u{26A0}\u{FE0F} Tool call "${name}" parsed to invalid type:`, typeof input)
 		return null
 	}
 
@@ -414,12 +414,12 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 
 	console.log(`[sendLLMMessage] OpenAI-compatible - chatMode: ${chatMode}, tools count: ${potentialTools?.length ?? 0}, model: ${modelName}, provider: ${providerName}, specialToolFormat: ${specialToolFormat}`)
 	if (potentialTools && potentialTools.length > 0 && specialToolFormat === 'openai-style') {
-		console.log(`[sendLLMMessage] ✅ Sending ${potentialTools.length} tools via native API`)
+		console.log(`[sendLLMMessage] \u{2705} Sending ${potentialTools.length} tools via native API`)
 		console.log(`[sendLLMMessage] Tool names:`, potentialTools.map(t => t.function.name).join(', '))
 	} else if (potentialTools && potentialTools.length > 0) {
-		console.log(`[sendLLMMessage] ⚠️ NOT sending tools - specialToolFormat is '${specialToolFormat}', will use XML tool calling instead`)
+		console.log(`[sendLLMMessage] \u{26A0}\u{FE0F} NOT sending tools - specialToolFormat is '${specialToolFormat}', will use XML tool calling instead`)
 	} else {
-		console.log(`[sendLLMMessage] ⚠️ NO TOOLS - chatMode: ${chatMode}, mcpTools: ${mcpTools?.length ?? 0}`)
+		console.log(`[sendLLMMessage] \u{26A0}\u{FE0F} NO TOOLS - chatMode: ${chatMode}, mcpTools: ${mcpTools?.length ?? 0}`)
 	}
 
 	// instance
@@ -644,7 +644,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 				}
 				if (xmlToolCallsInText.length > 0) {
 					fullTextSoFar = stripXMLBlocks(fullTextSoFar)
-					console.log(`[sendLLMMessage] ✅ Extracted ${xmlToolCallsInText.length} XML tool calls from text`)
+					console.log(`[sendLLMMessage] \u{2705} Extracted ${xmlToolCallsInText.length} XML tool calls from text`)
 				}
 				
 				// 2. Check reasoning (Nemotron and other models sometimes put tools here)
@@ -660,7 +660,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 					}
 					if (xmlToolCallsInReasoning.length > 0) {
 						fullReasoningSoFar = stripXMLBlocks(fullReasoningSoFar)
-						console.log(`[sendLLMMessage] ✅ Extracted ${xmlToolCallsInReasoning.length} XML tool calls from reasoning`)
+						console.log(`[sendLLMMessage] \u{2705} Extracted ${xmlToolCallsInReasoning.length} XML tool calls from reasoning`)
 					}
 				}
 			}
@@ -669,7 +669,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 			const hasEmptyResponse = !fullTextSoFar && !fullReasoningSoFar && toolCalls.length === 0
 
 			if (hasEmptyResponse) {
-				console.log(`[sendLLMMessage] ❌ Empty response detected`)
+				console.log(`[sendLLMMessage] \u{274C} Empty response detected`)
 				// ... (guiding messages for Ollama)
 				onError({ message: 'A-Coder: Response from model was empty.', fullError: null })
 			}
@@ -697,16 +697,16 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 			// Retry on 500 errors (server-side issues) - wait 3 seconds and try once more
 			// Don't call onError yet - let the UI keep showing "thinking" state
 			if (error instanceof OpenAI.APIError && error.status === 500 && !(options as any)._isRetry) {
-				console.log(`[sendLLMMessage] ⏳ Server returned 500 error, retrying in 3 seconds...`)
+				console.log(`[sendLLMMessage] \u{23F3} Server returned 500 error, retrying in 3 seconds...`)
 				await new Promise(resolve => setTimeout(resolve, 3000))
-				console.log(`[sendLLMMessage] 🔄 Retrying request...`)
+				console.log(`[sendLLMMessage] \u{1F504} Retrying request...`)
 
 				// Retry the request with a flag to prevent infinite retries
 				const retryOptions = { ...options, _isRetry: true } as typeof options & { _isRetry: boolean }
 				openai.chat.completions
 					.create(retryOptions)
 					.then(async retryResponse => {
-						console.log(`[sendLLMMessage] ✅ Retry succeeded, processing response`)
+						console.log(`[sendLLMMessage] \u{2705} Retry succeeded, processing response`)
 						_setAborter(() => (retryResponse as any).controller?.abort?.())
 
 						// Reset state for retry
@@ -800,7 +800,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 						onFinalMessage({ fullText: fullTextSoFar, fullReasoning: fullReasoningSoFar, anthropicReasoning, ...toolCallObj })
 					})
 					.catch(retryError => {
-						console.log(`[sendLLMMessage] ❌ Retry also failed:`, retryError?.message)
+						console.log(`[sendLLMMessage] \u{274C} Retry also failed:`, retryError?.message)
 						onError({ message: retryError + '', fullError: retryError })
 					})
 				return
@@ -908,7 +908,7 @@ const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessag
 	if (potentialTools && potentialTools.length > 0 && specialToolFormat === 'anthropic-style') {
 		console.log(`[sendLLMMessage] Tool names:`, potentialTools.map(t => t.name).join(', '))
 	} else if (potentialTools && potentialTools.length > 0) {
-		console.log(`[sendLLMMessage] ⚠️ TOOLS NOT SENT - specialToolFormat is ${specialToolFormat}, expected 'anthropic-style'`)
+		console.log(`[sendLLMMessage] \u{26A0}\u{FE0F} TOOLS NOT SENT - specialToolFormat is ${specialToolFormat}, expected 'anthropic-style'`)
 	}
 
 	// instance
@@ -1164,32 +1164,32 @@ const _sendOllamaChatWithFallback = async (params: SendChatParams_Internal) => {
 
 	// For models with native tool support, try OpenAI-compatible endpoint first
 	if (hasNativeTools && hasTools) {
-		console.log(`[sendOllamaChatWithFallback] 🚀 Trying OpenAI - compatible endpoint with native tools`)
+		console.log(`[sendOllamaChatWithFallback] \u{1F680} Trying OpenAI - compatible endpoint with native tools`)
 
 		try {
 			// Try the OpenAI-compatible endpoint
 			await _sendOpenAICompatibleChat(params)
-			console.log(`[sendOllamaChatWithFallback] ✅ OpenAI - compatible endpoint succeeded`)
+			console.log(`[sendOllamaChatWithFallback] \u{2705} OpenAI - compatible endpoint succeeded`)
 			return
 		} catch (error) {
-			console.warn(`[sendOllamaChatWithFallback] ⚠️ OpenAI - compatible endpoint failed: `, error)
+			console.warn(`[sendOllamaChatWithFallback] \u{26A0}\u{FE0F} OpenAI - compatible endpoint failed: `, error)
 
 			// Check if it's a transient server error (5xx) that might be worth retrying
 			const isTransientServerError = error?.status >= 500 && error?.status < 600
 			if (isTransientServerError) {
-				console.log(`[sendOllamaChatWithFallback] 🔄 Detected transient server error(${error.status}), retrying once...`)
+				console.log(`[sendOllamaChatWithFallback] \u{1F504} Detected transient server error(${error.status}), retrying once...`)
 				try {
 					// Wait a moment before retry
 					await new Promise(resolve => setTimeout(resolve, 1000))
 					await _sendOpenAICompatibleChat(params)
-					console.log(`[sendOllamaChatWithFallback] ✅ Retry succeeded`)
+					console.log(`[sendOllamaChatWithFallback] \u{2705} Retry succeeded`)
 					return
 				} catch (retryError) {
-					console.warn(`[sendOllamaChatWithFallback] ⚠️ Retry also failed: `, retryError)
+					console.warn(`[sendOllamaChatWithFallback] \u{26A0}\u{FE0F} Retry also failed: `, retryError)
 				}
 			}
 
-			console.log(`[sendOllamaChatWithFallback] 🔄 Retrying without native tool format`)
+			console.log(`[sendOllamaChatWithFallback] \u{1F504} Retrying without native tool format`)
 		}
 	}
 
@@ -1199,24 +1199,24 @@ const _sendOllamaChatWithFallback = async (params: SendChatParams_Internal) => {
 			// For the fallback, we'll just try the same function but let it naturally fall back
 			// to XML tool calling if the model doesn't support native tools
 			await _sendOpenAICompatibleChat(params)
-			console.log(`[sendOllamaChatWithFallback] ✅ Fallback succeeded`)
+			console.log(`[sendOllamaChatWithFallback] \u{2705} Fallback succeeded`)
 		} catch (error) {
 			// Check if it's a transient server error that might be worth retrying
 			const isTransientServerError = error?.status >= 500 && error?.status < 600
 			if (isTransientServerError) {
-				console.log(`[sendOllamaChatWithFallback] 🔄 Detected transient server error in fallback(${error.status}), retrying once...`)
+				console.log(`[sendOllamaChatWithFallback] \u{1F504} Detected transient server error in fallback(${error.status}), retrying once...`)
 				try {
 					// Wait a moment before retry
 					await new Promise(resolve => setTimeout(resolve, 2000))
 					await _sendOpenAICompatibleChat(params)
-					console.log(`[sendOllamaChatWithFallback] ✅ Fallback retry succeeded`)
+					console.log(`[sendOllamaChatWithFallback] \u{2705} Fallback retry succeeded`)
 					return
 				} catch (retryError) {
-					console.warn(`[sendOllamaChatWithFallback] ⚠️ Fallback retry also failed: `, retryError)
+					console.warn(`[sendOllamaChatWithFallback] \u{26A0}\u{FE0F} Fallback retry also failed: `, retryError)
 				}
 			}
 
-			console.error(`[sendOllamaChatWithFallback] ❌ Both attempts failed: `, error)
+			console.error(`[sendOllamaChatWithFallback] \u{274C} Both attempts failed: `, error)
 			params.onError({ message: `Model produced a result A - Coder couldn't apply`, fullError: error })
 		}
 	} else {

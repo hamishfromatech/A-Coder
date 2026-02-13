@@ -1441,7 +1441,7 @@ const ollamaModelOptions = {
 		downloadable: false,
 		supportsFIM: false,
 		supportsSystemMessage: 'system-role',
-		specialToolFormat: 'openai-style', // ✅ FIXED: Native tool calling now works after fixing JSON schema type fields
+		specialToolFormat: 'openai-style', // \u{2705} FIXED: Native tool calling now works after fixing JSON schema type fields
 		reasoningCapabilities: {
 			supportsReasoning: true,
 			canTurnOffReasoning: true,
@@ -1457,7 +1457,7 @@ const ollamaModelOptions = {
 		downloadable: false,
 		supportsFIM: false,
 		supportsSystemMessage: 'system-role',
-		specialToolFormat: 'openai-style', // ✅ FIXED: Native tool calling now works after fixing JSON schema type fields
+		specialToolFormat: 'openai-style', // \u{2705} FIXED: Native tool calling now works after fixing JSON schema type fields
 		reasoningCapabilities: { supportsReasoning: true, canIOReasoning: true, canTurnOffReasoning: false, openSourceThinkTags: ['<think>', '</think>'] },
 	},
 	'gpt-oss:20b-cloud': {
@@ -1467,7 +1467,7 @@ const ollamaModelOptions = {
 		downloadable: false,
 		supportsFIM: false,
 		supportsSystemMessage: 'system-role',
-		specialToolFormat: 'openai-style', // ✅ FIXED: Native tool calling now works after fixing JSON schema type fields
+		specialToolFormat: 'openai-style', // \u{2705} FIXED: Native tool calling now works after fixing JSON schema type fields
 		reasoningCapabilities: {
 			supportsReasoning: true,
 			canTurnOffReasoning: true,
@@ -1487,7 +1487,7 @@ const ollamaModelOptions = {
 		downloadable: false,
 		supportsFIM: false,
 		supportsSystemMessage: 'system-role',
-		specialToolFormat: 'openai-style', // ✅ FIXED: Native tool calling now works after fixing JSON schema type fields
+		specialToolFormat: 'openai-style', // \u{2705} FIXED: Native tool calling now works after fixing JSON schema type fields
 		reasoningCapabilities: {
 			supportsReasoning: true,
 			canTurnOffReasoning: true,
@@ -1507,7 +1507,7 @@ const ollamaModelOptions = {
 		downloadable: false,
 		supportsFIM: false,
 		supportsSystemMessage: 'system-role',
-		specialToolFormat: 'openai-style', // ✅ FIXED: Native tool calling now works after fixing JSON schema type fields
+		specialToolFormat: 'openai-style', // \u{2705} FIXED: Native tool calling now works after fixing JSON schema type fields
 		defaultTemperature: 0.6, // Recommended by Moonshot AI
 		reasoningCapabilities: false,
 	},
@@ -1518,7 +1518,7 @@ const ollamaModelOptions = {
 		downloadable: false,
 		supportsFIM: false,
 		supportsSystemMessage: 'system-role',
-		specialToolFormat: 'openai-style', // ✅ FIXED: Native tool calling now works after fixing JSON schema type fields
+		specialToolFormat: 'openai-style', // \u{2705} FIXED: Native tool calling now works after fixing JSON schema type fields
 		defaultTemperature: 1.0, // Recommended by Moonshot AI for reasoning model
 		reasoningCapabilities: { supportsReasoning: true, canIOReasoning: true, canTurnOffReasoning: false, openSourceThinkTags: ['<think>', '</think>'] },
 	},
@@ -1529,7 +1529,7 @@ const ollamaModelOptions = {
 		downloadable: false,
 		supportsFIM: false,
 		supportsSystemMessage: 'system-role',
-		specialToolFormat: 'openai-style', // ✅ FIXED: Native tool calling now works after fixing JSON schema type fields
+		specialToolFormat: 'openai-style', // \u{2705} FIXED: Native tool calling now works after fixing JSON schema type fields
 		defaultTemperature: 1.0,
 		reasoningCapabilities: { supportsReasoning: true, canIOReasoning: true, canTurnOffReasoning: false, openSourceThinkTags: ['<think>', '</think>'] },
 	},
@@ -1552,7 +1552,7 @@ const ollamaModelOptions = {
 		downloadable: false,
 		supportsFIM: false,
 		supportsSystemMessage: 'system-role',
-		specialToolFormat: 'openai-style', // ✅ FIXED: Native tool calling now works after fixing JSON schema type fields (was using custom XML before)
+		specialToolFormat: 'openai-style', // \u{2705} FIXED: Native tool calling now works after fixing JSON schema type fields (was using custom XML before)
 		defaultTemperature: 1.0, // Recommended by MiniMax AI
 		reasoningCapabilities: {
 			supportsReasoning: true,
@@ -1573,7 +1573,7 @@ const ollamaModelOptions = {
 		downloadable: false,
 		supportsFIM: false,
 		supportsSystemMessage: 'system-role',
-		specialToolFormat: 'openai-style', // ✅ FIXED: Native tool calling now works after fixing JSON schema type fields (was using custom XML before)
+		specialToolFormat: 'openai-style', // \u{2705} FIXED: Native tool calling now works after fixing JSON schema type fields (was using custom XML before)
 		defaultTemperature: 1.0, // Recommended by MiniMax AI
 		reasoningCapabilities: {
 			supportsReasoning: true,

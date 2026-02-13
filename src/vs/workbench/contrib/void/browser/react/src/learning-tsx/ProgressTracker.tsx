@@ -110,7 +110,7 @@ export const ProgressTracker: React.FC<ProgressTrackerProps> = ({
 					id: 'first-lesson',
 					name: 'First Steps',
 					description: 'Complete your first lesson',
-					icon: '🎯',
+					icon: '\u{1F3AF}',
 					unlockedAt: Date.now() - 86400000,
 					category: 'lessons',
 				},

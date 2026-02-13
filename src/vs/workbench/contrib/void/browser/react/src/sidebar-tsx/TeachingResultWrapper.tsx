@@ -47,35 +47,35 @@ function parseTeachingContent(content: string, toolName: BuiltinToolName): Teach
 	// Section patterns for different teaching tools
 	const sectionPatterns = {
 		explain_code: [
-			{ regex: /###?\s*📋\s*Summary|Summary/i, type: 'summary', title: '📋 Summary', icon: <Target size={14} /> },
-			{ regex: /###?\s*📖\s*Line[-\s]*by[-\s]*Line|Line[-\s]*by[-\s]*Line/i, type: 'breakdown', title: '📖 Line-by-Line Breakdown', icon: <Code size={14} /> },
-			{ regex: /###?\s*💡\s*Key Concepts|Key Concepts/i, type: 'concepts', title: '💡 Key Concepts', icon: <Lightbulb size={14} /> },
-			{ regex: /###?\s*⚠️\s*Common Mistakes|Common Mistakes/i, type: 'mistakes', title: '⚠️ Common Mistakes', icon: <AlertTriangle size={14} /> },
-			{ regex: /###?\s*🎯\s*Try It Yourself|Try It Yourself/i, type: 'exercise', title: '🎯 Try It Yourself', icon: <Target size={14} /> },
+			{ regex: /###?\s*\u{1F4CB}\s*Summary|Summary/i, type: 'summary', title: '\u{1F4CB} Summary', icon: <Target size={14} /> },
+			{ regex: /###?\s*\u{1F4D6}\s*Line[-\s]*by[-\s]*Line|Line[-\s]*by[-\s]*Line/i, type: 'breakdown', title: '\u{1F4D6} Line-by-Line Breakdown', icon: <Code size={14} /> },
+			{ regex: /###?\s*\u{1F4A1}\s*Key Concepts|Key Concepts/i, type: 'concepts', title: '\u{1F4A1} Key Concepts', icon: <Lightbulb size={14} /> },
+			{ regex: /###?\s*\u{26A0}\u{FE0F}\s*Common Mistakes|Common Mistakes/i, type: 'mistakes', title: '\u{26A0}\u{FE0F} Common Mistakes', icon: <AlertTriangle size={14} /> },
+			{ regex: /###?\s*\u{1F3AF}\s*Try It Yourself|Try It Yourself/i, type: 'exercise', title: '\u{1F3AF} Try It Yourself', icon: <Target size={14} /> },
 		],
 		teach_concept: [
-			{ regex: /###?\s*📚\s*What is|What is/i, type: 'explanation', title: '📚 What is it?', icon: <BookOpen size={14} /> },
-			{ regex: /###?\s*🌍\s*Real[-\s]*World Analogy|Real[-\s]*World Analogy/i, type: 'explanation', title: '🌍 Real-World Analogy', icon: <Lightbulb size={14} /> },
-			{ regex: /###?\s*💻\s*Code Example|Code Example/i, type: 'breakdown', title: '💻 Code Example', icon: <Code size={14} /> },
-			{ regex: /###?\s*⚠️\s*Common Pitfalls|Common Pitfalls/i, type: 'mistakes', title: '⚠️ Common Pitfalls', icon: <AlertTriangle size={14} /> },
-			{ regex: /###?\s*🔗\s*Related Concepts|Related Concepts/i, type: 'concepts', title: '🔗 Related Concepts', icon: <Lightbulb size={14} /> },
-			{ regex: /###?\s*🎯\s*Quick Exercise|Quick Exercise/i, type: 'exercise', title: '🎯 Quick Exercise', icon: <Target size={14} /> },
+			{ regex: /###?\s*\u{1F4DA}\s*What is|What is/i, type: 'explanation', title: '\u{1F4DA} What is it?', icon: <BookOpen size={14} /> },
+			{ regex: /###?\s*\u{1F30D}\s*Real[-\s]*World Analogy|Real[-\s]*World Analogy/i, type: 'explanation', title: '\u{1F30D} Real-World Analogy', icon: <Lightbulb size={14} /> },
+			{ regex: /###?\s*\u{1F4BB}\s*Code Example|Code Example/i, type: 'breakdown', title: '\u{1F4BB} Code Example', icon: <Code size={14} /> },
+			{ regex: /###?\s*\u{26A0}\u{FE0F}\s*Common Pitfalls|Common Pitfalls/i, type: 'mistakes', title: '\u{26A0}\u{FE0F} Common Pitfalls', icon: <AlertTriangle size={14} /> },
+			{ regex: /###?\s*\u{1F517}\s*Related Concepts|Related Concepts/i, type: 'concepts', title: '\u{1F517} Related Concepts', icon: <Lightbulb size={14} /> },
+			{ regex: /###?\s*\u{1F3AF}\s*Quick Exercise|Quick Exercise/i, type: 'exercise', title: '\u{1F3AF} Quick Exercise', icon: <Target size={14} /> },
 		],
 		create_exercise: [
-			{ regex: /###?\s*🎯\s*Challenge|Challenge/i, type: 'exercise', title: '🎯 Challenge', icon: <Target size={14} /> },
+			{ regex: /###?\s*\u{1F3AF}\s*Challenge|Challenge/i, type: 'exercise', title: '\u{1F3AF} Challenge', icon: <Target size={14} /> },
 		],
 		check_answer: [
-			{ regex: /###?\s*Result|Result/i, type: 'summary', title: '📊 Result', icon: <CheckCircle size={14} /> },
-			{ regex: /###?\s*What Works Well|What Works Well/i, type: 'concepts', title: '✨ What Works Well', icon: <CheckCircle size={14} /> },
+			{ regex: /###?\s*Result|Result/i, type: 'summary', title: '\u{1F4CA} Result', icon: <CheckCircle size={14} /> },
+			{ regex: /###?\s*What Works Well|What Works Well/i, type: 'concepts', title: '\u{2728} What Works Well', icon: <CheckCircle size={14} /> },
 		],
 		give_hint: [
-			{ regex: /###?\s*Hint Level|Hint Level/i, type: 'explanation', title: '💡 Hint', icon: <Lightbulb size={14} /> },
+			{ regex: /###?\s*Hint Level|Hint Level/i, type: 'explanation', title: '\u{1F4A1} Hint', icon: <Lightbulb size={14} /> },
 		],
 		create_lesson_plan: [
-			{ regex: /###?\s*🎯\s*Learning Objectives|Learning Objectives/i, type: 'concepts', title: '🎯 Learning Objectives', icon: <Target size={14} /> },
-			{ regex: /###?\s*📚\s*Prerequisites|Prerequisites/i, type: 'concepts', title: '📚 Prerequisites', icon: <BookOpen size={14} /> },
-			{ regex: /###?\s*📋\s*Modules|Modules/i, type: 'breakdown', title: '📋 Modules', icon: <Code size={14} /> },
-			{ regex: /###?\s*🏆\s*Final Project|Final Project/i, type: 'exercise', title: '🏆 Final Project', icon: <Trophy size={14} /> },
+			{ regex: /###?\s*\u{1F3AF}\s*Learning Objectives|Learning Objectives/i, type: 'concepts', title: '\u{1F3AF} Learning Objectives', icon: <Target size={14} /> },
+			{ regex: /###?\s*\u{1F4DA}\s*Prerequisites|Prerequisites/i, type: 'concepts', title: '\u{1F4DA} Prerequisites', icon: <BookOpen size={14} /> },
+			{ regex: /###?\s*\u{1F4CB}\s*Modules|Modules/i, type: 'breakdown', title: '\u{1F4CB} Modules', icon: <Code size={14} /> },
+			{ regex: /###?\s*\u{1F3C6}\s*Final Project|Final Project/i, type: 'exercise', title: '\u{1F3C6} Final Project', icon: <Trophy size={14} /> },
 		],
 	}[toolName] || [];
 

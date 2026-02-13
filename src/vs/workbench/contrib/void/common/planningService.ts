@@ -138,7 +138,7 @@ export class PlanningService {
 		const completedCount = plan.tasks.filter(t => t.status === 'complete').length;
 		const totalCount = plan.tasks.length;
 
-		let output = `## 📋 ${plan.goal}\n`;
+		let output = `## \u{1F4CB} ${plan.goal}\n`;
 		output += `**Progress:** ${completedCount}/${totalCount} tasks completed\n\n`;
 
 		// Format all tasks as a markdown checklist in order

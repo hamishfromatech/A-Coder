@@ -137,9 +137,9 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 			case 'create_implementation_plan': return '\u{1F4CB}'
 			case 'preview_implementation_plan': return '👁️'
 			case 'execute_implementation_plan': return '▶️'
-			case 'update_implementation_step': return '✅'
-			case 'get_implementation_status': return '📊'
-			default: return '🎯'
+			case 'update_implementation_step': return '\u{2705}'
+			case 'get_implementation_status': return '\u{1F4CA}'
+			default: return '\u{1F3AF}'
 		}
 	}
 
@@ -272,7 +272,7 @@ My requested changes:`
 
 			result.steps.forEach((step: any, index: number) => {
 				const status = step.status || 'pending'
-				const statusIcon = status === 'completed' ? '✅' : status === 'in_progress' ? '🔄' : status === 'failed' ? '❌' : '⬜'
+				const statusIcon = status === 'completed' ? '\u{2705}' : status === 'in_progress' ? '\u{1F504}' : status === 'failed' ? '\u{274C}' : '\u{2B1C}'
 				const statusBadge = status === 'completed' ? ' *(completed)*' :
 					status === 'in_progress' ? ' *(in progress)*' :
 					status === 'failed' ? ' *(failed)*' : ''
@@ -293,7 +293,7 @@ My requested changes:`
 				}
 
 				if (step.notes) {
-					markdown += `> 💡 ${step.notes}\n\n`
+					markdown += `> \u{1F4A1} ${step.notes}\n\n`
 				}
 			})
 		}
@@ -383,7 +383,7 @@ My requested changes:`
 								<div className="space-y-2">
 									{result.steps.map((step: any, index: number) => {
 										const status = step.status || 'pending'
-										const statusIcon = status === 'completed' ? '✅' : status === 'in_progress' ? '🔄' : status === 'failed' ? '❌' : '⬜'
+										const statusIcon = status === 'completed' ? '\u{2705}' : status === 'in_progress' ? '\u{1F504}' : status === 'failed' ? '\u{274C}' : '\u{2B1C}'
 										const statusColor = status === 'completed' ? 'text-green-400' : status === 'in_progress' ? 'text-blue-400' : status === 'failed' ? 'text-red-400' : 'text-void-fg-3'
 
 										return (
@@ -462,7 +462,7 @@ My requested changes:`
 										</>
 									) : (
 										<>
-											✅ Approve Plan
+											\u{2705} Approve Plan
 										</>
 									)}
 								</button>
@@ -470,7 +470,7 @@ My requested changes:`
 									onClick={handleRequestChanges}
 									className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium rounded-md transition-colors flex items-center gap-2"
 								>
-									✏️ Request Changes
+									\u{270F}\u{FE0F} Request Changes
 								</button>
 							</div>
 							<div className="text-xs text-void-fg-4 mt-2 italic opacity-70">

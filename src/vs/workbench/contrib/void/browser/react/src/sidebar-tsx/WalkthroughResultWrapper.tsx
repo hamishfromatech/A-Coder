@@ -146,7 +146,7 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 			<div className="@@void-scope">
 				<div className="void-walkthrough-result border border-void-warning/50 rounded-lg overflow-hidden bg-void-warning/5 p-3">
 					<div className="flex items-start gap-2 text-void-fg-1">
-						<span className="text-lg">⚠️</span>
+						<span className="text-lg">\u{26A0}\u{FE0F}</span>
 						<div className="flex flex-col">
 							<span className="text-sm font-medium text-void-warning">Walkthrough tool failed</span>
 							<span className="text-xs text-void-fg-3 mt-1">{result?.error || String(result) || 'Unknown error'}</span>
@@ -228,9 +228,9 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 
 	const getActionIcon = () => {
 		switch (result.action) {
-			case 'created': return '📝'
-			case 'updated': return '✏️'
-			case 'appended': return '➕'
+			case 'created': return '\u{1F4DD}'
+			case 'updated': return '\u{270F}\u{FE0F}'
+			case 'appended': return '\u{2795}'
 			default: return '📄'
 		}
 	}

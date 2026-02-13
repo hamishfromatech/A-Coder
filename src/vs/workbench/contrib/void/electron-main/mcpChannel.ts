@@ -229,7 +229,7 @@ export class MCPChannel implements IServerChannel {
 				console.log(`[MCP] Connected via HTTP to ${serverName}`);
 				const { tools } = await client.listTools()
 				const toolsWithUniqueName = tools.map(({ name, ...rest }: { name: string, [key: string]: any }) => ({ name: this._addUniquePrefix(name, serverName), mcpServerName: serverName, ...rest }))
-				console.log(`✅ Loaded ${toolsWithUniqueName.length} tools from ${serverName} via HTTP`);
+				console.log(`\u{2705} Loaded ${toolsWithUniqueName.length} tools from ${serverName} via HTTP`);
 				info = {
 					status: isOn ? 'success' : 'offline',
 					tools: toolsWithUniqueName,
@@ -243,14 +243,14 @@ export class MCPChannel implements IServerChannel {
 					console.log(`[MCP] Connected via SSE to ${serverName}`);
 					const { tools } = await client.listTools()
 					const toolsWithUniqueName = tools.map(({ name, ...rest }: { name: string, [key: string]: any }) => ({ name: this._addUniquePrefix(name, serverName), mcpServerName: serverName, ...rest }))
-					console.log(`✅ Loaded ${toolsWithUniqueName.length} tools from ${serverName} via SSE`);
+					console.log(`\u{2705} Loaded ${toolsWithUniqueName.length} tools from ${serverName} via SSE`);
 					info = {
 						status: isOn ? 'success' : 'offline',
 						tools: toolsWithUniqueName,
 						command: server.url.toString(),
 					}
 				} catch (sseErr) {
-					console.error(`[MCP] ❌ Both HTTP and SSE failed for ${serverName}:`, {
+					console.error(`[MCP] \u{274C} Both HTTP and SSE failed for ${serverName}:`, {
 						httpError: httpErr,
 						sseError: sseErr,
 						url: server.url
@@ -276,7 +276,7 @@ export class MCPChannel implements IServerChannel {
 			// Get the tools from the server
 			const { tools } = await client.listTools()
 			const toolsWithUniqueName = tools.map(({ name, ...rest }: { name: string, [key: string]: any }) => ({ name: this._addUniquePrefix(name, serverName), mcpServerName: serverName, ...rest }))
-			console.log(`✅ Loaded ${toolsWithUniqueName.length} tools from ${serverName} (stdio)`);
+			console.log(`\u{2705} Loaded ${toolsWithUniqueName.length} tools from ${serverName} (stdio)`);
 
 			// Create a full command string for display
 			const fullCommand = `${server.command} ${server.args?.join(' ') || ''}`
@@ -306,7 +306,7 @@ export class MCPChannel implements IServerChannel {
 			const c: ClientInfo = await this._createClientUnsafe(serverConfig, serverName, isOn)
 			return c
 		} catch (err) {
-			console.error(`❌ Failed to connect to server "${serverName}":`, err)
+			console.error(`\u{274C} Failed to connect to server "${serverName}":`, err)
 			const fullCommand = !serverConfig.command ? '' : `${serverConfig.command} ${serverConfig.args?.join(' ') || ''}`
 			const c: MCPServerError = { status: 'error', error: err + '', command: fullCommand, }
 			return { mcpServerEntryJSON: serverConfig, mcpServer: c, }
@@ -464,7 +464,7 @@ export class MCPChannel implements IServerChannel {
 				errorMessage = JSON.stringify(err, null, 2);
 			}
 
-			const fullErrorMessage = `❌ Failed to call tool "${toolName}" on server "${serverName}": ${errorMessage}`;
+			const fullErrorMessage = `\u{274C} Failed to call tool "${toolName}" on server "${serverName}": ${errorMessage}`;
 			const errorResponse: MCPToolErrorResponse = {
 				event: 'error',
 				text: fullErrorMessage,

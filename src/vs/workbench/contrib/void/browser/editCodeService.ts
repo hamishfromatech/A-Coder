@@ -1976,12 +1976,12 @@ class EditCodeService extends Disposable implements IEditCodeService {
 					? `\n\n🔎 Did you mean one of these similar blocks from the file?\n\n${similarBlocks.map((block, i) => `Option ${i + 1}:\n${tripleTick[0]}\n${block}\n${tripleTick[1]}`).join('\n\n')}\n`
 					: '';
 
-				descStr = `❌ EDIT FAILED: The ORIGINAL code block was not found in the file.
+				descStr = `\u{274C} EDIT FAILED: The ORIGINAL code block was not found in the file.
 
-🔍 You tried to find:
+\u{1F50D} You tried to find:
 ${problematicCode}
 ${similarBlocksStr}
-💡 SOLUTIONS (in order of preference):
+\u{1F4A1} SOLUTIONS (in order of preference):
 
 1. **Fix the ORIGINAL block** - Use the exact text from above:
    - Copy one of the similar blocks shown above if they match your intent
@@ -1999,12 +1999,12 @@ ${similarBlocksStr}
    - Works better for large refactors`
 				break
 			case 'Not unique':
-				descStr = `❌ EDIT FAILED: The ORIGINAL code block appears multiple times in the file.
+				descStr = `\u{274C} EDIT FAILED: The ORIGINAL code block appears multiple times in the file.
 
-🔍 This block is not unique:
+\u{1F50D} This block is not unique:
 ${problematicCode}
 
-💡 SOLUTIONS:
+\u{1F4A1} SOLUTIONS:
 
 1. **Use rewrite_file instead** - Simpler and more reliable for this change
 
@@ -2014,12 +2014,12 @@ ${problematicCode}
    - This helps identify the exact location`
 				break
 			case 'Has overlap':
-				descStr = `❌ EDIT FAILED: Multiple ORIGINAL blocks overlap with each other.
+				descStr = `\u{274C} EDIT FAILED: Multiple ORIGINAL blocks overlap with each other.
 
-🔍 Overlapping block:
+\u{1F50D} Overlapping block:
 ${problematicCode}
 
-💡 SOLUTIONS:
+\u{1F4A1} SOLUTIONS:
 
 1. **Use rewrite_file instead** - Avoids overlap issues entirely
 

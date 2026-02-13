@@ -1715,19 +1715,19 @@ ${focus ? `**Focus on:** ${focus}` : ''}
 
 **Content Structure:**
 
-### 📋 Summary
+### \u{1F4CB} Summary
 (One sentence: what does this code do?)
 
-### 📖 Line-by-Line Breakdown
+### \u{1F4D6} Line-by-Line Breakdown
 (Explain each significant part)
 
-### 💡 Key Concepts
+### \u{1F4A1} Key Concepts
 (List 2-3 concepts this code demonstrates)
 
-### ⚠️ Common Mistakes
+### \u{26A0}\u{FE0F} Common Mistakes
 (What do students often get wrong with this pattern?)
 
-### 🎯 Try It Yourself
+### \u{1F3AF} Try It Yourself
 (Suggest a small modification the student could try)`;
 
 				return { result: { template } };
@@ -1752,24 +1752,24 @@ ${context ? `**Context:** Relate to: ${context}` : ''}
 
 **Content Structure:**
 
-### 📚 What is ${concept}?
+### \u{1F4DA} What is ${concept}?
 (Clear definition appropriate for ${level} level)
 
-### 🌍 Real-World Analogy
+### \u{1F30D} Real-World Analogy
 (Relatable comparison to everyday life)
 
-### 💻 Code Example
+### \u{1F4BB} Code Example
 \`\`\`${language || 'javascript'}
 // Well-commented example demonstrating ${concept}
 \`\`\`
 
-### ⚠️ Common Pitfalls
+### \u{26A0}\u{FE0F} Common Pitfalls
 (2-3 mistakes students make with ${concept})
 
-### 🔗 Related Concepts
+### \u{1F517} Related Concepts
 (What to learn next)
 
-### 🎯 Quick Exercise
+### \u{1F3AF} Quick Exercise
 (Simple practice problem to reinforce understanding)`;
 
 				return { result: { template } };
@@ -1796,7 +1796,7 @@ ${context ? `**Context:** Relate to: ${context}` : ''}
 
 **Generate an exercise with this structure:**
 
-### 🎯 Challenge: [Creative Title Related to ${topic}]
+### \u{1F3AF} Challenge: [Creative Title Related to ${topic}]
 
 **Problem:**
 (Clear description of what the student needs to do)
@@ -1834,7 +1834,7 @@ ${student_code}
 
 **Response format:**
 
-### Result: ✅ Correct! / ❌ Not quite...
+### Result: \u{2705} Correct! / \u{274C} Not quite...
 
 ### What Works Well
 (Positive feedback on their approach - find something good even if wrong)
@@ -1889,13 +1889,13 @@ ${time_available ? `**Time Available:** ${time_available} minutes` : ''}
 
 **Content Structure:**
 
-### 🎯 Learning Objectives
+### \u{1F3AF} Learning Objectives
 (3-5 specific things student will learn by the end)
 
-### 📚 Prerequisites
+### \u{1F4DA} Prerequisites
 (What student should already know before starting)
 
-### 📋 Modules
+### \u{1F4CB} Modules
 
 For each module include:
 1. **Module Title** (estimated time)
@@ -1903,7 +1903,7 @@ For each module include:
    - Hands-on exercise (describe briefly)
    - Checkpoint question to verify understanding
 
-### 🏆 Final Project
+### \u{1F3C6} Final Project
 (Capstone exercise that combines all learned concepts)
 
 ### 📈 Success Criteria
@@ -2358,7 +2358,7 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 
 				// Add truncation warning if needed
 				const truncationWarning = result.hasNextPage
-					? `\n\n⚠️ FILE TRUNCATED - This file has ${result.totalNumLines} total lines (${result.totalFileLen} characters). You are viewing page ${params.pageNumber}. To read more, call read_file again with page_number=${params.pageNumber + 1}.`
+					? `\n\n\u{26A0}\u{FE0F} FILE TRUNCATED - This file has ${result.totalNumLines} total lines (${result.totalFileLen} characters). You are viewing page ${params.pageNumber}. To read more, call read_file again with page_number=${params.pageNumber + 1}.`
 					: ''
 
 				return `${contextHeader}\`\`\`\n${result.fileContents}\n\`\`\`${truncationWarning}`
@@ -2556,11 +2556,11 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 			// --- Planning tools ---
 
 			create_plan: (params, result) => {
-				return `✅ Plan created successfully!\n\n${result.summary}`;
+				return `\u{2705} Plan created successfully!\n\n${result.summary}`;
 			},
 
 			update_task_status: (params, result) => {
-				return `✅ Task "${result.taskId}" updated to status: ${result.newStatus}\n\n${result.summary}`;
+				return `\u{2705} Task "${result.taskId}" updated to status: ${result.newStatus}\n\n${result.summary}`;
 			},
 
 			get_plan_status: (params, result) => {
@@ -2571,11 +2571,11 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 			},
 
 			add_tasks_to_plan: (params, result) => {
-				return `✅ Tasks added to plan!\n\n${result.summary}`;
+				return `\u{2705} Tasks added to plan!\n\n${result.summary}`;
 			},
 
 			update_walkthrough: (params, result) => {
-				const actionEmoji = result.action === 'created' ? '📝' : result.action === 'updated' ? '✏️' : '➕'
+				const actionEmoji = result.action === 'created' ? '\u{1F4DD}' : result.action === 'updated' ? '\u{270F}\u{FE0F}' : '\u{2795}'
 				const actionText = result.action === 'created' ? 'created' : result.action === 'updated' ? 'updated' : 'appended to'
 				return `${actionEmoji} Walkthrough ${actionText} successfully!\n\n📁 File: ${result.filePath}\n\n📄 Preview:\n${result.preview}`;
 			},
@@ -2584,75 +2584,75 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 				if (result.success) {
 					return `👀 Walkthrough preview opened!\n\n${result.message}`;
 				} else {
-					return `❌ Failed to open walkthrough preview: ${result.message}`;
+					return `\u{274C} Failed to open walkthrough preview: ${result.message}`;
 				}
 			},
 
 			// --- Implementation Planning tools ---
 
 			create_implementation_plan: (params, result) => {
-				return `\u{1F4CB} Implementation plan created!\n\nPlan ID: ${result.planId}\n\n${result.summary}\n\n💡 Next: Use preview_implementation_plan to review the plan before execution.`;
+				return `\u{1F4CB} Implementation plan created!\n\nPlan ID: ${result.planId}\n\n${result.summary}\n\n\u{1F4A1} Next: Use preview_implementation_plan to review the plan before execution.`;
 			},
 
 			preview_implementation_plan: (params, result) => {
 				if (!result.planId) {
-					return `❌ No active implementation plan to preview.\n\n💡 Create a plan first using create_implementation_plan.`;
+					return `\u{274C} No active implementation plan to preview.\n\n\u{1F4A1} Create a plan first using create_implementation_plan.`;
 				}
-				return `\u{1F4CB} Implementation Plan Preview\n\n${result.summary}\n\n💡 To approve this plan for execution, use execute_implementation_plan.`;
+				return `\u{1F4CB} Implementation Plan Preview\n\n${result.summary}\n\n\u{1F4A1} To approve this plan for execution, use execute_implementation_plan.`;
 			},
 
 			execute_implementation_plan: (params, result) => {
-				const statusEmoji = result.status === 'in_progress' ? '🔄' : result.status === 'complete' ? '✅' : '⏳';
+				const statusEmoji = result.status === 'in_progress' ? '\u{1F504}' : result.status === 'complete' ? '\u{2705}' : '\u{23F3}';
 				return `${statusEmoji} Step execution started!\n\nStep ID: ${result.stepId}\nStatus: ${result.status}\n\n${result.summary}`;
 			},
 
 			update_implementation_step: (params, result) => {
-				const statusEmoji = result.newStatus === 'complete' ? '✅' : result.newStatus === 'in_progress' ? '🔄' : result.newStatus === 'failed' ? '❌' : '⏭️';
+				const statusEmoji = result.newStatus === 'complete' ? '\u{2705}' : result.newStatus === 'in_progress' ? '\u{1F504}' : result.newStatus === 'failed' ? '\u{274C}' : '\u{23ED}\u{FE0F}';
 				return `${statusEmoji} Step updated!\n\nStep ID: ${result.stepId}\nNew Status: ${result.newStatus}\n\n${result.summary}`;
 			},
 
 			get_implementation_status: (params, result) => {
 				if (!result.planExists) {
-					return `❌ No active implementation plan.\n\n💡 Create a plan first using create_implementation_plan.`;
+					return `\u{274C} No active implementation plan.\n\n\u{1F4A1} Create a plan first using create_implementation_plan.`;
 				}
-				return `📊 Implementation Status\n\n${result.summary}`;
+				return `\u{1F4CA} Implementation Status\n\n${result.summary}`;
 			},
 
 			// --- Teaching tools (Student Mode) ---
 
 			explain_code: (params, result) => {
-				return `📚 Code Explanation\n\n${result.template}`;
+				return `\u{1F4DA} Code Explanation\n\n${result.template}`;
 			},
 
 			teach_concept: (params, result) => {
-				return `📖 Teaching: ${params.concept}\n\n${result.template}`;
+				return `\u{1F4D6} Teaching: ${params.concept}\n\n${result.template}`;
 			},
 
 			create_exercise: (params, result) => {
-				return `🎯 Exercise Created!\n\nExercise ID: ${result.exerciseId}\n\n${result.template}`;
+				return `\u{1F3AF} Exercise Created!\n\nExercise ID: ${result.exerciseId}\n\n${result.template}`;
 			},
 
 			check_answer: (params, result) => {
-				return `📝 Answer Check\n\n${result.template}`;
+				return `\u{1F4DD} Answer Check\n\n${result.template}`;
 			},
 
 			give_hint: (params, result) => {
-				return `💡 Hint (Level ${result.hintLevel})\n\n${result.template}`;
+				return `\u{1F4A1} Hint (Level ${result.hintLevel})\n\n${result.template}`;
 			},
 
 			display_lesson: (params, result) => {
-				return result.success ? '✅ Lesson displayed successfully in a new tab.' : '❌ Failed to display lesson.'
+				return result.success ? '\u{2705} Lesson displayed successfully in a new tab.' : '\u{274C} Failed to display lesson.'
 			},
 
 			create_lesson_plan: (params, result) => {
-				return `📚 Lesson Plan Created!\n\nPlan ID: ${result.planId}\n\n${result.template}`;
+				return `\u{1F4DA} Lesson Plan Created!\n\nPlan ID: ${result.planId}\n\n${result.template}`;
 			},
 
 			load_skill: (params, result) => {
 				if (result.success) {
-					return `✅ Skill "${result.skill_name}" loaded successfully!\n\n${result.instructions}`;
+					return `\u{2705} Skill "${result.skill_name}" loaded successfully!\n\n${result.instructions}`;
 				} else {
-					return `❌ Failed to load skill "${result.skill_name}":\n${result.instructions}`;
+					return `\u{274C} Failed to load skill "${result.skill_name}":\n${result.instructions}`;
 				}
 			},
 
@@ -2777,14 +2777,14 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 
 		// Show in-progress steps first
 		if (stepsByStatus.in_progress.length > 0) {
-			output += `## 🔄 In Progress\n\n`;
+			output += `## \u{1F504} In Progress\n\n`;
 			for (const step of stepsByStatus.in_progress) {
 				const complexity = this.getComplexityEmoji(step.complexity);
 				const files = step.files.length > 0 ? `  \n  **Files:** ${step.files.map(f => `\`${f}\``).join(', ')}` : '';
 				output += `### ${complexity} Step ${step.id}: ${step.title}\n`;
 				output += `${step.description}\n${files}\n`;
 				if (step.notes) {
-					output += `\n> 💡 **Notes:** ${step.notes}\n`;
+					output += `\n> \u{1F4A1} **Notes:** ${step.notes}\n`;
 				}
 				output += '\n---\n\n';
 			}
@@ -2792,7 +2792,7 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 
 		// Then pending steps
 		if (stepsByStatus.pending.length > 0) {
-			output += `## ⏳ Pending Steps\n\n`;
+			output += `## \u{23F3} Pending Steps\n\n`;
 			for (const step of stepsByStatus.pending) {
 				const complexity = this.getComplexityEmoji(step.complexity);
 				const deps = step.dependencies.length > 0 ? `  \n  **Depends on:** ${step.dependencies.map(d => `\`${d}\``).join(', ')}` : '';
@@ -2806,7 +2806,7 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 
 		// Then completed steps
 		if (stepsByStatus.complete.length > 0) {
-			output += `## ✅ Completed\n\n`;
+			output += `## \u{2705} Completed\n\n`;
 			for (const step of stepsByStatus.complete) {
 				const complexity = this.getComplexityEmoji(step.complexity);
 				output += `- **[${step.id}] ${step.title}** ${complexity}\n`;
@@ -2819,15 +2819,15 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 
 		// Show failed steps
 		if (stepsByStatus.failed.length > 0) {
-			output += `## ❌ Failed\n\n`;
+			output += `## \u{274C} Failed\n\n`;
 			for (const step of stepsByStatus.failed) {
 				output += `### Step ${step.id}: ${step.title}\n`;
-				output += `> ⚠️ **Error:** ${step.notes || 'Unknown error'}\n\n`;
+				output += `> \u{26A0}\u{FE0F} **Error:** ${step.notes || 'Unknown error'}\n\n`;
 			}
 		}
 
 		// Show approval status
-		output += `\n\n---\n**Plan Status:** ${plan.approved ? '✅ Approved for execution' : '⏸️ Pending review'}`;
+		output += `\n\n---\n**Plan Status:** ${plan.approved ? '\u{2705} Approved for execution' : '\u{23F8}\u{FE0F} Pending review'}`;
 
 		return output;
 	}

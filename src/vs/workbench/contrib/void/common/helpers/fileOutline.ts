@@ -174,8 +174,8 @@ export function formatOutline(items: OutlineItem[], filePath: string): string {
 		else sections['Variables'].push(item);
 	}
 
-	let output = `📋 FILE OUTLINE - ${filePath}\n\n`;
-	output += `⚠️ YOU RECEIVED AN OUTLINE, NOT THE FULL FILE CODE\n\n`;
+	let output = `\u{1F4CB} FILE OUTLINE - ${filePath}\n\n`;
+	output += `\u{26A0}\u{FE0F} YOU RECEIVED AN OUTLINE, NOT THE FULL FILE CODE\n\n`;
 	output += `This shows the file structure (imports, classes, functions) with line numbers.\n`;
 	output += `You can see WHAT exists, but NOT the implementation details.\n\n`;
 	output += `To read the actual code:\n`;
@@ -193,7 +193,7 @@ export function formatOutline(items: OutlineItem[], filePath: string): string {
 		output += `\n`;
 	}
 
-	output += `\n💡 TIP: To see the full implementation of any item, use read_file with start_line and end_line parameters.`;
+	output += `\n\u{1F4A1} TIP: To see the full implementation of any item, use read_file with start_line and end_line parameters.`;
 
 	return output;
 }

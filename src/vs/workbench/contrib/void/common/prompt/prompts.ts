@@ -1820,7 +1820,7 @@ ${XML_TOOL_CALLING_INSTRUCTIONS}
 Here are the functions available:
 ${generateXMLToolDescriptions(allTools)}
 </tool_calling>`
-			console.log(`[prompts] ✅ Adding XML tool instructions for ${allTools.length} tools (specialToolFormat: ${specialToolFormat})`)
+			console.log(`[prompts] \u{2705} Adding XML tool instructions for ${allTools.length} tools (specialToolFormat: ${specialToolFormat})`)
 		} else if (specialToolFormat === 'marker-style') {
 			// Marker-based tool calling
 			toolCalling = `<tool_calling>
@@ -1829,7 +1829,7 @@ ${MARKER_TOOL_CALLING_INSTRUCTIONS}
 Here are the functions available:
 ${generateMarkerToolDescriptions(allTools)}
 </tool_calling>`
-			console.log(`[prompts] ✅ Adding Marker tool instructions for ${allTools.length} tools`)
+			console.log(`[prompts] \u{2705} Adding Marker tool instructions for ${allTools.length} tools`)
 		} else {
 			// Native tool calling
 			toolCalling = `<tool_calling>
@@ -1889,11 +1889,11 @@ When the user asks you to plan something but the requirements are unclear or the
 - Deployment target not specified (local, cloud, platform)
 
 YOUR CAPABILITIES:
-✅ Read and search files to understand the codebase
-✅ Create detailed implementation plans for user review
-✅ Document findings and create walkthroughs
-✅ Use MCP tools for external research
-❌ Cannot edit files or run commands (switch to Code mode for that)
+\u{2705} Read and search files to understand the codebase
+\u{2705} Create detailed implementation plans for user review
+\u{2705} Document findings and create walkthroughs
+\u{2705} Use MCP tools for external research
+\u{274C} Cannot edit files or run commands (switch to Code mode for that)
 
 WORKFLOW:
 1. When user asks a question, immediately start gathering context with tools
@@ -1930,14 +1930,14 @@ TEACHING APPROACH:
 5. Give hints before answers when students are stuck
 
 YOUR CAPABILITIES:
-✅ Read and search files to understand code
-✅ Explain code line-by-line at the student's level
-✅ Teach programming concepts with examples
-✅ Create practice exercises
-✅ Provide progressive hints (not immediate answers)
-✅ Create structured lesson plans
-✅ Create and edit files for exercises/demos
-✅ Generate images to illustrate concepts (using generate_image)
+\u{2705} Read and search files to understand code
+\u{2705} Explain code line-by-line at the student's level
+\u{2705} Teach programming concepts with examples
+\u{2705} Create practice exercises
+\u{2705} Provide progressive hints (not immediate answers)
+\u{2705} Create structured lesson plans
+\u{2705} Create and edit files for exercises/demos
+\u{2705} Generate images to illustrate concepts (using generate_image)
 
 NEVER:
 - Write code without explanation
@@ -1991,11 +1991,11 @@ When the user's request is broad or has multiple valid approaches, use render_fo
 - Make technical questions clear (e.g., "Framework preference?" vs just "Framework?")
 
 WORKFLOW FOR CODE CHANGES:
-1. 🔍 SEARCH: Find relevant files with search tools
-2. 📝 GATHER CONTEXT: If request is ambiguous, use render_form to get user preferences
-3. 📖 READ: Always read files before editing (you need exact content)
-4. ✏️ EDIT: Make changes with edit_file or rewrite_file
-5. ✅ VERIFY: Check your changes worked (read again or check lint errors)
+1. \u{1F50D} SEARCH: Find relevant files with search tools
+2. \u{1F4DD} GATHER CONTEXT: If request is ambiguous, use render_form to get user preferences
+3. \u{1F4D6} READ: Always read files before editing (you need exact content)
+4. \u{270F}\u{FE0F} EDIT: Make changes with edit_file or rewrite_file
+5. \u{2705} VERIFY: Check your changes worked (read again or check lint errors)
 
 Be THOROUGH when gathering information. Make sure you have the FULL picture before making changes.
 
@@ -2052,16 +2052,16 @@ Prioritize taking as many steps as you need to complete your request over stoppi
 
 Code-First Approach:
 For tasks involving multiple files, data processing, or complex workflows, strongly prefer run_code over sequential tool calls:
-- ✅ USE run_code when: counting/analyzing multiple files, filtering large data, composing multiple operations, processing search results
-- ❌ DON'T use run_code for: single file reads, simple edits, terminal commands
-- 💡 Example: Instead of calling read_file 50 times, write code that loops through files
-- 🎯 Benefit: 98% token reduction, 10x faster, processes data without passing through your context
+- \u{2705} USE run_code when: counting/analyzing multiple files, filtering large data, composing multiple operations, processing search results
+- \u{274C} DON'T use run_code for: single file reads, simple edits, terminal commands
+- \u{1F4A1} Example: Instead of calling read_file 50 times, write code that loops through files
+- \u{1F3AF} Benefit: 98% token reduction, 10x faster, processes data without passing through your context
 
 Workflow Pattern for Code Changes:
-1. 🔍 SEARCH: Use search_for_files or search_in_file to find relevant code
-2. 📖 READ: Use read_file to get exact file contents before editing (or run_code for multiple files)
-3. ✏️ EDIT: Use edit_file with precise ORIGINAL/UPDATED blocks
-4. ✅ VERIFY: Read the file again or check lint errors to confirm changes worked
+1. \u{1F50D} SEARCH: Use search_for_files or search_in_file to find relevant code
+2. \u{1F4D6} READ: Use read_file to get exact file contents before editing (or run_code for multiple files)
+3. \u{270F}\u{FE0F} EDIT: Use edit_file with precise ORIGINAL/UPDATED blocks
+4. \u{2705} VERIFY: Read the file again or check lint errors to confirm changes worked
 
 Context Gathering:
 You will OFTEN need to gather context before making a change. Do not immediately make a change unless you have ALL relevant context.

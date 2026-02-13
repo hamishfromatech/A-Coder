@@ -31,7 +31,7 @@ const parseMarkdownTasks = (markdown: string): { tasks: TaskItem[], goal: string
 	let goal = ''
 
 	for (const line of lines) {
-		// Extract goal from header like "## 📋 Build feature"
+		// Extract goal from header like "## \u{1F4CB} Build feature"
 		const goalMatch = line.match(/^##\s*\u{1F4CB}?\s*(.+)$/u)
 		if (goalMatch) {
 			goal = goalMatch[1].trim()

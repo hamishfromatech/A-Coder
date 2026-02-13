@@ -292,7 +292,7 @@ const QuizQuestionItem = ({ question, value, onChange, showResult, result }: {
 			{showResult && question.explanation && (
 				<div className="mt-3 px-3 py-2 bg-void-bg-2/50 border border-void-border-2/50 rounded-lg">
 					<div className="text-xs text-void-fg-3 leading-relaxed">
-						<span className="font-medium text-void-fg-2">💡 Explanation: </span>
+						<span className="font-medium text-void-fg-2">\u{1F4A1} Explanation: </span>
 						{question.explanation}
 					</div>
 				</div>

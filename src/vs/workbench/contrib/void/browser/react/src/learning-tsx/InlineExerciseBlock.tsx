@@ -450,10 +450,10 @@ export const InlineExerciseBlock: React.FC<InlineExerciseBlockProps> = ({
 	};
 
 	const typeIcons: Record<ExerciseType, React.ReactNode> = {
-		fill_blank: <span className="text-xl">✏️</span>,
+		fill_blank: <span className="text-xl">\u{270F}\u{FE0F}</span>,
 		fix_bug: <span className="text-xl">🐛</span>,
 		write_function: <span className="text-xl">⚙️</span>,
-		extend_code: <span className="text-xl">🔧</span>,
+		extend_code: <span className="text-xl">\u{1F527}</span>,
 	};
 
 	return (

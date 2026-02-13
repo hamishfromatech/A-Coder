@@ -389,7 +389,7 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 				</div>
 
 				<div className="text-xs text-void-fg-3 mb-2">
-					{currentOverrides ? '⚠️ Has custom overrides' : 'Showing defaults (edit to customize)'}
+					{currentOverrides ? '\u{26A0}\u{FE0F} Has custom overrides' : 'Showing defaults (edit to customize)'}
 				</div>
 
 				<textarea
