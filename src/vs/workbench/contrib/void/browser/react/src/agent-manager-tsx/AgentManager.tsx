@@ -13,6 +13,27 @@ import { BlockCode } from '../util/inputs.js';
 import { URI } from '../../../../../../../base/common/uri.js';
 import '../styles.css';
 
+// Utility to format time duration
+const formatDuration = (ms: number): string => {
+	const hours = Math.floor(ms / (1000 * 60 * 60));
+	const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+	if (hours > 0) {
+		return `${hours}.${Math.round(minutes / 6)}h`;
+	}
+	return `${minutes}m`;
+};
+
+// Utility to format token count
+const formatTokens = (count: number): string => {
+	if (count >= 1000000) {
+		return `${(count / 1000000).toFixed(1)}M`;
+	}
+	if (count >= 1000) {
+		return `${(count / 1000).toFixed(1)}k`;
+	}
+	return count.toString();
+};
+
 const useWindowSize = () => {
 	const [windowSize, setWindowSize] = useState({
 		width: window.innerWidth,
@@ -210,7 +231,12 @@ const ActivityItem = ({ icon: Icon, title, subtitle, time, status }: {
 	);
 };
 
-const DashboardView = ({ stats }: { stats: any }) => {
+const DashboardView = ({ stats, onNewThread, onBrowseFiles, onOpenSettings }: {
+	stats: { threadsCount: number; messagesCount: number; activeTime: number; totalTokens: number };
+	onNewThread: () => void;
+	onBrowseFiles: () => void;
+	onOpenSettings: () => void;
+}) => {
 	return (
 		<div className="flex flex-col h-full overflow-hidden">
 			<div className="p-8 pb-4">
@@ -239,22 +265,21 @@ const DashboardView = ({ stats }: { stats: any }) => {
 					<StatCard
 						icon={Zap}
 						label="Messages"
-						value={stats.operationsCount}
-						trend="+12%"
+						value={stats.messagesCount}
 						color="from-purple-500/10 to-purple-600/10"
 						glowColor="bg-purple-500"
 					/>
 					<StatCard
 						icon={Clock}
 						label="Active Time"
-						value="2.4h"
+						value={formatDuration(stats.activeTime)}
 						color="from-amber-500/10 to-orange-600/10"
 						glowColor="bg-amber-500"
 					/>
 					<StatCard
 						icon={Sparkles}
 						label="AI Tokens"
-						value="45.2k"
+						value={formatTokens(stats.totalTokens)}
 						color="from-cyan-500/10 to-teal-600/10"
 						glowColor="bg-cyan-500"
 					/>
@@ -265,80 +290,70 @@ const DashboardView = ({ stats }: { stats: any }) => {
 				<div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full min-h-0">
 					<div className="lg:col-span-2 flex flex-col min-h-0">
 						<div className="flex items-center justify-between mb-4">
-							<h3 className="text-sm font-bold text-void-fg-1 uppercase tracking-wider">Recent Activity</h3>
-							<button className="text-[10px] text-void-accent hover:text-void-accent-hover font-semibold uppercase tracking-wider flex items-center gap-1 transition-all">
-								<RefreshCw className="w-3 h-3" />
-								Refresh
-							</button>
+							<h3 className="text-sm font-bold text-void-fg-1 uppercase tracking-wider">Quick Actions</h3>
 						</div>
-						<div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 min-h-0">
-							<ActivityItem
-								icon={Code}
-								title="Fixed authentication bug"
-								subtitle="src/auth/login.ts"
-								time="2m ago"
-								status="success"
-							/>
-							<ActivityItem
-								icon={Terminal}
-								title="Running tests"
-								subtitle="npm test"
-								time="5m ago"
-								status="progress"
-							/>
-							<ActivityItem
-								icon={FileCode}
-								title="Created new component"
-								subtitle="src/components/UserProfile.tsx"
-								time="12m ago"
-								status="success"
-							/>
-							<ActivityItem
-								icon={Settings}
-								title="Updated configuration"
-								subtitle="config/settings.json"
-								time="1h ago"
-								status="success"
-							/>
-							<ActivityItem
-								icon={Code}
-								title="Refactored API layer"
-								subtitle="src/api/client.ts"
-								time="2h ago"
-								status="success"
-							/>
+						<div className="flex flex-col gap-3">
+							<button
+								onClick={onNewThread}
+								className="flex items-center gap-4 p-4 rounded-xl border border-void-border-2 bg-gradient-to-br from-void-bg-2/40 to-void-bg-3/40 hover:from-void-bg-2/60 hover:to-void-bg-3/60 hover:border-void-accent/40 transition-all group shadow-sm hover:shadow-lg"
+							>
+								<div className="p-3 rounded-xl bg-void-accent shadow-lg shadow-void-accent/30 group-hover:scale-110 transition-transform">
+									<Plus className="w-5 h-5 text-white" />
+								</div>
+								<div className="text-left">
+									<span className="block text-sm font-semibold text-void-fg-1">New Conversation</span>
+									<span className="block text-[10px] text-void-fg-4 font-medium opacity-60">Start a fresh chat</span>
+								</div>
+							</button>
+							<button
+								onClick={onBrowseFiles}
+								className="flex items-center gap-4 p-4 rounded-xl border border-void-border-2 bg-gradient-to-br from-void-bg-2/40 to-void-bg-3/40 hover:from-void-bg-2/60 hover:to-void-bg-3/60 hover:border-void-accent/40 transition-all group shadow-sm hover:shadow-lg"
+							>
+								<div className="p-3 rounded-xl bg-void-bg-3 border border-void-border-2 group-hover:border-void-border-1 transition-all">
+									<Folder className="w-5 h-5 text-void-fg-4" />
+								</div>
+								<div className="text-left">
+									<span className="block text-sm font-semibold text-void-fg-1">Browse Files</span>
+									<span className="block text-[10px] text-void-fg-4 font-medium opacity-60">Explore workspace</span>
+								</div>
+							</button>
+							<button
+								onClick={onOpenSettings}
+								className="flex items-center gap-4 p-4 rounded-xl border border-void-border-2 bg-gradient-to-br from-void-bg-2/40 to-void-bg-3/40 hover:from-void-bg-2/60 hover:to-void-bg-3/60 hover:border-void-accent/40 transition-all group shadow-sm hover:shadow-lg"
+							>
+								<div className="p-3 rounded-xl bg-void-bg-3 border border-void-border-2 group-hover:border-void-border-1 transition-all">
+									<Settings className="w-5 h-5 text-void-fg-4" />
+								</div>
+								<div className="text-left">
+									<span className="block text-sm font-semibold text-void-fg-1">Settings</span>
+									<span className="block text-[10px] text-void-fg-4 font-medium opacity-60">Configure A-Coder</span>
+								</div>
+							</button>
 						</div>
 					</div>
 
 					<div className="flex flex-col gap-4">
-						<h3 className="text-sm font-bold text-void-fg-1 uppercase tracking-wider mb-1">Quick Actions</h3>
-						<button className="flex items-center gap-4 p-4 rounded-xl border border-void-border-2 bg-gradient-to-br from-void-bg-2/40 to-void-bg-3/40 hover:from-void-bg-2/60 hover:to-void-bg-3/60 hover:border-void-accent/40 transition-all group shadow-sm hover:shadow-lg">
-							<div className="p-3 rounded-xl bg-void-accent shadow-lg shadow-void-accent/30 group-hover:scale-110 transition-transform">
-								<Plus className="w-5 h-5 text-white" />
+						<h3 className="text-sm font-bold text-void-fg-1 uppercase tracking-wider mb-1">Stats Summary</h3>
+						<div className="p-4 rounded-xl border border-void-border-2 bg-void-bg-2/30">
+							<div className="space-y-3">
+								<div className="flex justify-between items-center">
+									<span className="text-xs text-void-fg-4">Total Threads</span>
+									<span className="text-sm font-bold text-void-fg-1">{stats.threadsCount}</span>
+								</div>
+								<div className="flex justify-between items-center">
+									<span className="text-xs text-void-fg-4">Total Messages</span>
+									<span className="text-sm font-bold text-void-fg-1">{stats.messagesCount}</span>
+								</div>
+								<div className="flex justify-between items-center">
+									<span className="text-xs text-void-fg-4">Active Time</span>
+									<span className="text-sm font-bold text-void-fg-1">{formatDuration(stats.activeTime)}</span>
+								</div>
+								<div className="flex justify-between items-center">
+									<span className="text-xs text-void-fg-4">AI Tokens Used</span>
+									<span className="text-sm font-bold text-void-fg-1">{formatTokens(stats.totalTokens)}</span>
+								</div>
 							</div>
-							<div className="text-left">
-								<span className="block text-sm font-semibold text-void-fg-1">New Conversation</span>
-								<span className="block text-[10px] text-void-fg-4 font-medium opacity-60">Start a fresh chat</span>
-							</div>
-						</button>
-						<button className="flex items-center gap-4 p-4 rounded-xl border border-void-border-2 bg-gradient-to-br from-void-bg-2/40 to-void-bg-3/40 hover:from-void-bg-2/60 hover:to-void-bg-3/60 transition-all group shadow-sm hover:shadow-lg">
-							<div className="p-3 rounded-xl bg-void-bg-3 border border-void-border-2 group-hover:border-void-border-1 transition-all">
-								<Folder className="w-5 h-5 text-void-fg-4" />
-							</div>
-							<div className="text-left">
-								<span className="block text-sm font-semibold text-void-fg-1">Browse Files</span>
-								<span className="block text-[10px] text-void-fg-4 font-medium opacity-60">Explore workspace</span>
-							</div>
-						</button>
-						<button className="flex items-center gap-4 p-4 rounded-xl border border-void-border-2 bg-gradient-to-br from-void-bg-2/40 to-void-bg-3/40 hover:from-void-bg-2/60 hover:to-void-bg-3/60 transition-all group shadow-sm hover:shadow-lg">
-							<div className="p-3 rounded-xl bg-void-bg-3 border border-void-border-2 group-hover:border-void-border-1 transition-all">
-								<Settings className="w-5 h-5 text-void-fg-4" />
-							</div>
-							<div className="text-left">
-								<span className="block text-sm font-semibold text-void-fg-1">Settings</span>
-								<span className="block text-[10px] text-void-fg-4 font-medium opacity-60">Configure A-Coder</span>
-							</div>
-						</button>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -384,6 +399,7 @@ export const AgentManager = ({ className }: { className: string }) => {
 	const [selectedFile, setSelectedFile] = useState<string | null>(null);
 	const [walkthroughData, setWalkthroughData] = useState<{ filePath: string, preview: string } | null>(null);
 	const [contentData, setContentData] = useState<{ title: string, content: string } | null>(null);
+	const [searchQuery, setSearchQuery] = useState('');
 
 	useEffect(() => {
 		if (windowWidth < 1280) {
@@ -420,17 +436,76 @@ export const AgentManager = ({ className }: { className: string }) => {
 	const chatThreadsState = useChatThreadsState();
 	const workspaceFolders = useWorkspaceFolders();
 
-	const stats = {
-		threadsCount: Object.keys(chatThreadsState.allThreads).length,
-		operationsCount: 124,
-	}
+	// Calculate real stats from threads
+	const stats = useMemo(() => {
+		const threads = Object.values(chatThreadsState.allThreads);
+		const threadsCount = threads.length;
+
+		// Count total messages across all threads
+		let messagesCount = 0;
+		let totalActiveTime = 0;
+
+		for (const thread of threads) {
+			messagesCount += thread.messages.filter(m => m.role === 'user' || m.role === 'assistant').length;
+
+			// Calculate active time from thread creation and last modified
+			const created = new Date(thread.createdAt).getTime();
+			const modified = new Date(thread.lastModified).getTime();
+			const sessionTime = modified - created;
+			// Cap session time to reasonable values (max 8 hours per thread)
+			totalActiveTime += Math.min(sessionTime, 8 * 60 * 60 * 1000);
+		}
+
+		return {
+			threadsCount,
+			messagesCount,
+			activeTime: totalActiveTime,
+			totalTokens: 0, // Token tracking not yet implemented
+		};
+	}, [chatThreadsState.allThreads]);
+
+	// Filter threads based on search query
+	const filteredThreadsCount = useMemo(() => {
+		if (!searchQuery.trim()) return stats.threadsCount;
+		const threads = Object.values(chatThreadsState.allThreads);
+		const query = searchQuery.toLowerCase();
+		return threads.filter(thread => {
+			// Search in messages
+			return thread.messages.some(msg => {
+				if (msg.role === 'user' && msg.content.toLowerCase().includes(query)) return true;
+				if (msg.role === 'assistant' && msg.displayContent?.toLowerCase().includes(query)) return true;
+				return false;
+			});
+		}).length;
+	}, [searchQuery, chatThreadsState.allThreads, stats.threadsCount]);
 
 	const handleNewThread = () => {
 		const chatThreadService = accessor.get('IChatThreadService');
 		if (chatThreadService) {
-			chatThreadService.createNewThread();
+			chatThreadService.openNewThread();
+			setActiveTab('chats');
 		}
 	};
+
+	const handleBrowseFiles = () => {
+		setActiveTab('workspaces');
+	};
+
+	const handleOpenSettings = () => {
+		const commandService = accessor.get('ICommandService');
+		if (commandService) {
+			commandService.executeCommand('workbench.action.openSettings', 'void');
+		}
+	};
+
+	const handleOpenInEditor = useCallback(() => {
+		if (selectedFileUri) {
+			const editorService = accessor.get('IEditorService');
+			if (editorService) {
+				editorService.openEditor({ resource: selectedFileUri });
+			}
+		}
+	}, [selectedFileUri, accessor]);
 
 	return (
 		<div className={`@@void-scope ${isDark ? 'dark' : ''}`} style={{ height: '100%', width: '100%' }}>
@@ -452,13 +527,27 @@ export const AgentManager = ({ className }: { className: string }) => {
 							<Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-void-fg-4 group-focus-within:text-void-accent transition-all opacity-40 group-focus-within:opacity-100" />
 							<input
 								type="text"
-								placeholder="Search..."
+								placeholder="Search conversations..."
+								value={searchQuery}
+								onChange={(e) => setSearchQuery(e.target.value)}
 								className="bg-void-bg-1 border border-void-border-2 rounded-xl pl-10 pr-4 py-2 text-xs w-64 focus:outline-none focus:border-void-accent/50 transition-all placeholder:text-void-fg-3 text-void-fg-1"
 							/>
+							{searchQuery && (
+								<button
+									onClick={() => setSearchQuery('')}
+									className="absolute right-3 top-1/2 -translate-y-1/2 text-void-fg-4 hover:text-void-fg-1"
+								>
+									<X className="w-3 h-3" />
+								</button>
+							)}
 						</div>
 
 						<div className="flex items-center gap-1">
-							<button className="p-2.5 hover:bg-void-bg-2 rounded-xl transition-all text-void-fg-4 hover:text-void-fg-1">
+							<button
+								onClick={handleOpenSettings}
+								className="p-2.5 hover:bg-void-bg-2 rounded-xl transition-all text-void-fg-4 hover:text-void-fg-1"
+								title="Open Settings"
+							>
 								<Settings className="w-5 h-5" />
 							</button>
 						</div>
@@ -566,7 +655,12 @@ export const AgentManager = ({ className }: { className: string }) => {
 						<div className="flex-1 h-full overflow-hidden relative min-h-0">
 							<ErrorBoundary>
 								{activeTab === 'dashboard' ? (
-									<DashboardView stats={stats} />
+									<DashboardView
+										stats={stats}
+										onNewThread={handleNewThread}
+										onBrowseFiles={handleBrowseFiles}
+										onOpenSettings={handleOpenSettings}
+									/>
 								) : (
 									<div className="h-full flex flex-col">
 										<div className="flex-1 min-h-0 overflow-hidden">
@@ -595,7 +689,11 @@ export const AgentManager = ({ className }: { className: string }) => {
 								</div>
 								<div className="flex items-center gap-1 flex-shrink-0 ml-2">
 									{selectedFile && (
-										<button className="p-2 hover:bg-void-accent/10 hover:text-void-accent rounded-lg transition-all text-void-fg-4" title="Open in Editor">
+										<button
+											onClick={handleOpenInEditor}
+											className="p-2 hover:bg-void-accent/10 hover:text-void-accent rounded-lg transition-all text-void-fg-4"
+											title="Open in Editor"
+										>
 											<ExternalLink className="w-4 h-4" />
 										</button>
 									)}

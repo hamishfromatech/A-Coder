@@ -483,7 +483,7 @@ export const useOnAgentManagerOpenFile = (callback: (uri: URI) => void) => {
 	}, [agentManagerService, callback])
 }
 
-export const useOnAgentManagerOpenWalkthrough = (callback: (data: { filePath: string, preview: string }) => void) => {
+export const useOnAgentManagerOpenWalkthrough = (callback: (data: { filePath: string, preview: string, threadId?: string }) => void) => {
 	const accessor = useAccessor()
 	const agentManagerService = accessor.get('IAgentManagerService')
 	useEffect(() => {

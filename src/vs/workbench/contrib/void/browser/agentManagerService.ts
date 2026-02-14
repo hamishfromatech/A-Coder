@@ -7,7 +7,7 @@ import { Disposable, DisposableStore } from '../../../../base/common/lifecycle.j
 import { IMetricsService } from '../common/metricsService.js';
 import { IAgentManagerService } from './agentManager.contribution.js';
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
-import { IAuxiliaryWindowService } from '../../../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
+import { IAuxiliaryWindowService, IAuxiliaryWindow } from '../../../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
 import { mountAgentManager } from './react/out/agent-manager-tsx/index.js';
 import { mainWindow } from '../../../../base/browser/window.js';
 import { ServiceCollection } from '../../../../platform/instantiation/common/serviceCollection.js';
@@ -16,10 +16,12 @@ import { Emitter } from '../../../../base/common/event.js';
 import { URI } from '../../../../base/common/uri.js';
 import { IEditorService } from '../../../services/editor/common/editorService.js';
 import { VoidPreviewInput } from './voidPreviewPane.js';
+import { INotificationService } from '../../../../platform/notification/common/notification.js';
+import { localize } from '../../../../nls.js';
 
 export class AgentManagerService extends Disposable implements IAgentManagerService {
 	readonly _serviceBrand: undefined;
-    private _auxiliaryWindow: any = null;
+    private _auxiliaryWindow: IAuxiliaryWindow | null = null;
     private _isOpen: boolean = false;
     private _isOpening: boolean = false;
     private _windowDisposables = new DisposableStore();
@@ -27,7 +29,7 @@ export class AgentManagerService extends Disposable implements IAgentManagerServ
     private readonly _onDidOpenFile = this._register(new Emitter<URI>());
     readonly onDidOpenFile = this._onDidOpenFile.event;
 
-    private readonly _onDidOpenWalkthrough = this._register(new Emitter<{ filePath: string, preview: string }>());
+    private readonly _onDidOpenWalkthrough = this._register(new Emitter<{ filePath: string, preview: string, threadId?: string }>());
     readonly onDidOpenWalkthrough = this._onDidOpenWalkthrough.event;
 
     private readonly _onDidOpenContent = this._register(new Emitter<{ title: string, content: string }>());
@@ -38,6 +40,7 @@ export class AgentManagerService extends Disposable implements IAgentManagerServ
         @IInstantiationService private readonly _instantiationService: IInstantiationService,
         @IAuxiliaryWindowService private readonly _auxiliaryWindowService: IAuxiliaryWindowService,
         @IEditorService private readonly _editorService: IEditorService,
+        @INotificationService private readonly _notificationService: INotificationService,
     ) {
         super();
     }
@@ -141,6 +144,7 @@ export class AgentManagerService extends Disposable implements IAgentManagerServ
         } catch (error) {
             this._isOpening = false;
             console.error('Failed to open Agent Manager window:', error);
+            this._notificationService.error(localize('agentManager.openError', 'Failed to open Agent Manager. Please try again.'));
         }
     }
 
@@ -160,7 +164,7 @@ export class AgentManagerService extends Disposable implements IAgentManagerServ
 
         // Also fire event for Agent Manager if it's open
         if (this._isOpen) {
-            this._onDidOpenWalkthrough.fire({ filePath, preview });
+            this._onDidOpenWalkthrough.fire({ filePath, preview, threadId: options?.threadId });
         }
     }
 

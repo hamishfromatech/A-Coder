@@ -12,7 +12,7 @@ import { URI } from '../../../../base/common/uri.js';
 export interface IAgentManagerService {
 	readonly _serviceBrand: undefined;
 	readonly onDidOpenFile: Event<URI>;
-	readonly onDidOpenWalkthrough: Event<{ filePath: string, preview: string }>;
+	readonly onDidOpenWalkthrough: Event<{ filePath: string, preview: string, threadId?: string }>;
 	readonly onDidOpenContent: Event<{ title: string, content: string }>;
 
 	/**
