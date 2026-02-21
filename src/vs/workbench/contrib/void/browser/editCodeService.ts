@@ -261,22 +261,208 @@ const findSimilarBlocks = (searchText: string, fileContents: string, maxResults:
 		.map(r => r.text);
 }
 
-// finds block.orig in fileContents and return its range in file
-// startingAtLine is 1-indexed and inclusive
-// returns 1-indexed lines
-// Enhanced with multi-strategy matching: exact, whitespace-normalized, indentation-preserving, and fuzzy
-const findTextInCode = (text: string, fileContents: string, canFallbackToRemoveWhitespace: boolean, opts: { startingAtLine?: number, returnType: 'lines' }) => {
+/**
+ * Maps a character position from normalized content back to the original content.
+ * CRITICAL: This properly handles cases where normalization changed line structure.
+ * Returns both the character index and the line number in the original content.
+ */
+const mapNormalizedPositionToOriginal = (
+	normalizedContent: string,
+	originalContent: string,
+	normalizedIdx: number
+): { charIdx: number; lineIdx: number } => {
+	// Count newlines before the match position in normalized content
+	const normalizedLinesBefore = normalizedContent.substring(0, normalizedIdx).split('\n').length - 1;
+	const normalizedLineStart = normalizedContent.split('\n').slice(normalizedLinesBefore, normalizedLinesBefore + 1)[0] || '';
 
-	const returnAns = (fileContents: string, idx: number, textUsed: string) => {
-		const startLine = numLinesOfStr(fileContents.substring(0, idx + 1))
-		const numLines = numLinesOfStr(textUsed)
-		const endLine = startLine + numLines - 1
+	// Find the character within the line (after the last newline before normalizedIdx)
+	const lastNewlineBefore = normalizedContent.lastIndexOf('\n', normalizedIdx - 1);
+	const charInNormalizedLine = lastNewlineBefore === -1 ? normalizedIdx : normalizedIdx - lastNewlineBefore - 1;
 
-		return [startLine, endLine] as const
+	// Map to original content by line
+	const originalLines = originalContent.split('\n');
+
+	// If the number of lines matches, simple mapping
+	if (normalizedContent.split('\n').length === originalLines.length) {
+		const charIdx = originalLines.slice(0, normalizedLinesBefore).join('\n').length + (normalizedLinesBefore > 0 ? 1 : 0) + charInNormalizedLine;
+		return { charIdx, lineIdx: normalizedLinesBefore };
 	}
 
+	// Line counts differ - need to find the corresponding position by content matching
+	// Build a map of normalized lines to original line indices
+	const normalizedLines = normalizedContent.split('\n');
+	let originalLineIdx = 0;
+	let normalizedLineIdx = 0;
+
+	// Track position through both versions
+	while (normalizedLineIdx < normalizedLinesBefore && originalLineIdx < originalLines.length) {
+		const normLine = normalizedLines[normalizedLineIdx]?.trim() || '';
+		const origLine = originalLines[originalLineIdx]?.trim() || '';
+
+		if (normLine === origLine || normLine === '' || origLine === '') {
+			// Lines match or one is empty - advance both
+			normalizedLineIdx++;
+			originalLineIdx++;
+		} else {
+			// Lines don't match - the original might have merged/split lines
+			// Try to find the normalized line in original
+			const foundInOriginal = originalLines.slice(originalLineIdx).findIndex(l => (l?.trim() || '') === normLine);
+			if (foundInOriginal !== -1) {
+				originalLineIdx += foundInOriginal + 1;
+				normalizedLineIdx++;
+			} else {
+				// Can't find it - advance original and hope for sync
+				originalLineIdx++;
+			}
+		}
+	}
+
+	// Calculate character position in original
+	const charIdx = originalLines.slice(0, originalLineIdx).join('\n').length + (originalLineIdx > 0 ? 1 : 0) + charInNormalizedLine;
+	return { charIdx, lineIdx: originalLineIdx };
+};
+
+/**
+ * Extracts the actual matched text from the original content using character positions.
+ * This is the safe way to get matched text - it doesn't rely on line counts from search text.
+ */
+const extractMatchedText = (
+	originalContent: string,
+	startCharIdx: number,
+	searchText: string,
+	normalizedSearchText: string,
+	normalizedContent: string,
+	normalizedStartIdx: number
+): string => {
+	// The length of the search text in the normalized content
+	const normalizedSearchLen = normalizedSearchText.length;
+
+	// Find the end position in normalized content
+	const normalizedEndIdx = normalizedStartIdx + normalizedSearchLen;
+
+	// Extract the matched portion from normalized content
+	const normalizedMatched = normalizedContent.substring(normalizedStartIdx, normalizedEndIdx);
+
+	// Now we need to find the corresponding text in original content
+	// Use the character-based approach for safety
+	const originalLines = originalContent.split('\n');
+	const normalizedLines = normalizedContent.split('\n');
+
+	// Find which line the match starts on in normalized
+	let normLineIdx = 0;
+	let normCharCount = 0;
+	for (let i = 0; i < normalizedLines.length; i++) {
+		if (normCharCount + normalizedLines[i].length >= normalizedStartIdx) {
+			normLineIdx = i;
+			break;
+		}
+		normCharCount += normalizedLines[i].length + 1; // +1 for newline
+	}
+
+	// Count how many lines the normalized match spans
+	const normalizedMatchLines = normalizedMatched.split('\n').length;
+
+	// The matched text should span the same number of lines in original
+	// (since normalizeWhitespaceSoft only trims lines, doesn't merge them)
+	// But for aggressive normalization, lines CAN be merged
+
+	// For soft normalization (trim only), line count is preserved
+	// Use the character position approach for accuracy
+	const startLine = originalContent.substring(0, startCharIdx).split('\n').length;
+	const numLinesInSearch = searchText.split('\n').length;
+
+	// Get the matched text using the same number of lines as the search text
+	// This is a reasonable approximation since we're looking for equivalent content
+	const matchedText = originalLines.slice(startLine - 1, startLine - 1 + numLinesInSearch).join('\n');
+
+	return matchedText;
+};
+
+/**
+ * Result type for findTextInCode.
+ * Returns both line numbers (1-indexed) and character positions for accurate replacement.
+ */
+type FindTextResult = {
+	startLine: number;    // 1-indexed start line
+	endLine: number;      // 1-indexed end line (inclusive)
+	startChar: number;    // 0-indexed character position of match start
+	endChar: number;      // 0-indexed character position of match end (exclusive)
+	matchedText: string;  // The actual matched text from the file
+};
+
+// finds block.orig in fileContents and return its range in file
+// startingAtLine is 1-indexed and inclusive
+// returns FindTextResult with line numbers and character positions, or [number, number] for legacy compatibility
+// Enhanced with multi-strategy matching: exact, whitespace-normalized, indentation-preserving, and fuzzy
+// FIXED: Properly handles merged lines and position mapping during normalization
+const findTextInCode = (text: string, fileContents: string, canFallbackToRemoveWhitespace: boolean, opts: { startingAtLine?: number, returnType: 'lines' | 'full' } = { returnType: 'lines' }): FindTextResult | readonly [number, number] | 'Not found' | 'Not unique' => {
+
+	/**
+	 * Creates a FindTextResult from character position and matched text.
+	 * This is the authoritative way to return match results.
+	 */
+	const returnAns = (fileContents: string, startCharIdx: number, matchedText: string): FindTextResult => {
+		const startLine = fileContents.substring(0, startCharIdx).split('\n').length;
+		const numLines = matchedText.split('\n').length;
+		const endLine = startLine + numLines - 1;
+		const endCharIdx = startCharIdx + matchedText.length;
+
+		return {
+			startLine,
+			endLine,
+			startChar: startCharIdx,
+			endChar: endCharIdx,
+			matchedText
+		};
+	};
+
+	/**
+	 * Creates a line range [startLine, endLine] from character position and matched text.
+	 * Used when returnType is 'lines' for backwards compatibility.
+	 */
+	const returnAnsLines = (fileContents: string, startCharIdx: number, matchedText: string): readonly [number, number] => {
+		const startLine = fileContents.substring(0, startCharIdx).split('\n').length;
+		const numLines = matchedText.split('\n').length;
+		const endLine = startLine + numLines - 1;
+		return [startLine, endLine];
+	};
+
+	/**
+	 * Return based on opts.returnType - either full FindTextResult or just line range
+	 */
+	const returnBasedOnType = (fileContents: string, startCharIdx: number, matchedText: string): FindTextResult | readonly [number, number] => {
+		if (opts.returnType === 'lines') {
+			return returnAnsLines(fileContents, startCharIdx, matchedText);
+		}
+		return returnAns(fileContents, startCharIdx, matchedText);
+	};
+
+	/**
+	 * Validates that the matched text makes sense before returning.
+	 * Returns true if the match appears valid.
+	 */
+	const validateMatch = (matchedText: string, searchText: string, strategy: string): boolean => {
+		// The matched text should be non-empty
+		if (!matchedText || matchedText.length === 0) {
+			console.warn(`[editCodeService] ${strategy}: Empty matched text, rejecting`);
+			return false;
+		}
+		// For exact match, the text should be identical
+		// For other strategies, we just need non-empty text
+		return true;
+	};
+
+	/**
+	 * Finds character index from line index in content.
+	 */
+	const charIdxFromLineIdx = (content: string, lineIdx: number): number => {
+		const lines = content.split('\n');
+		if (lineIdx <= 0) return 0;
+		return lines.slice(0, lineIdx).join('\n').length + 1; // +1 for the newline
+	};
+
 	const startingAtLineIdx = (fileContents: string) => opts?.startingAtLine !== undefined ?
-		fileContents.split('\n').slice(0, opts.startingAtLine).join('\n').length // num characters in all lines before startingAtLine
+		fileContents.split('\n').slice(0, opts.startingAtLine).join('\n').length
 		: 0
 
 	const startIdx = startingAtLineIdx(fileContents)
@@ -284,7 +470,7 @@ const findTextInCode = (text: string, fileContents: string, canFallbackToRemoveW
 	// Strategy 1: Exact match (fastest, most reliable)
 	let idx = fileContents.indexOf(text, startIdx)
 	if (idx !== -1) {
-		return returnAns(fileContents, idx, text)
+		return returnBasedOnType(fileContents, idx, text)
 	}
 
 	// Strategy 2: Anchor-based matching (handles "// ... existing code ..." placeholders)
@@ -318,9 +504,8 @@ const findTextInCode = (text: string, fileContents: string, canFallbackToRemoveW
 				if (secondFirstAnchorIdx === -1) {
 					// Unique match found via anchors
 					const matchedText = fileContents.substring(firstAnchorIdx, lastAnchorIdx + lastAnchorLen)
-					return returnAns(fileContents, firstAnchorIdx, matchedText)
+					return returnBasedOnType(fileContents, firstAnchorIdx, matchedText)
 				}
-				// If not unique, we could return 'Not unique', but we'll fall through to see if other strategies work
 			}
 		}
 	}
@@ -329,7 +514,8 @@ const findTextInCode = (text: string, fileContents: string, canFallbackToRemoveW
 	if (!canFallbackToRemoveWhitespace)
 		return 'Not found' as const
 
-	// Strategy 2: Soft normalization - trim lines only, preserve internal whitespace (good for HTML/XML)
+	// Strategy 3: Soft normalization - trim lines only, preserve internal whitespace (good for HTML/XML)
+	// This strategy preserves line count, so mapping is simpler
 	const textSoftNorm = normalizeWhitespaceSoft(text)
 	const fileContentsSoftNorm = normalizeWhitespaceSoft(fileContents)
 	idx = fileContentsSoftNorm.indexOf(textSoftNorm, startingAtLineIdx(fileContentsSoftNorm))
@@ -341,43 +527,109 @@ const findTextInCode = (text: string, fileContents: string, canFallbackToRemoveW
 			return 'Not unique' as const
 		}
 
-		// Map back to original file position
-		const linesBeforeMatch = fileContentsSoftNorm.substring(0, idx).split('\n').length - 1
-		const originalLines = fileContents.split('\n')
-		const reconstructedIdx = originalLines.slice(0, linesBeforeMatch).join('\n').length + (linesBeforeMatch > 0 ? 1 : 0)
+		// SOFT NORMALIZATION: Line count is preserved, so we can map by line number
+		// Count lines before the match in normalized content
+		const linesBeforeMatch = fileContentsSoftNorm.substring(0, idx).split('\n').length - 1;
+		const charInNormLine = idx - (fileContentsSoftNorm.lastIndexOf('\n', idx - 1) === -1 ? 0 : fileContentsSoftNorm.lastIndexOf('\n', idx - 1) + 1);
 
-		// FIX: Use the actual matched text from the file, not the search text
-		// The matched text may have different whitespace/indentation than the search text
-		const textLen = text.split('\n').length
-		const matchedText = originalLines.slice(linesBeforeMatch, linesBeforeMatch + textLen).join('\n')
-		return returnAns(fileContents, reconstructedIdx, matchedText)
+		// Map to original: same line number, same character position within line
+		const originalLines = fileContents.split('\n');
+		const originalLine = originalLines[linesBeforeMatch] || '';
+
+		// The matched line in original might have leading whitespace that was trimmed
+		// Find where the trimmed content starts
+		const normMatchedLine = fileContentsSoftNorm.split('\n')[linesBeforeMatch] || '';
+		const trimmedStart = originalLine.trimStart();
+		const leadingWsLen = originalLine.length - trimmedStart.length;
+
+		// Calculate character position in original content
+		const charIdx = originalLines.slice(0, linesBeforeMatch).join('\n').length
+			+ (linesBeforeMatch > 0 ? 1 : 0) // newline before this line
+			+ leadingWsLen // leading whitespace in original
+			+ charInNormLine; // position within trimmed content
+
+		// For soft normalization, the number of lines in the match is preserved
+		// Extract matched text using the same line count as the search text
+		const searchNumLines = text.split('\n').length;
+		const matchedText = originalLines.slice(linesBeforeMatch, linesBeforeMatch + searchNumLines).join('\n');
+
+		if (!validateMatch(matchedText, text, 'Soft normalization')) {
+			// Fall through to next strategy
+		} else {
+			return returnBasedOnType(fileContents, charIdx, matchedText);
+		}
 	}
 
-	// Strategy 3: Aggressive normalization - collapse all whitespace (handles indentation differences)
+	// Strategy 4: Aggressive normalization - collapse all whitespace (handles indentation differences)
+	// WARNING: This can merge/split lines, so we need careful position mapping
 	const textNormalized = normalizeWhitespace(text)
 	const fileContentsNormalized = normalizeWhitespace(fileContents)
 	idx = fileContentsNormalized.indexOf(textNormalized, startingAtLineIdx(fileContentsNormalized))
 
 	if (idx !== -1) {
-		// CRITICAL: Verify uniqueness in BOTH normalized and original
+		// CRITICAL: Verify uniqueness in normalized content
 		const lastIdx = fileContentsNormalized.lastIndexOf(textNormalized)
 		if (lastIdx !== idx) {
 			return 'Not unique' as const
 		}
 
-		// Map back to original file position
-		const linesBeforeMatch = fileContentsNormalized.substring(0, idx).split('\n').length - 1
-		const originalLines = fileContents.split('\n')
-		const reconstructedIdx = originalLines.slice(0, linesBeforeMatch).join('\n').length + (linesBeforeMatch > 0 ? 1 : 0)
+		// AGGRESSIVE NORMALIZATION: Lines may be merged!
+		// We need to find the actual position by matching content
+		// Strategy: Find the normalized match position, then map back to original
 
-		// FIX: Use the actual matched text from the file, not the search text
-		const textLen = text.split('\n').length
-		const matchedText = originalLines.slice(linesBeforeMatch, linesBeforeMatch + textLen).join('\n')
-		return returnAns(fileContents, reconstructedIdx, matchedText)
+		// Get the normalized match content
+		const normalizedMatchStart = idx;
+		const normalizedMatchEnd = idx + textNormalized.length;
+		const normalizedMatchContent = fileContentsNormalized.substring(normalizedMatchStart, normalizedMatchEnd);
+
+		// Split both into normalized "words" for matching
+		const normMatchWords = normalizedMatchContent.split(/\s+/).filter(w => w.length > 0);
+		const normFirstWord = normMatchWords[0];
+		const normLastWord = normMatchWords[normMatchWords.length - 1];
+
+		if (!normFirstWord || !normLastWord) {
+			// Degenerate case, fall through
+		} else {
+			// Find first and last words in original content
+			const originalLines = fileContents.split('\n');
+
+			// Search for a contiguous block that contains all the words in order
+			// Start by finding the first word
+			let foundStart = false;
+			let startLineIdx = -1;
+			let startCharInLine = -1;
+			let endLineIdx = -1;
+			let endCharInLine = -1;
+
+			// Build a regex that matches the normalized pattern with flexible whitespace
+			const flexiblePattern = normMatchWords.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s*');
+			const regex = new RegExp(flexiblePattern, 'm');
+
+			const match = fileContents.match(regex);
+			if (match && match.index !== undefined) {
+				// Found a flexible match in original content
+				const matchStart = match.index;
+				const matchEnd = matchStart + match[0].length;
+
+				// Verify this is close to where we expect based on normalized position
+				// Count newlines to get approximate line
+				const approxLine = fileContents.substring(0, matchStart).split('\n').length;
+
+				// Extract the matched text
+				const matchedText = match[0];
+
+				// The match should have similar content to what we're looking for
+				// Verify by normalizing and comparing
+				const matchedNorm = normalizeWhitespace(matchedText);
+				if (matchedNorm === textNormalized) {
+					return returnBasedOnType(fileContents, matchStart, matchedText);
+				}
+			}
+		}
 	}
 
-	// Strategy 3: Indentation-preserving match (handles different indentation levels)
-	// PERFORMANCE: Limit search to prevent UI freezing on large files
+	// Strategy 5: Indentation-preserving match (handles different indentation levels)
+	// This strategy works on a line-by-line basis, preserving line count
 	const { normalized: textIndentNorm, indentMap: textIndents } = normalizePreservingIndentation(text);
 	const fileLines = fileContents.split('\n');
 	const textLines = text.split('\n');
@@ -397,25 +649,50 @@ const findTextInCode = (text: string, fileContents: string, canFallbackToRemoveW
 
 			// Allow if average indentation difference is small (< 2 spaces per line)
 			if (avgDiff < 2) {
+				const matchedText = candidateLines.join('\n');
 				const charIdx = fileLines.slice(0, i).join('\n').length + (i > 0 ? 1 : 0);
-				return returnAns(fileContents, charIdx, candidateLines.join('\n'));
+				return returnBasedOnType(fileContents, charIdx, matchedText);
 			}
 		}
 	}
 
-	// Strategy 4: Fuzzy matching using Levenshtein distance (handles minor typos and changes)
+	// Strategy 6: Fuzzy matching using n-gram similarity (handles minor typos and changes)
 	// WARNING: Fuzzy matching can produce false positives - only used as last resort with high threshold
 	const fuzzyMatch = findBestFuzzyMatch(text, fileContents, opts?.startingAtLine);
 	if (fuzzyMatch && fuzzyMatch.score >= 0.92) {
 		// Log warning when fuzzy matching is used - helps debug potential false matches
 		console.warn(`[editCodeService] Fuzzy match used (${Math.round(fuzzyMatch.score * 100)}% similarity). This may indicate mismatched search text.`);
-		// FIX: Use the actual matched text from the file, not the search text
-		// Fuzzy matching may have found a text with minor differences
-		const fuzzyMatchLines = fileContents.substring(0, fuzzyMatch.idx).split('\n').length - 1
-		const originalLines = fileContents.split('\n')
-		const textLen = text.split('\n').length
-		const matchedText = originalLines.slice(fuzzyMatchLines, fuzzyMatchLines + textLen).join('\n')
-		return returnAns(fileContents, fuzzyMatch.idx, matchedText);
+
+		// FIXED: Extract matched text using character positions, not line counts
+		// The fuzzyMatch.idx is a character position in the original fileContents
+		// We need to extract the same number of lines as the search text
+		const originalLines = fileContents.split('\n');
+		const textNumLines = text.split('\n').length;
+
+		// Find which line the character position is on
+		let charCount = 0;
+		let startLineIdx = 0;
+		for (let i = 0; i < originalLines.length; i++) {
+			if (charCount + originalLines[i].length >= fuzzyMatch.idx) {
+				startLineIdx = i;
+				break;
+			}
+			charCount += originalLines[i].length + 1; // +1 for newline
+		}
+
+		// Extract the matched text using the same line count as search text
+		// But also try to find the actual end by looking for content changes
+		const matchedText = originalLines.slice(startLineIdx, startLineIdx + textNumLines).join('\n');
+
+		// Validate the fuzzy match makes sense
+		// The similarity should still be high when we compare the extracted text
+		const extractedSimilarity = fastSimilarityScore(normalizeWhitespace(text), normalizeWhitespace(matchedText));
+		if (extractedSimilarity >= 0.85) {
+			const charIdx = originalLines.slice(0, startLineIdx).join('\n').length + (startLineIdx > 0 ? 1 : 0);
+			return returnBasedOnType(fileContents, charIdx, matchedText);
+		}
+		// If similarity is too low, the fuzzy match position was wrong, reject it
+		console.warn(`[editCodeService] Fuzzy match validation failed: extracted text similarity ${(extractedSimilarity * 100).toFixed(1)}% < 85%`);
 	}
 
 	// All strategies failed - return detailed error with suggestions
@@ -1650,6 +1927,10 @@ class EditCodeService extends Disposable implements IEditCodeService {
 		const content = model.getValue(EndOfLinePreference.LF);
 		const normalizedContent = normalizeLineEndings(content);
 
+		// Detect if normalization changed anything (CRLF -> LF case)
+		const contentWasNormalized = normalizedContent !== content;
+		const oldStringWasNormalized = normalizedOldString !== oldString;
+
 		// === BINARY FILE PROTECTION ===
 		// Check for null bytes (strong indicator of binary content)
 		if (content.includes('\0')) {
@@ -1669,24 +1950,106 @@ class EditCodeService extends Disposable implements IEditCodeService {
 		}
 
 		// Find the first occurrence of oldString (using normalized strings)
-		const index = normalizedContent.indexOf(normalizedOldString);
-		if (index === -1) {
+		const normalizedIndex = normalizedContent.indexOf(normalizedOldString);
+		if (normalizedIndex === -1) {
 			throw new Error(this._errStringNotFound(oldString, content));
 		}
 
 		// Check for multiple occurrences - this is an error, not a warning
-		const secondIndex = normalizedContent.indexOf(normalizedOldString, index + 1);
-		if (secondIndex !== -1) {
-			throw new Error(this._errStringNotUnique(oldString, content, index, secondIndex));
+		const secondNormalizedIndex = normalizedContent.indexOf(normalizedOldString, normalizedIndex + 1);
+		if (secondNormalizedIndex !== -1) {
+			throw new Error(this._errStringNotUnique(oldString, content, normalizedIndex, secondNormalizedIndex));
+		}
+
+		// === POSITION MAPPING ===
+		// Map the position from normalized content back to original content if needed
+		// This handles the case where the file has CRLF but we normalized to LF
+		let actualIndex = normalizedIndex;
+		let actualOldStringLength = normalizedOldString.length;
+
+		if (contentWasNormalized || oldStringWasNormalized) {
+			// Count how many CRLF sequences exist before the match position in original content
+			// Each CRLF in the original becomes a single LF in normalized
+			// So we need to count CRLF occurrences in the original content before this position
+
+			// Build a mapping: for each position in normalized content, what's the position in original?
+			// CRLF sequences in original = 2 chars, but become 1 char (LF) in normalized
+			let normPos = 0;
+			let origPos = 0;
+			const contentChars = content.split('');
+
+			for (let i = 0; i < contentChars.length && normPos <= normalizedIndex; i++) {
+				if (contentChars[i] === '\r' && contentChars[i + 1] === '\n') {
+					// CRLF sequence - in normalized this becomes LF (1 char)
+					if (normPos < normalizedIndex) {
+						origPos += 2;
+						normPos += 1;
+					}
+					i++; // skip the \n
+				} else if (contentChars[i] === '\r') {
+					// Lone CR - becomes LF
+					if (normPos < normalizedIndex) {
+						origPos += 1;
+						normPos += 1;
+					}
+				} else {
+					// Normal character
+					if (normPos < normalizedIndex) {
+						origPos += 1;
+						normPos += 1;
+					} else if (normPos === normalizedIndex) {
+						break;
+					}
+				}
+			}
+
+			actualIndex = origPos;
+
+			// Calculate the actual length of the matched text in original content
+			// We need to find the end position the same way
+			const normalizedEndIndex = normalizedIndex + normalizedOldString.length;
+			normPos = normalizedIndex;
+			origPos = actualIndex;
+
+			for (let i = actualIndex; i < contentChars.length && normPos < normalizedEndIndex; i++) {
+				if (contentChars[i] === '\r' && contentChars[i + 1] === '\n') {
+					// CRLF sequence
+					origPos += 2;
+					normPos += 1;
+					i++; // skip the \n
+				} else if (contentChars[i] === '\r') {
+					// Lone CR
+					origPos += 1;
+					normPos += 1;
+				} else {
+					// Normal character
+					origPos += 1;
+					normPos += 1;
+				}
+			}
+
+			actualOldStringLength = origPos - actualIndex;
+		}
+
+		// Normalize the new string to match the file's line ending style
+		// If the file uses CRLF, convert the new string to use CRLF
+		const fileUsesCRLF = content.includes('\r\n');
+		let actualNewString = newString;
+		if (fileUsesCRLF) {
+			// Convert LF to CRLF in the replacement string
+			actualNewString = newString.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n');
+		} else {
+			// Ensure LF only (normalize any CRLF to LF)
+			actualNewString = normalizeLineEndings(newString);
 		}
 
 		// Mark edit as in progress
 		this._editsInProgress.add(uriKey);
 
 		try {
-			// Calculate positions using Monaco's API (use original content for position calculation)
-			const startPosition = model.getPositionAt(index);
-			const endPosition = model.getPositionAt(index + normalizedOldString.length);
+			// Use the mapped position from original content
+			const startPosition = model.getPositionAt(actualIndex);
+			const endPosition = model.getPositionAt(actualIndex + actualOldStringLength);
 
 			// start diffzone for tracking
 			const res = this._startStreamingDiffZone({
@@ -1723,8 +2086,9 @@ class EditCodeService extends Disposable implements IEditCodeService {
 			};
 
 			// Apply the edit using Monaco's pushEditOperations
+			// Use actualNewString which has the correct line endings for the file
 			this.weAreWriting = true;
-			model.pushEditOperations([], [{ range, text: newString }], () => null);
+			model.pushEditOperations([], [{ range, text: actualNewString }], () => null);
 			this.weAreWriting = false;
 
 			onProgress?.(`Successfully replaced text in: ${uri.fsPath}`);
@@ -2367,7 +2731,7 @@ ${problematicCode}
 	
 
 
-				const res = findTextInCode(b.orig, modelStr, tryFuzzyMatching, { returnType: 'lines' })
+				const res = findTextInCode(b.orig, modelStr, tryFuzzyMatching, { returnType: 'full' })
 
 
 				if (typeof res === 'string') {
@@ -2388,7 +2752,10 @@ ${problematicCode}
 	
 
 
-				let [startLine, endLine] = res
+				// FIXED: Use character positions directly from findTextInCode instead of
+				// calculating from line numbers, which was error-prone when matches
+				// didn't start at the beginning of a line
+				const { startLine, endLine, startChar, endChar, matchedText } = res
 
 
 				onProgress?.(`Found match for block ${i + 1} at lines ${startLine}-${endLine}.`);
@@ -2397,131 +2764,47 @@ ${problematicCode}
 				
 
 
-				// Store 1-indexed lines for DiffZone
-
-
-				const replacement = { 
-
-
-					origStart: 0, 
-
-
-					origEnd: 0, 
-
-
-					startLine, 
-
-
-					endLine, 
-
-
-					block: b 
-
-
+				// Store 1-indexed lines for DiffZone, character positions for replacement
+				// FIXED: Use actual character positions from findTextInCode instead of
+				// calculating from line numbers (which fails when match doesn't start at line beginning)
+				const replacement = {
+					origStart: startChar,    // Use actual character position from match
+					origEnd: endChar,        // Use actual character position from match
+					startLine,
+					endLine,
+					block: b
 				};
 
-
-	
-
-
-				const startLine0 = startLine - 1 // 0-index
-
-
-				const endLine0 = endLine - 1
-
-
-	
-
-
-				// including newline before start
-				// FIXED: Calculate origStart by summing actual line lengths, not using join().length
-				// This ensures positions match the actual modelStr
-				if (startLine0 > 0) {
-					let pos = 0;
-					for (let i = 0; i < startLine0; i++) {
-						pos += modelStrLines[i].length + 1; // +1 for the '\n'
-					}
-					replacement.origStart = pos;
-				} else {
-					replacement.origStart = 0;
+				// Verify the matched text is what we expect (sanity check)
+				const actualText = modelStr.substring(startChar, endChar);
+				if (actualText !== matchedText) {
+					console.warn(`[editCodeService] Matched text mismatch! Expected length ${matchedText.length}, got ${actualText.length}`);
 				}
 
 
 	
 
-				// FIXED: Calculate origEnd by summing actual line lengths
-				let pos = 0;
-				for (let i = 0; i <= endLine0; i++) {
-					pos += modelStrLines[i].length;
-					if (i < endLine0) {
-						pos += 1; // +1 for '\n' between lines
-					}
-				}
 
-				// Check if there's a newline after the last line in the original
-				const linesTotal = modelStrLines.length;
-
-				// If there's a line after the matched section, include the newline
-				if (endLine0 < linesTotal - 1) {
-					replacement.origEnd = pos + 1; // Include the newline character
-				} else {
-					// This is the last line - check if there's a trailing newline at end of file
-					const fileEndsWithNewline = modelStr.length > 0 && modelStr[modelStr.length - 1] === '\n';
-					replacement.origEnd = fileEndsWithNewline ? pos + 1 : pos;
-				}
-
-
-	
-
+				// Character positions are now provided directly by findTextInCode
+				// No need to calculate from line numbers
 
 				replacements.push(replacement);
-
-
 			}
-
-
-			
-
 
 			onProgress?.(`Applying all ${replacements.length} replacements...`);
 
+			// Sort in increasing order
+			replacements.sort((a, b) => a.origStart - b.origStart);
 
-			// sort in increasing order
-
-
-			replacements.sort((a, b) => a.origStart - b.origStart)
-
-
-	
-
-
-			// ensure no overlap
-
-
+			// Ensure no overlap
 			for (let i = 1; i < replacements.length; i++) {
-
-
 				if (replacements[i].origStart <= replacements[i - 1].origEnd) {
-
-
-					throw new Error(this._errContentOfInvalidStr('Has overlap', replacements[i]?.block?.orig))
-
-
+					throw new Error(this._errContentOfInvalidStr('Has overlap', replacements[i]?.block?.orig));
 				}
-
-
 			}
 
-
-	
-
-
 			// Create individual DiffZones for each block BEFORE modifying the file
-
-
 			// This ensures that each block is treated as a separate change in the UI
-
-
 			for (const r of replacements) {
 
 

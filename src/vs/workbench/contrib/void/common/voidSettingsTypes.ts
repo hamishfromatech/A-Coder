@@ -106,6 +106,9 @@ export const displayInfoOfProviderName = (providerName: ProviderName): DisplayIn
 	else if (providerName === 'awsBedrock') {
 		return { title: 'AWS Bedrock', }
 	}
+	else if (providerName === 'aCoder') {
+		return { title: 'A-Coder', desc: 'Free models with sign-in' }
+	}
 
 	throw new Error(`descOfProviderName: Unknown provider name: "${providerName}"`)
 }
@@ -128,6 +131,7 @@ export const subTextMdOfProviderName = (providerName: ProviderName): string => {
 	if (providerName === 'vLLM') return 'Read more about custom [Endpoints here](https://docs.vllm.ai/en/latest/getting_started/quickstart.html#openai-compatible-server).'
 	if (providerName === 'lmStudio') return 'Read more about custom [Endpoints here](https://lmstudio.ai/docs/app/api/endpoints/openai).'
 	if (providerName === 'liteLLM') return 'Read more about endpoints [here](https://docs.litellm.ai/docs/providers/openai_compatible).'
+	if (providerName === 'aCoder') return 'Sign in with Google or GitHub to use A-Coder models for free.'
 
 	throw new Error(`subTextMdOfProviderName: Unknown provider name: "${providerName}"`)
 }
@@ -351,6 +355,13 @@ export const defaultSettingsOfProvider: SettingsOfProvider = {
 		...defaultProviderSettings.awsBedrock,
 		...modelInfoOfDefaultModelNames(defaultModelsOfProvider.awsBedrock),
 		_didFillInProviderSettings: undefined,
+	},
+	aCoder: { // free models with OAuth sign-in
+		...defaultCustomSettings,
+		...defaultProviderSettings.aCoder,
+		...modelInfoOfDefaultModelNames(defaultModelsOfProvider.aCoder),
+		// aCoder doesn't require user to fill in settings - authentication is handled via OAuth
+		_didFillInProviderSettings: true,
 	},
 }
 

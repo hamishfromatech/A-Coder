@@ -65,6 +65,11 @@ export const defaultProviderSettings = {
 		region: 'us-east-1', // add region setting
 		endpoint: '', // optionally allow overriding default
 	},
+	// A-Coder provider - free models with OAuth sign-in
+	// No user-configurable settings - base URL and API key managed server-side
+	aCoder: {
+		// No settings - managed internally via OAuth
+	},
 
 } as const
 
@@ -154,6 +159,8 @@ export const defaultModelsOfProvider = {
 	microsoftAzure: [],
 	awsBedrock: [],
 	liteLLM: [],
+	// A-Coder models are populated dynamically from API after OAuth authentication
+	aCoder: [],
 
 
 } as const satisfies Record<ProviderName, string[]>
@@ -1921,6 +1928,25 @@ const openRouterSettings: VoidStaticProviderInfo = {
 }
 
 
+// ---------------- A-CODER ----------------
+// A-Coder uses OpenAI-compatible API at https://llm.chutes.ai/v1
+// Models are fetched dynamically after OAuth authentication
+const aCoderSettings: VoidStaticProviderInfo = {
+	modelOptions: {},
+	modelOptionsFallback: (modelName) => {
+		// Use the extensive fallback for unknown models
+		const res = extensiveModelOptionsFallback(modelName)
+		if (res) res.specialToolFormat = 'openai-style'
+		return res
+	},
+	providerReasoningIOSettings: {
+		// A-Coder supports OpenAI-style reasoning
+		input: { includeInPayload: openAICompatIncludeInPayloadReasoning },
+		output: { nameOfFieldInDelta: 'reasoning_content' },
+	},
+}
+
+
 
 
 
@@ -1949,6 +1975,8 @@ const modelSettingsOfProvider: { [providerName in ProviderName]: VoidStaticProvi
 	googleVertex: googleVertexSettings,
 	microsoftAzure: microsoftAzureSettings,
 	awsBedrock: awsBedrockSettings,
+	// A-Coder - free models with OAuth sign-in
+	aCoder: aCoderSettings,
 } as const
 
 
