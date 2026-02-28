@@ -1956,6 +1956,12 @@ const ChatBubble = React.memo((props: ChatBubbleProps) => {
 	return <ErrorBoundary>
 		<_ChatBubble {...props} />
 	</ErrorBoundary>
+}, (prevProps, nextProps) => {
+	// Always re-render during streaming (isCommitted=false) to show incremental updates
+	if (!nextProps.isCommitted) return false;
+	// For committed messages, use default comparison
+	return prevProps.chatMessage.displayContent === nextProps.chatMessage.displayContent &&
+		prevProps.chatMessage.reasoning === nextProps.chatMessage.reasoning;
 })
 
 const _ChatBubble = ({ threadId, chatMessage, currCheckpointIdx, isCommitted, messageIdx, chatIsRunning, _scrollToBottom }: ChatBubbleProps) => {
@@ -2464,36 +2470,11 @@ export const SidebarChat = () => {
 	const currThreadStreamState = useChatThreadsStreamState(chatThreadsState.currentThreadId)
 	const isRunning = currThreadStreamState?.isRunning
 	const latestError = currThreadStreamState?.error
-	const { displayContentSoFar, toolCallsSoFar, reasoningSoFar, _rawTextBeforeStripping, reactPhase, textDelta, reasoningDelta } = currThreadStreamState?.llmInfo ?? {}
+	const { displayContentSoFar, toolCallsSoFar, reasoningSoFar, _rawTextBeforeStripping, reactPhase } = currThreadStreamState?.llmInfo ?? {}
 
-	// Local accumulation of streaming chunks for immediate rendering
-	const [localDisplayContent, setLocalDisplayContent] = useState('')
-	const [localReasoning, setLocalReasoning] = useState('')
-
-	// Accumulate chunks when they arrive
-	useEffect(() => {
-		if (textDelta) {
-			setLocalDisplayContent(prev => prev + textDelta)
-		}
-	}, [textDelta])
-
-	useEffect(() => {
-		if (reasoningDelta) {
-			setLocalReasoning(prev => prev + reasoningDelta)
-		}
-	}, [reasoningDelta])
-
-	// Reset local state when streaming starts/stops
-	useEffect(() => {
-		if (isRunning === 'LLM' && !displayContentSoFar) {
-			setLocalDisplayContent('')
-			setLocalReasoning('')
-		}
-	}, [isRunning, displayContentSoFar])
-
-	// Use local accumulated content for streaming, fallback to accumulated content
-	const streamingDisplayContent = isRunning === 'LLM' ? localDisplayContent : displayContentSoFar
-	const streamingReasoning = isRunning === 'LLM' ? localReasoning : reasoningSoFar
+	// Use displayContentSoFar directly for streaming
+	const streamingDisplayContent = displayContentSoFar ?? ''
+	const streamingReasoning = reasoningSoFar ?? ''
 
 		// this is just if it's currently being generated, NOT if it's currently running
 		const toolIsGenerating = !!(toolCallsSoFar && toolCallsSoFar.some(tc => !tc.isDone)) // show loading for slow tools (right now just edit)
@@ -2776,15 +2757,16 @@ export const SidebarChat = () => {
 
 
 
-	// PERFORMANCE: Virtualization - limit rendered messages to prevent UI freezing
-	const MAX_VISIBLE_MESSAGES = 50; // Only render last 50 messages initially
+	// PERFORMANCE: Virtualization - render messages on demand using intersection observer
+	const MAX_VISIBLE_MESSAGES = 30; // Reduced from 50 for better performance
+	const MAX_RENDER_BUFFER = 10; // Extra messages to render above/below viewport
 	const [showAllMessages, setShowAllMessages] = useState(false);
+	const [visibleRange, setVisibleRange] = useState({ start: 0, end: MAX_VISIBLE_MESSAGES + MAX_RENDER_BUFFER });
 
-	const previousMessagesHTML = useMemo(() => {
-		// const lastMessageIdx = previousMessages.findLastIndex(v => v.role !== 'checkpoint')
-		// tool request shows up as Editing... if in progress
-		const filteredMessages = previousMessages
-			.map((message, originalIdx) => ({ message, originalIdx })) // Preserve original index
+	// Memoize filtered messages to prevent recalculation
+	const filteredMessages = useMemo(() => {
+		return previousMessages
+			.map((message, originalIdx) => ({ message, originalIdx }))
 			.filter(({ message }) => {
 				// Filter out assistant messages that are truly empty (no content AND no reasoning)
 				if (message.role === 'assistant') {
@@ -2796,44 +2778,126 @@ export const SidebarChat = () => {
 				}
 				return true;
 			});
+	}, [previousMessages]);
 
-		// PERFORMANCE: Only render recent messages unless user requests all
-		const shouldVirtualize = !showAllMessages && filteredMessages.length > MAX_VISIBLE_MESSAGES;
-		const messagesToRender = shouldVirtualize
-			? filteredMessages.slice(-MAX_VISIBLE_MESSAGES)
-			: filteredMessages;
-		const hiddenCount = filteredMessages.length - messagesToRender.length;
+	// Update visible range based on scroll position
+	const updateVisibleRange = useCallback(() => {
+		if (!scrollContainerRef.current || showAllMessages) return;
 
-		const messageElements = messagesToRender.map(({ message, originalIdx }) => {
-			return <div key={originalIdx} className="mb-4 flex flex-col" data-message-idx={originalIdx}>
-				<ChatBubble
-					currCheckpointIdx={currCheckpointIdx}
-					chatMessage={message}
-					messageIdx={originalIdx}
-					isCommitted={true}
-					chatIsRunning={isRunning}
-					threadId={threadId}
-					_scrollToBottom={() => scrollToBottom(scrollContainerRef)}
-				/>
-			</div>
+		const container = scrollContainerRef.current;
+		const containerRect = container.getBoundingClientRect();
+		const messageElements = container.querySelectorAll('[data-message-idx]');
+
+		let firstVisible = -1;
+		let lastVisible = -1;
+
+		messageElements.forEach((el, idx) => {
+			const rect = el.getBoundingClientRect();
+			const isVisible = rect.bottom > containerRect.top && rect.top < containerRect.bottom;
+			if (isVisible) {
+				if (firstVisible === -1) firstVisible = idx;
+				lastVisible = idx;
+			}
 		});
 
-		// Add "Load more" button if messages are hidden
-		if (hiddenCount > 0) {
-			messageElements.unshift(
-				<div key="load-more" className="mb-4 flex justify-center">
+		if (firstVisible !== -1) {
+			setVisibleRange(prev => {
+				const newStart = Math.max(0, firstVisible - MAX_RENDER_BUFFER);
+				const newEnd = Math.min(filteredMessages.length, lastVisible + MAX_RENDER_BUFFER + 1);
+				// Only update if range changed significantly
+				if (Math.abs(newStart - prev.start) > 3 || Math.abs(newEnd - prev.end) > 3) {
+					return { start: newStart, end: newEnd };
+				}
+				return prev;
+			});
+		}
+	}, [filteredMessages.length, showAllMessages, scrollContainerRef]);
+
+	// Throttled scroll handler with cleanup
+	useEffect(() => {
+		if (showAllMessages) return;
+		const container = scrollContainerRef.current;
+		if (!container) return;
+
+		let timeout: number | null = null;
+		const handleScroll = () => {
+			if (timeout) return;
+			timeout = window.setTimeout(() => {
+				updateVisibleRange();
+				timeout = null;
+			}, 150); // Throttle to 150ms
+		};
+
+		container.addEventListener('scroll', handleScroll, { passive: true });
+		updateVisibleRange(); // Initial calculation
+
+		return () => {
+			container.removeEventListener('scroll', handleScroll);
+			if (timeout) window.clearTimeout(timeout);
+		};
+	}, [updateVisibleRange, showAllMessages, scrollContainerRef]);
+
+	const previousMessagesHTML = useMemo(() => {
+		// PERFORMANCE: Only render visible messages + buffer
+		const shouldVirtualize = !showAllMessages && filteredMessages.length > MAX_VISIBLE_MESSAGES;
+		const messagesToRender = shouldVirtualize
+			? filteredMessages.slice(visibleRange.start, visibleRange.end)
+			: filteredMessages;
+		const hiddenAbove = shouldVirtualize ? visibleRange.start : 0;
+		const hiddenBelow = shouldVirtualize ? filteredMessages.length - visibleRange.end : 0;
+
+		// Placeholder for hidden messages above
+		const elements: React.ReactNode[] = [];
+		if (hiddenAbove > 0) {
+			elements.push(
+				<div key="hidden-above" className="mb-4 text-center text-void-fg-4 text-sm py-4 opacity-60">
+					↑ {hiddenAbove} earlier messages (scroll up to view)
+				</div>
+			);
+		}
+
+		// Render visible messages
+		messagesToRender.forEach(({ message, originalIdx }) => {
+			elements.push(
+				<div key={originalIdx} className="mb-4 flex flex-col" data-message-idx={originalIdx}>
+					<ChatBubble
+						currCheckpointIdx={currCheckpointIdx}
+						chatMessage={message}
+						messageIdx={originalIdx}
+						isCommitted={true}
+						chatIsRunning={isRunning}
+						threadId={threadId}
+						_scrollToBottom={() => scrollToBottom(scrollContainerRef)}
+					/>
+				</div>
+			);
+		});
+
+		// Placeholder for hidden messages below
+		if (hiddenBelow > 0) {
+			elements.push(
+				<div key="hidden-below" className="mb-4 text-center text-void-fg-4 text-sm py-4 opacity-60">
+					↓ {hiddenBelow} newer messages (scroll down to view)
+				</div>
+			);
+		}
+
+		// Add "Load all" button if many messages
+		if (shouldVirtualize && filteredMessages.length > MAX_VISIBLE_MESSAGES * 2) {
+			elements.push(
+				<div key="load-all" className="mb-4 flex justify-center">
 					<button
 						onClick={() => setShowAllMessages(true)}
 						className="px-4 py-2 text-sm text-void-fg-3 hover:text-void-fg-1 bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2 rounded-lg transition-colors"
 					>
-						Load {hiddenCount} earlier messages
+						Load all {filteredMessages.length} messages
 					</button>
 				</div>
 			);
 		}
 
-		return messageElements;
-	}, [previousMessages, threadId, currCheckpointIdx, isRunning, showAllMessages])
+		return elements;
+	}, [filteredMessages, visibleRange, showAllMessages, currCheckpointIdx, isRunning, threadId, scrollContainerRef])
 
 	// Reset showAllMessages when thread changes
 	useEffect(() => {

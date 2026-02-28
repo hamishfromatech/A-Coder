@@ -52,7 +52,8 @@ export const AUTO_CONTINUE_CHAR_THRESHOLD = 200; // Still used by UI auto-contin
 
 // MEMORY OPTIMIZATION: Maximum messages per thread to prevent unbounded memory growth
 // Each message can be several KB with tool results, images, etc.
-const MAX_MESSAGES_PER_THREAD = 15;
+// Increased from 15 to 100 with UI virtualization for performance
+const MAX_MESSAGES_PER_THREAD = 100;
 
 // MEMORY OPTIMIZATION: Maximum checkpoints per thread to prevent memory bloat
 const MAX_CHECKPOINTS_PER_THREAD = 5;
