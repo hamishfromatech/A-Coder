@@ -577,15 +577,78 @@ const RenderToken = React.memo(({ token, inPTag, codeURI, chatMessageLocation, t
 })
 
 
-export const ChatMarkdownRender = ({ string, inPTag = false, chatMessageLocation, isStreaming = false, ...options }: { string: string, inPTag?: boolean, codeURI?: URI, chatMessageLocation: ChatMessageLocation | undefined, isStreaming?: boolean } & RenderTokenOptions) => {
-	// During streaming, render plain text to avoid malformed markdown from incomplete chunks
-	// This is what ChatGPT, Claude, and other AI chatbots do
-	if (isStreaming) {
+// Helper to detect and fix incomplete markdown during streaming
+const preprocessStreamingMarkdown = (text: string): { processedText: string; hasIncompleteCodeBlock: boolean } => {
+	// Count code block delimiters
+	const codeBlockMatches = text.match(/```/g);
+	const codeBlockCount = codeBlockMatches ? codeBlockMatches.length : 0;
+	const hasIncompleteCodeBlock = codeBlockCount % 2 !== 0;
+
+	// If there's an incomplete code block, add a closing delimiter
+	let processedText = text;
+	if (hasIncompleteCodeBlock) {
+		processedText = text + '\n```';
+	}
+
+	return { processedText, hasIncompleteCodeBlock };
+}
+
+// Component to render streaming markdown with proper handling of incomplete structures
+const StreamingMarkdownRender = ({ string, inPTag, chatMessageLocation, ...options }: { string: string, inPTag?: boolean, chatMessageLocation: ChatMessageLocation | undefined } & RenderTokenOptions) => {
+	const { processedText, hasIncompleteCodeBlock } = useMemo(() => preprocessStreamingMarkdown(string), [string]);
+
+	const tokens = useMemo(() => {
+		try {
+			return marked.lexer(processedText);
+		} catch (e) {
+			// If parsing fails, return empty array and fall back to plain text
+			console.warn('Markdown parsing error during streaming:', e);
+			return [];
+		}
+	}, [processedText]);
+
+	// If no tokens were parsed, render as plain text
+	if (tokens.length === 0) {
 		return <span className="whitespace-pre-wrap">{string}</span>;
 	}
 
+	// Generate a stable key prefix based on content hash for better React reconciliation
+	const contentHash = string.length;
+
+	return (
+		<>
+			{tokens.map((token, index) => {
+				// Create a more stable key using token type and index
+				// This helps React maintain component state across re-renders
+				const tokenKey = `${contentHash}-${token.type}-${index}`;
+
+				return <RenderToken
+					key={tokenKey}
+					token={token}
+					inPTag={inPTag}
+					chatMessageLocation={chatMessageLocation}
+					tokenIdx={index + ''}
+					{...options}
+				/>
+			})}
+		</>
+	);
+}
+
+export const ChatMarkdownRender = ({ string, inPTag = false, chatMessageLocation, isStreaming = false, ...options }: { string: string, inPTag?: boolean, codeURI?: URI, chatMessageLocation: ChatMessageLocation | undefined, isStreaming?: boolean } & RenderTokenOptions) => {
 	// Safety check: ensure string is defined
 	const safeString = string?.replaceAll('\n•', '\n\n•') || '';
+
+	// During streaming, use streaming-aware markdown rendering
+	if (isStreaming) {
+		return <StreamingMarkdownRender
+			string={safeString}
+			inPTag={inPTag}
+			chatMessageLocation={chatMessageLocation}
+			{...options}
+		/>;
+	}
+
 	const tokens = useMemo(() => marked.lexer(safeString), [safeString]); // https://marked.js.org/using_pro#renderer
 	return (
 		<>

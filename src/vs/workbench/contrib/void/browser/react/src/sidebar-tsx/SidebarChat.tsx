@@ -1483,6 +1483,7 @@ const AssistantMessageComponent = React.memo(({ chatMessage, isCheckpointGhost, 
 										chatMessageLocation={chatMessageLocation}
 										isApplyEnabled={false}
 										isLinkDetectionEnabled={true}
+										isStreaming={!isCommitted}
 									/>
 								</SmallProseWrapper>
 							</ReasoningWrapper>
@@ -2460,8 +2461,12 @@ export const SidebarChat = () => {
 	// threads state
 	const chatThreadsState = useChatThreadsState()
 
-	const currentThread = chatThreadsService.getCurrentThread()
-	const previousMessages = currentThread?.messages ?? []
+	const currentThread = chatThreadsState.allThreads[chatThreadsState.currentThreadId]
+	// Maintain same invariant as chatThreadsService.getCurrentThread() - thread should always exist
+	if (!currentThread) {
+		throw new Error('Current thread should never be undefined')
+	}
+	const previousMessages = currentThread.messages ?? []
 
 	const selections = currentThread.state.stagingSelections
 	const setSelections = (s: StagingSelectionItem[]) => { chatThreadsService.setCurrentThreadState({ stagingSelections: s }) }
