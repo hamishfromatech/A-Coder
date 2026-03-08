@@ -251,26 +251,17 @@ const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName, includ
 		const thisConfig = settingsOfProvider[providerName]
 		return new OpenAI({ baseURL: 'https://api.mistral.ai/v1', apiKey: thisConfig.apiKey, ...commonPayloadOpts })
 	}
-	// A-CODER OAUTH DISABLED - Commented out to prevent memory leaks
-	// else if (providerName === 'aCoder') {
-	// 	// A-Coder uses OAuth authentication - requests go through A-Coder's backend
-	// 	// which proxies to chutes.ai with the master API key (user never sees it)
-	// 	const sessionToken = getACoderSessionToken()
-	// 	if (!sessionToken) {
-	// 		throw new Error('A-Coder requires authentication. Please sign in with Google or GitHub in Settings.')
-	// 	}
-	// 	// Use A-Coder's backend which proxies requests to chutes.ai
-	// 	// The session token authenticates the user, backend adds the master API key
-	// 	return new OpenAI({
-	// 		baseURL: ACODER_API_URL, // A-Coder backend (proxies to chutes.ai)
-	// 		apiKey: sessionToken, // Session token from OAuth
-	// 		defaultHeaders: {
-	// 			'HTTP-User-Agent': 'A-Coder/1.0.0',
-	// 		},
-	// 		timeout: 120000,
-	// 		...commonPayloadOpts
-	// 	})
-	// }
+	else if (providerName === 'aCoder') {
+		const thisConfig = settingsOfProvider[providerName]
+		return new OpenAI({
+			baseURL: 'https://provider.atech.industries/v1',
+			apiKey: thisConfig.apiKey,
+			defaultHeaders: {
+				'HTTP-User-Agent': 'A-Coder/1.0.0',
+			},
+			...commonPayloadOpts
+		})
+	}
 
 	else throw new Error(`Provider "${providerName}" is not supported.`)
 }
@@ -1590,6 +1581,11 @@ export const sendLLMMessageToProviderImplementation = {
 		sendChat: (params) => _sendOpenAICompatibleChat(params),
 		sendFIM: null,
 		list: null,
+	},
+	aCoder: {
+		sendChat: (params) => _sendOpenAICompatibleChat(params),
+		sendFIM: null,
+		list: (params) => _openaiCompatibleList(params),
 	},
 } satisfies CallFnOfProvider
 

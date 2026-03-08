@@ -65,11 +65,9 @@ export const defaultProviderSettings = {
 		region: 'us-east-1', // add region setting
 		endpoint: '', // optionally allow overriding default
 	},
-	// DISABLED: A-Coder provider - free models with OAuth sign-in
-	// No user-configurable settings - base URL and API key managed server-side
-	// aCoder: {
-	// 	// No settings - managed internally via OAuth
-	// },
+	aCoder: {
+		apiKey: '',
+	},
 
 } as const
 
@@ -159,8 +157,12 @@ export const defaultModelsOfProvider = {
 	microsoftAzure: [],
 	awsBedrock: [],
 	liteLLM: [],
-	// DISABLED: A-Coder OAuth provider
-	// aCoder: [],
+	aCoder: [
+		'claude-sonnet-4-20250514',
+		'claude-3-5-sonnet-20241022',
+		'claude-3-5-haiku-20241022',
+		'claude-opus-4-20250514',
+	],
 
 
 } as const satisfies Record<ProviderName, string[]>
@@ -1928,10 +1930,50 @@ const openRouterSettings: VoidStaticProviderInfo = {
 }
 
 
-// DISABLED: A-Coder OAuth provider - commented out to prevent memory leaks
-/*
+// A-Coder provider - OpenAI-compatible API at https://provider.atech.industries/v1
 const aCoderSettings: VoidStaticProviderInfo = {
-	modelOptions: {},
+	modelOptions: {
+		'claude-sonnet-4-20250514': {
+			supportsFIM: false,
+			supportsSystemMessage: 'system-role',
+			specialToolFormat: 'openai-style',
+			contextWindow: 200_000,
+			reservedOutputTokenSpace: 16_000,
+			cost: { input: 3.00 / 1_000_000, output: 15.00 / 1_000_000 },
+			downloadable: false,
+			reasoningCapabilities: { supportsReasoning: true, canTurnOffReasoning: true, canIOReasoning: true, reasoningSlider: { type: 'budget_slider', min: 1024, max: 16000, default: 4096 } },
+		},
+		'claude-opus-4-20250514': {
+			supportsFIM: false,
+			supportsSystemMessage: 'system-role',
+			specialToolFormat: 'openai-style',
+			contextWindow: 200_000,
+			reservedOutputTokenSpace: 32_000,
+			cost: { input: 15.00 / 1_000_000, output: 75.00 / 1_000_000 },
+			downloadable: false,
+			reasoningCapabilities: { supportsReasoning: true, canTurnOffReasoning: true, canIOReasoning: true, reasoningSlider: { type: 'budget_slider', min: 1024, max: 32000, default: 4096 } },
+		},
+		'claude-3-5-sonnet-20241022': {
+			supportsFIM: false,
+			supportsSystemMessage: 'system-role',
+			specialToolFormat: 'openai-style',
+			contextWindow: 200_000,
+			reservedOutputTokenSpace: 8_192,
+			cost: { input: 3.00 / 1_000_000, output: 15.00 / 1_000_000 },
+			downloadable: false,
+			reasoningCapabilities: false,
+		},
+		'claude-3-5-haiku-20241022': {
+			supportsFIM: false,
+			supportsSystemMessage: 'system-role',
+			specialToolFormat: 'openai-style',
+			contextWindow: 200_000,
+			reservedOutputTokenSpace: 8_192,
+			cost: { input: 0.80 / 1_000_000, output: 4.00 / 1_000_000 },
+			downloadable: false,
+			reasoningCapabilities: false,
+		},
+	},
 	modelOptionsFallback: (modelName) => {
 		// Use the extensive fallback for unknown models
 		const res = extensiveModelOptionsFallback(modelName)
@@ -1944,22 +1986,6 @@ const aCoderSettings: VoidStaticProviderInfo = {
 		output: { nameOfFieldInDelta: 'reasoning_content' },
 	},
 }
-*/
-
-// DISABLED: A-Coder OAuth provider - commented out to prevent memory leaks
-// This stub is kept to satisfy TypeScript but is never used
-/*
-const aCoderSettings: VoidStaticProviderInfo = {
-	modelOptions: {},
-	modelOptionsFallback: (_modelName) => {
-		return null
-	},
-	providerReasoningIOSettings: {
-		input: { includeInPayload: () => ({}) },
-		output: { nameOfFieldInDelta: undefined },
-	},
-}
-*/
 
 
 
@@ -1990,8 +2016,7 @@ const modelSettingsOfProvider: { [providerName in ProviderName]: VoidStaticProvi
 	googleVertex: googleVertexSettings,
 	microsoftAzure: microsoftAzureSettings,
 	awsBedrock: awsBedrockSettings,
-	// DISABLED: A-Coder OAuth provider - commented out to prevent memory leaks
-	// aCoder: aCoderSettings,
+	aCoder: aCoderSettings,
 } as const
 
 

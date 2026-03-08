@@ -587,7 +587,7 @@ export const AgentManager = ({ className }: { className: string }) => {
 
 	return (
 		<div className={`@@void-scope ${isDark ? 'dark' : ''}`} style={{ height: '100%', width: '100%' }}>
-			<div className="absolute inset-0 flex flex-col bg-void-bg-3 text-void-fg-1 overflow-hidden font-sans select-none antialiased">
+			<div className="absolute inset-0 flex flex-col bg-void-bg-3 text-void-fg-1 overflow-hidden font-sans antialiased">
 				{/* Header */}
 				<div className="h-16 border-b border-void-border-2 flex items-center justify-between px-6 flex-shrink-0 bg-void-bg-2/60 backdrop-blur-xl z-50">
 					<div className="flex items-center gap-4">

@@ -106,10 +106,9 @@ export const displayInfoOfProviderName = (providerName: ProviderName): DisplayIn
 	else if (providerName === 'awsBedrock') {
 		return { title: 'AWS Bedrock', }
 	}
-	// DISABLED: A-Coder OAuth provider - commented out to prevent memory leaks
-	// else if (providerName === 'aCoder') {
-	// 	return { title: 'A-Coder', desc: 'Free models with sign-in' }
-	// }
+	else if (providerName === 'aCoder') {
+		return { title: 'A-Coder', desc: 'Cloud-hosted AI models' }
+	}
 
 	throw new Error(`descOfProviderName: Unknown provider name: "${providerName}"`)
 }
@@ -132,8 +131,7 @@ export const subTextMdOfProviderName = (providerName: ProviderName): string => {
 	if (providerName === 'vLLM') return 'Read more about custom [Endpoints here](https://docs.vllm.ai/en/latest/getting_started/quickstart.html#openai-compatible-server).'
 	if (providerName === 'lmStudio') return 'Read more about custom [Endpoints here](https://lmstudio.ai/docs/app/api/endpoints/openai).'
 	if (providerName === 'liteLLM') return 'Read more about endpoints [here](https://docs.litellm.ai/docs/providers/openai_compatible).'
-	// DISABLED: A-Coder OAuth provider - commented out to prevent memory leaks
-	// if (providerName === 'aCoder') return 'Sign in with Google or GitHub to use A-Coder models for free.'
+	if (providerName === 'aCoder') return 'Get your API key from [A-Coder](https://a-coder.dev).'
 
 	throw new Error(`subTextMdOfProviderName: Unknown provider name: "${providerName}"`)
 }
@@ -162,7 +160,8 @@ export const displayInfoOfSettingName = (providerName: ProviderName, settingName
 												providerName === 'googleVertex' ? 'AIzaSy...' :
 													providerName === 'microsoftAzure' ? 'key-...' :
 														providerName === 'awsBedrock' ? 'key-...' :
-															'',
+															providerName === 'aCoder' ? 'acoder-key...' :
+																'',
 
 			isPasswordField: true,
 		}
@@ -358,14 +357,12 @@ export const defaultSettingsOfProvider: SettingsOfProvider = {
 		...modelInfoOfDefaultModelNames(defaultModelsOfProvider.awsBedrock),
 		_didFillInProviderSettings: undefined,
 	},
-	// DISABLED: A-Coder OAuth provider - commented out to prevent memory leaks
-	// aCoder: { // free models with OAuth sign-in
-	// 	...defaultCustomSettings,
-	// 	...defaultProviderSettings.aCoder,
-	// 	...modelInfoOfDefaultModelNames(defaultModelsOfProvider.aCoder),
-	// 	// aCoder doesn't require user to fill in settings - authentication is handled via OAuth
-	// 	_didFillInProviderSettings: true,
-	// },
+	aCoder: {
+		...defaultCustomSettings,
+		...defaultProviderSettings.aCoder,
+		...modelInfoOfDefaultModelNames(defaultModelsOfProvider.aCoder),
+		_didFillInProviderSettings: undefined,
+	},
 }
 
 
@@ -406,8 +403,8 @@ export const displayInfoOfFeatureName = (featureName: FeatureName) => {
 
 
 // the models of these can be refreshed (in theory all can, but not all should)
-export const refreshableProviderNames = localProviderNames
-export type RefreshableProviderName = typeof refreshableProviderNames[number]
+export const refreshableProviderNames = [...localProviderNames, 'aCoder'] as const
+export type RefreshableProviderName = 'ollama' | 'vLLM' | 'lmStudio' | 'aCoder'
 
 // models that come with download buttons
 export const hasDownloadButtonsOnModelsProviderNames = ['ollama'] as const satisfies ProviderName[]
@@ -420,7 +417,7 @@ export const hasDownloadButtonsOnModelsProviderNames = ['ollama'] as const satis
 export const isProviderNameDisabled = (providerName: ProviderName, settingsState: VoidSettingsState) => {
 
 	const settingsAtProvider = settingsState.settingsOfProvider[providerName]
-	const isAutodetected = (refreshableProviderNames as string[]).includes(providerName)
+	const isAutodetected = refreshableProviderNames.includes(providerName as RefreshableProviderName)
 
 	const isDisabled = settingsAtProvider.models.length === 0
 	if (isDisabled) {

@@ -816,3 +816,37 @@
 	outline: none;
 	box-shadow: 0 0 0 2px var(--void-ring-color), var(--void-accent-glow-subtle);
 }
+
+/* ============================================
+   TEXT SELECTION HIGHLIGHTING
+   ============================================ */
+
+/* Enable text selection highlighting in React components */
+::selection {
+	background: color-mix(in srgb, var(--void-accent-start) 40%, transparent);
+	color: var(--void-fg-1);
+}
+
+::-moz-selection {
+	background: color-mix(in srgb, var(--void-accent-start) 40%, transparent);
+	color: var(--void-fg-1);
+}
+
+/* Ensure text is selectable in React components */
+.@@void-scope {
+	user-select: text;
+	-webkit-user-select: text;
+	-moz-user-select: text;
+	-ms-user-select: text;
+}
+
+/* Code blocks selection */
+.@@void-scope pre::selection,
+.@@void-scope code::selection {
+	background: color-mix(in srgb, var(--void-accent-start) 50%, transparent);
+}
+
+.@@void-scope pre::-moz-selection,
+.@@void-scope code::-moz-selection {
+	background: color-mix(in srgb, var(--void-accent-start) 50%, transparent);
+}
