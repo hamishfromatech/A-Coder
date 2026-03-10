@@ -2787,10 +2787,13 @@ export const SidebarChat = () => {
 
 
 	// PERFORMANCE: Virtualization - render messages on demand using intersection observer
+	// Compaction is from TOP to BOTTOM: older messages at the top are hidden/compacted,
+	// newer messages at the bottom are always visible (user scrolls UP to see older history)
 	const MAX_VISIBLE_MESSAGES = 30; // Reduced from 50 for better performance
 	const MAX_RENDER_BUFFER = 10; // Extra messages to render above/below viewport
 	const [showAllMessages, setShowAllMessages] = useState(false);
-	const [visibleRange, setVisibleRange] = useState({ start: 0, end: MAX_VISIBLE_MESSAGES + MAX_RENDER_BUFFER });
+	// Initialize with null to indicate we need to calculate the initial range based on message count
+	const [visibleRange, setVisibleRange] = useState<{ start: number; end: number } | null>(null);
 
 	// Memoize filtered messages to prevent recalculation
 	const filteredMessages = useMemo(() => {
@@ -2820,12 +2823,13 @@ export const SidebarChat = () => {
 		let firstVisible = -1;
 		let lastVisible = -1;
 
-		messageElements.forEach((el, idx) => {
+		messageElements.forEach((el) => {
+			const messageIdx = parseInt(el.getAttribute('data-message-idx') || '0', 10);
 			const rect = el.getBoundingClientRect();
 			const isVisible = rect.bottom > containerRect.top && rect.top < containerRect.bottom;
 			if (isVisible) {
-				if (firstVisible === -1) firstVisible = idx;
-				lastVisible = idx;
+				if (firstVisible === -1 || messageIdx < firstVisible) firstVisible = messageIdx;
+				if (messageIdx > lastVisible) lastVisible = messageIdx;
 			}
 		});
 
@@ -2833,6 +2837,10 @@ export const SidebarChat = () => {
 			setVisibleRange(prev => {
 				const newStart = Math.max(0, firstVisible - MAX_RENDER_BUFFER);
 				const newEnd = Math.min(filteredMessages.length, lastVisible + MAX_RENDER_BUFFER + 1);
+				// Handle null initial state - always set the range
+				if (!prev) {
+					return { start: newStart, end: newEnd };
+				}
 				// Only update if range changed significantly
 				if (Math.abs(newStart - prev.start) > 3 || Math.abs(newEnd - prev.end) > 3) {
 					return { start: newStart, end: newEnd };
@@ -2868,12 +2876,20 @@ export const SidebarChat = () => {
 
 	const previousMessagesHTML = useMemo(() => {
 		// PERFORMANCE: Only render visible messages + buffer
+		// Compaction from TOP to BOTTOM: hide older messages at top, show newer messages at bottom
 		const shouldVirtualize = !showAllMessages && filteredMessages.length > MAX_VISIBLE_MESSAGES;
+
+		// Calculate effective range: if visibleRange is null (initial), show from end (newest messages)
+		const effectiveRange = visibleRange ?? {
+			start: Math.max(0, filteredMessages.length - MAX_VISIBLE_MESSAGES - MAX_RENDER_BUFFER),
+			end: filteredMessages.length
+		};
+
 		const messagesToRender = shouldVirtualize
-			? filteredMessages.slice(visibleRange.start, visibleRange.end)
+			? filteredMessages.slice(effectiveRange.start, effectiveRange.end)
 			: filteredMessages;
-		const hiddenAbove = shouldVirtualize ? visibleRange.start : 0;
-		const hiddenBelow = shouldVirtualize ? filteredMessages.length - visibleRange.end : 0;
+		const hiddenAbove = shouldVirtualize ? effectiveRange.start : 0;
+		const hiddenBelow = shouldVirtualize ? filteredMessages.length - effectiveRange.end : 0;
 
 		const elements: React.ReactNode[] = [];
 
@@ -2923,9 +2939,11 @@ export const SidebarChat = () => {
 		return elements;
 	}, [filteredMessages, visibleRange, showAllMessages, currCheckpointIdx, isRunning, threadId, scrollContainerRef])
 
-	// Reset showAllMessages when thread changes
+	// Reset showAllMessages and visibleRange when thread changes
+	// This ensures each thread starts fresh, showing newest messages
 	useEffect(() => {
 		setShowAllMessages(false);
+		setVisibleRange(null);
 	}, [threadId]);
 
 	// Use the actual message index for the streaming bubble so React doesn't remount when streaming ends
