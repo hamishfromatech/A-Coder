@@ -142,6 +142,42 @@ export type BuiltinToolCallParams = {
 	'display_lesson': { title: string, content: string },
 	'load_skill': { skill_name: string },
 	'list_skills': {},
+	// --- Skill Execution Tools ---
+	'execute_skill_script': {
+		skill_name: string;
+		script_name: string;
+		args?: Record<string, any>;
+		timeout_ms?: number;
+	},
+	'load_skill_reference': {
+		skill_name: string;
+		reference_name: string;
+	},
+	'get_skill_asset': {
+		skill_name: string;
+		asset_name: string;
+		interpolate?: boolean;
+		variables?: Record<string, string>;
+	},
+	'install_skill': {
+		source: 'github' | 'url' | 'local';
+		url?: string;
+		path?: string;
+		branch?: string;
+	},
+	'uninstall_skill': { skill_name: string },
+	// --- Skill Evaluation Tools ---
+	'run_skill_benchmark': {
+		skill_name: string;
+		benchmark_name?: string;
+	},
+	'get_skill_metrics': {
+		skill_name: string;
+		timeframe?: 'day' | 'week' | 'month' | 'all';
+	},
+	'list_skill_benchmarks': {
+		skill_name: string;
+	},
 	'generate_image': {
 		prompt: string;
 		filename?: string;
@@ -264,8 +300,77 @@ export type BuiltinToolResultType = {
 	'give_hint': { hintLevel: number, template: string },
 	'create_lesson_plan': { planId: string, template: string },
 	'display_lesson': { success: boolean },
-	'load_skill': { skill_name: string, instructions: string, success: boolean },
-	'list_skills': { skills: Array<{ name: string, description: string }> },
+	'load_skill': { skill_name: string, instructions: string, success: boolean, metadata?: { name: string, description: string, version?: string, author?: string, tags?: string[], dependencies?: string[] }, scripts?: Array<{ name: string, path: string, language: string }>, references?: Array<{ name: string, path: string }>, assets?: Array<{ name: string, path: string, type: string }> },
+	'list_skills': { skills: Array<{ name: string, description: string, version?: string, author?: string, tags?: string[], hasScripts: boolean, hasReferences: boolean, hasAssets: boolean }> },
+	// --- Skill Execution Tools ---
+	'execute_skill_script': {
+		skill_name: string;
+		script_name: string;
+		success: boolean;
+		output: string;
+		error?: string;
+		exitCode: number;
+		duration: number;
+	},
+	'load_skill_reference': {
+		skill_name: string;
+		reference_name: string;
+		content: string;
+		success: boolean;
+	},
+	'get_skill_asset': {
+		skill_name: string;
+		asset_name: string;
+		content: string;
+		type: 'template' | 'image' | 'font' | 'data' | 'other';
+		success: boolean;
+	},
+	'install_skill': {
+		skill_name: string;
+		success: boolean;
+		message: string;
+		version?: string;
+	},
+	'uninstall_skill': {
+		skill_name: string;
+		success: boolean;
+		message: string;
+	},
+	// --- Skill Evaluation Tools ---
+	'run_skill_benchmark': {
+		skill_name: string;
+		benchmark_name: string;
+		success: boolean;
+		score: number;
+		results: Array<{
+			test_name: string;
+			passed: boolean;
+			message?: string;
+		}>;
+		duration: number;
+	},
+	'get_skill_metrics': {
+		skill_name: string;
+		metrics: {
+			total_uses: number;
+			success_rate: number;
+			average_duration: number;
+			benchmark_scores: Array<{
+				name: string;
+				score: number;
+				date: string;
+			}>;
+			improvement_trend: 'improving' | 'stable' | 'declining';
+		};
+	},
+	'list_skill_benchmarks': {
+		skill_name: string;
+		benchmarks: Array<{
+			name: string;
+			description: string;
+			type: 'test' | 'evaluation' | 'benchmark';
+		}>;
+	},
 	'generate_image': { url: string, markdown: string },
 	// --- Generative UI (Forms & Questions)
 	'render_form': { template: string },

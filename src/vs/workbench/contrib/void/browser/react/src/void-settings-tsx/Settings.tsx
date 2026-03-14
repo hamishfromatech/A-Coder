@@ -9,7 +9,7 @@ import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js'
 import { VoidButtonBgDarken, VoidCustomDropdownBox, VoidInputBox2, VoidSimpleInputBox, VoidSwitch } from '../util/inputs.js'
 import { useAccessor, useClipboardService, useIsDark, useIsOptedOut, useRefreshModelListener, useRefreshModelState, useSettingsState, /* useACoderOAuthState, useACoderModels */ } from '../util/services.js'
 // import { IACoderOAuthService, type ACoderModelInfo } from '../../../../common/aCoderOAuthService.js'
-import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User } from 'lucide-react'
+import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User, Download, Star } from 'lucide-react'
 import { URI } from '../../../../../../../base/common/uri.js'
 import { VSBuffer } from '../../../../../../../base/common/buffer.js'
 import { ModelDropdown } from './ModelDropdown.js'
@@ -1174,7 +1174,150 @@ const MCPServersList = () => {
 	return <div className="my-2">{content}</div>
 };
 
-// Skills component
+// Skill registry entry interface
+interface SkillRegistryEntry {
+	id: string;
+	name: string;
+	description: string;
+	author: string;
+	version?: string;
+	tags: string[];
+	source: 'github';
+	url: string;
+	stars?: number;
+	downloads?: number;
+}
+
+// Default skill registry URLs
+const DEFAULT_SKILL_REGISTRIES = [
+	'https://github.com/hamishfromatech/the-architect-skills/tree/main/skills'
+];
+
+// Parse YAML frontmatter from skill content
+const parseSkillFrontmatter = (content: string): { name: string; description: string; version?: string; author?: string; tags?: string[] } => {
+	const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/);
+	if (!frontmatterMatch) {
+		// No frontmatter, extract from content
+		const lines = content.split('\n').filter(l => l.trim().length > 0);
+		const nameMatch = content.match(/^#\s+(.+)$/m);
+		const name = nameMatch ? nameMatch[1].trim() : 'Unknown';
+		const description = lines.find(l => !l.trim().startsWith('#') && l.trim().length > 0) || 'No description available.';
+		return { name, description: description.substring(0, 150) };
+	}
+
+	const yaml = frontmatterMatch[1];
+	const markdown = frontmatterMatch[2];
+	const metadata: { name: string; description: string; version?: string; author?: string; tags?: string[] } = {
+		name: '',
+		description: ''
+	};
+
+	// Parse YAML
+	for (const line of yaml.split('\n')) {
+		const colonIndex = line.indexOf(':');
+		if (colonIndex === -1) continue;
+		const key = line.substring(0, colonIndex).trim();
+		const value = line.substring(colonIndex + 1).trim();
+
+		switch (key) {
+			case 'name':
+				metadata.name = value;
+				break;
+			case 'description':
+				metadata.description = value;
+				break;
+			case 'version':
+				metadata.version = value;
+				break;
+			case 'author':
+				metadata.author = value;
+				break;
+			case 'tags':
+				if (value.startsWith('[') && value.endsWith(']')) {
+					metadata.tags = value.slice(1, -1).split(',').map(t => t.trim().replace(/['"]/g, ''));
+				}
+				break;
+		}
+	}
+
+	// Fallback to markdown content for name/description
+	if (!metadata.name) {
+		const nameMatch = markdown.match(/^#\s+(.+)$/m);
+		metadata.name = nameMatch ? nameMatch[1].trim() : 'Unknown';
+	}
+	if (!metadata.description) {
+		const lines = markdown.split('\n').filter(l => l.trim().length > 0 && !l.trim().startsWith('#'));
+		metadata.description = lines[0]?.substring(0, 150) || 'No description available.';
+	}
+
+	return metadata;
+};
+
+// Fetch skills from GitHub registry
+const fetchSkillsFromRegistry = async (registryUrl: string): Promise<SkillRegistryEntry[]> => {
+	const skills: SkillRegistryEntry[] = [];
+
+	// Parse GitHub URL: https://github.com/owner/repo/tree/branch/path
+	const githubMatch = registryUrl.match(/github\.com\/([^/]+)\/([^/]+)(?:\/tree\/([^/]+))?(?:\/(.+))?/);
+	if (!githubMatch) {
+		console.warn(`Invalid GitHub registry URL: ${registryUrl}`);
+		return skills;
+	}
+
+	const [, owner, repo, branch = 'main', basePath = ''] = githubMatch;
+
+	try {
+		// Use GitHub API to list contents
+		const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents${basePath ? '/' + basePath : ''}${branch !== 'main' ? `?ref=${branch}` : ''}`;
+		const response = await fetch(apiUrl);
+
+		if (!response.ok) {
+			console.warn(`Failed to fetch registry from ${apiUrl}: ${response.status}`);
+			return skills;
+		}
+
+		const contents = await response.json();
+
+		// Filter directories (potential skills)
+		const skillDirs = Array.isArray(contents)
+			? contents.filter((item: any) => item.type === 'dir')
+			: [];
+
+		// Fetch SKILL.md from each directory
+		for (const skillDir of skillDirs) {
+			const skillName = skillDir.name;
+			try {
+				// Fetch SKILL.md content
+				const skillMdUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${basePath ? basePath + '/' : ''}${skillName}/SKILL.md`;
+				const skillMdResponse = await fetch(skillMdUrl);
+
+				if (skillMdResponse.ok) {
+					const skillContent = await skillMdResponse.text();
+					const metadata = parseSkillFrontmatter(skillContent);
+
+					skills.push({
+						id: skillName,
+						name: metadata.name || skillName,
+						description: metadata.description || 'No description available.',
+						author: metadata.author || owner,
+						version: metadata.version,
+						tags: metadata.tags || [],
+						source: 'github',
+						url: `https://github.com/${owner}/${repo}/tree/${branch}/${basePath ? basePath + '/' : ''}${skillName}`
+					});
+				}
+			} catch (e) {
+				console.warn(`Failed to fetch skill ${skillName}:`, e);
+			}
+		}
+	} catch (error) {
+		console.error('Error fetching skills from registry:', error);
+	}
+
+	return skills;
+};
+
+// Skills component with marketplace
 const SkillsList = () => {
 	const accessor = useAccessor();
 	const fileService = accessor.get('IFileService');
@@ -1187,6 +1330,14 @@ const SkillsList = () => {
 	const [isAddOpen, setIsAddOpen] = useState(false);
 	const [newSkillName, setNewSkillName] = useState('');
 	const [newSkillContent, setNewSkillContent] = useState('');
+	const [activeTab, setActiveTab] = useState<'installed' | 'marketplace'>('installed');
+	const [installingSkill, setInstallingSkill] = useState<string | null>(null);
+	const [searchQuery, setSearchQuery] = useState('');
+	const [installUrl, setInstallUrl] = useState('');
+	const [isInstallFromUrl, setIsInstallFromUrl] = useState(false);
+	const [marketplaceSkills, setMarketplaceSkills] = useState<SkillRegistryEntry[]>([]);
+	const [marketplaceLoading, setMarketplaceLoading] = useState(false);
+	const [marketplaceError, setMarketplaceError] = useState<string | null>(null);
 
 	const [userHome, setUserHome] = useState<URI | null>(null);
 
@@ -1265,77 +1416,432 @@ const SkillsList = () => {
 		}
 	};
 
+	const handleInstallFromUrl = async () => {
+		if (!skillsDir || !installUrl.trim()) {
+			notificationService.error('Please enter a GitHub URL');
+			return;
+		}
+
+		// Parse GitHub URL
+		const githubMatch = installUrl.match(/github\.com\/([^/]+\/[^/]+)/);
+		if (!githubMatch) {
+			notificationService.error('Invalid GitHub URL. Use format: https://github.com/user/repo');
+			return;
+		}
+
+		const repoPath = githubMatch[1];
+		const skillName = repoPath.split('/')[1].replace(/-skill$/, '');
+
+		setInstallingSkill(skillName);
+		setIsInstallFromUrl(false);
+		setInstallUrl('');
+
+		try {
+			// Ensure skills directory exists
+			try {
+				await fileService.resolve(skillsDir);
+			} catch {
+				await fileService.createFolder(skillsDir);
+			}
+
+			// Clone from GitHub using terminal service
+			const terminalToolService = accessor.get('ITerminalToolService');
+			const cloneUrl = `https://github.com/${repoPath}.git`;
+			const skillDir = URI.joinPath(skillsDir, skillName);
+
+			const { resPromise } = await terminalToolService.runCommand(
+				`git clone --depth 1 "${cloneUrl}" "${skillDir.fsPath}"`,
+				{ type: 'temporary', cwd: skillsDir.fsPath }
+			);
+
+			const result = await resPromise;
+			if (result.resolveReason.type === 'done' && result.resolveReason.exitCode === 0) {
+				// Remove .git folder to save space
+				try {
+					const gitDir = URI.joinPath(skillDir, '.git');
+					await fileService.del(gitDir, { recursive: true });
+				} catch {
+					// Ignore
+				}
+				notificationService.info(`Skill "${skillName}" installed successfully!`);
+				refreshSkills();
+			} else {
+				throw new Error(result.result || 'Git clone failed');
+			}
+		} catch (e: any) {
+			notificationService.error(`Failed to install skill: ${e.message || e}`);
+		} finally {
+			setInstallingSkill(null);
+		}
+	};
+
+	const handleInstallFromMarketplace = async (skill: SkillRegistryEntry) => {
+		if (!skillsDir) return;
+
+		setInstallingSkill(skill.id);
+
+		try {
+			// Ensure skills directory exists
+			try {
+				await fileService.resolve(skillsDir);
+			} catch {
+				await fileService.createFolder(skillsDir);
+			}
+
+			const skillDir = URI.joinPath(skillsDir, skill.id);
+
+			// Check if already installed
+			try {
+				await fileService.resolve(skillDir);
+				notificationService.warn(`Skill "${skill.name}" is already installed.`);
+				setInstallingSkill(null);
+				return;
+			} catch {
+				// Not installed, proceed
+			}
+
+			const terminalToolService = accessor.get('ITerminalToolService');
+
+			// Parse GitHub URL to get clone URL
+			const githubMatch = skill.url.match(/github\.com\/([^/]+\/[^/]+)/);
+			if (!githubMatch) {
+				throw new Error('Invalid skill URL');
+			}
+
+			const cloneUrl = `https://github.com/${githubMatch[1]}.git`;
+
+			const { resPromise } = await terminalToolService.runCommand(
+				`git clone --depth 1 "${cloneUrl}" "${skillDir.fsPath}"`,
+				{ type: 'temporary', cwd: skillsDir.fsPath }
+			);
+
+			const result = await resPromise;
+			if (result.resolveReason.type === 'done' && result.resolveReason.exitCode === 0) {
+				// Remove .git folder
+				try {
+					const gitDir = URI.joinPath(skillDir, '.git');
+					await fileService.del(gitDir, { recursive: true });
+				} catch {
+					// Ignore
+				}
+				notificationService.info(`Skill "${skill.name}" installed successfully!`);
+				refreshSkills();
+			} else {
+				throw new Error(result.result || 'Git clone failed');
+			}
+		} catch (e: any) {
+			notificationService.error(`Failed to install "${skill.name}": ${e.message || e}`);
+		} finally {
+			setInstallingSkill(null);
+		}
+	};
+
+	// Fetch marketplace skills on mount
+	useEffect(() => {
+		const fetchMarketplaceSkills = async () => {
+			setMarketplaceLoading(true);
+			setMarketplaceError(null);
+
+			try {
+				const allSkills: SkillRegistryEntry[] = [];
+
+				for (const registryUrl of DEFAULT_SKILL_REGISTRIES) {
+					const skills = await fetchSkillsFromRegistry(registryUrl);
+					allSkills.push(...skills);
+				}
+
+				setMarketplaceSkills(allSkills);
+			} catch (error: any) {
+				console.error('Failed to fetch marketplace skills:', error);
+				setMarketplaceError(error.message || 'Failed to load marketplace');
+			} finally {
+				setMarketplaceLoading(false);
+			}
+		};
+
+		fetchMarketplaceSkills();
+	}, []);
+
+	// Refresh marketplace when switching to marketplace tab
+	useEffect(() => {
+		if (activeTab === 'marketplace' && marketplaceSkills.length === 0 && !marketplaceLoading) {
+			const fetchAgain = async () => {
+				setMarketplaceLoading(true);
+				try {
+					const allSkills: SkillRegistryEntry[] = [];
+					for (const registryUrl of DEFAULT_SKILL_REGISTRIES) {
+						const skills = await fetchSkillsFromRegistry(registryUrl);
+						allSkills.push(...skills);
+					}
+					setMarketplaceSkills(allSkills);
+				} catch (error: any) {
+					setMarketplaceError(error.message || 'Failed to load marketplace');
+				} finally {
+					setMarketplaceLoading(false);
+				}
+			};
+			fetchAgain();
+		}
+	}, [activeTab, marketplaceSkills.length, marketplaceLoading]);
+
+	const filteredMarketplaceSkills = marketplaceSkills.filter(skill =>
+		skill.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+		skill.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+		skill.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
+	);
+
 	if (loading && skills.length === 0) {
 		return <div className="flex items-center gap-2 text-void-fg-3 text-sm p-4"><IconLoading /> Loading skills...</div>;
 	}
 
 	return (
 		<div className="space-y-4">
-			<div className="flex flex-col gap-2">
-				{skills.length === 0 ? (
-					<div className="text-void-fg-3 text-sm italic p-4 text-center void-card">
-						No custom skills found. Add one below to enhance your AI's capabilities.
-					</div>
-				) : (
-					skills.map(skill => (
-						<div key={skill.name} className="void-card p-4 group">
-							<div className="flex items-center justify-between">
-								<div className="flex items-center gap-3">
-									<div className="p-1.5 bg-void-accent/10 rounded-md">
-										<Zap size={14} className="text-void-accent" />
-									</div>
-									<div>
-										<div className="text-sm font-medium text-void-fg-1">{skill.name}</div>
-										<div className="text-xs text-void-fg-3 mt-0.5 line-clamp-1">{skill.description}</div>
-									</div>
-								</div>
-								<button 
-									onClick={() => handleDeleteSkill(skill.name)}
-									className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-void-vscode-error-fg/10 text-void-vscode-error-fg rounded-md transition-all"
-									title="Delete Skill"
-								>
-									<X size={14} />
-								</button>
-							</div>
-						</div>
-					))
-				)}
+			{/* Tab switcher */}
+			<div className="flex border-b border-void-border-2">
+				<button
+					onClick={() => setActiveTab('installed')}
+					className={`flex-1 py-2 px-4 text-sm font-medium transition-all ${
+						activeTab === 'installed'
+							? 'text-void-accent border-b-2 border-void-accent'
+							: 'text-void-fg-3 hover:text-void-fg-1'
+					}`}
+				>
+					Installed ({skills.length})
+				</button>
+				<button
+					onClick={() => setActiveTab('marketplace')}
+					className={`flex-1 py-2 px-4 text-sm font-medium transition-all ${
+						activeTab === 'marketplace'
+							? 'text-void-accent border-b-2 border-void-accent'
+							: 'text-void-fg-3 hover:text-void-fg-1'
+					}`}
+				>
+					Marketplace
+				</button>
 			</div>
 
-			{isAddOpen ? (
-					<div className="p-4 void-card-elevated space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
-					<div className="space-y-2">
-						<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide">Skill Name</label>
-						<VoidSimpleInputBox
-							value={newSkillName}
-							onChangeValue={setNewSkillName}
-							placeholder="e.g. pdf-processing"
-							compact={true}
-						/>
+			{activeTab === 'installed' ? (
+				<>
+					<div className="flex flex-col gap-2">
+						{skills.length === 0 ? (
+							<div className="text-void-fg-3 text-sm italic p-4 text-center void-card">
+								No custom skills found. Add one below or browse the marketplace.
+							</div>
+						) : (
+							skills.map(skill => (
+								<div key={skill.name} className="void-card p-4 group">
+									<div className="flex items-center justify-between">
+										<div className="flex items-center gap-3">
+											<div className="p-1.5 bg-void-accent/10 rounded-md">
+												<Zap size={14} className="text-void-accent" />
+											</div>
+											<div>
+												<div className="text-sm font-medium text-void-fg-1">{skill.name}</div>
+												<div className="text-xs text-void-fg-3 mt-0.5 line-clamp-1">{skill.description}</div>
+											</div>
+										</div>
+										<button
+											onClick={() => handleDeleteSkill(skill.name)}
+											className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-void-vscode-error-fg/10 text-void-vscode-error-fg rounded-md transition-all"
+											title="Delete Skill"
+										>
+											<X size={14} />
+										</button>
+									</div>
+								</div>
+							))
+						)}
 					</div>
-					<div className="space-y-2">
-						<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide">Instructions (SKILL.md)</label>
-						<VoidInputBox2
-							initValue={newSkillContent}
-							onChangeText={setNewSkillContent}
-							placeholder="# My Skill\n\nYou are now an expert at..."
-							multiline={true}
-							className="min-h-[120px] text-sm"
-						/>
-					</div>
-					<div className="flex gap-2 justify-end">
-						<SettingsButton onClick={() => setIsAddOpen(false)}>Cancel</SettingsButton>
-						<AddButton onClick={handleAddSkill} text="Create Skill" />
-					</div>
-				</div>
+
+					{isAddOpen ? (
+						<div className="p-4 void-card-elevated space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+							<div className="space-y-2">
+								<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide">Skill Name</label>
+								<VoidSimpleInputBox
+									value={newSkillName}
+									onChangeValue={setNewSkillName}
+									placeholder="e.g. pdf-processing"
+									compact={true}
+								/>
+							</div>
+							<div className="space-y-2">
+								<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide">Instructions (SKILL.md)</label>
+								<VoidInputBox2
+									initValue={newSkillContent}
+									onChangeText={setNewSkillContent}
+									placeholder="# My Skill\n\nYou are now an expert at..."
+									multiline={true}
+									className="min-h-[120px] text-sm"
+								/>
+							</div>
+							<div className="flex gap-2 justify-end">
+								<SettingsButton onClick={() => setIsAddOpen(false)}>Cancel</SettingsButton>
+								<AddButton onClick={handleAddSkill} text="Create Skill" />
+							</div>
+						</div>
+					) : (
+						<>
+							<button
+								onClick={() => setIsAddOpen(true)}
+								className="w-full py-3 border border-dashed border-void-border-2 rounded-lg text-sm text-void-fg-3 hover:text-void-fg-1 hover:bg-void-bg-2 transition-all flex items-center justify-center gap-2"
+							>
+								<Plus size={16} />
+								<span>Create new skill</span>
+							</button>
+							<button
+								onClick={() => setIsInstallFromUrl(true)}
+								className="w-full py-3 border border-dashed border-void-border-2 rounded-lg text-sm text-void-fg-3 hover:text-void-fg-1 hover:bg-void-bg-2 transition-all flex items-center justify-center gap-2"
+							>
+								<ArrowRightLeft size={16} />
+								<span>Install from GitHub URL</span>
+							</button>
+						</>
+					)}
+
+					{isInstallFromUrl && (
+						<div className="p-4 void-card-elevated space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+							<div className="space-y-2">
+								<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide">GitHub Repository URL</label>
+								<VoidSimpleInputBox
+									value={installUrl}
+									onChangeValue={setInstallUrl}
+									placeholder="https://github.com/user/skill-name"
+									compact={true}
+								/>
+							</div>
+							<div className="flex gap-2 justify-end">
+								<SettingsButton onClick={() => setIsInstallFromUrl(false)}>Cancel</SettingsButton>
+								<AddButton onClick={handleInstallFromUrl} text="Install" />
+							</div>
+						</div>
+					)}
+				</>
 			) : (
-				<button
-					onClick={() => setIsAddOpen(true)}
-					className="w-full py-3 border border-dashed border-void-border-2 rounded-lg text-sm text-void-fg-3 hover:text-void-fg-1 hover:bg-void-bg-2 transition-all flex items-center justify-center gap-2"
-				>
-					<Plus size={16} />
-					<span>Add new specialized skill</span>
-				</button>
+				<>
+					{/* Registry info */}
+					<div className="text-xs text-void-fg-4 mb-3 flex items-center gap-2">
+						<Globe size={12} />
+						<span>Fetching skills from: <code className="text-void-fg-3">github.com/hamishfromatech/the-architect-skills</code></span>
+					</div>
+
+					{/* Search */}
+					<div className="relative">
+						<Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-void-fg-4" />
+						<input
+							type="text"
+							value={searchQuery}
+							onChange={(e) => setSearchQuery(e.target.value)}
+							placeholder="Search skills..."
+							className="w-full pl-9 pr-4 py-2 bg-void-bg-2 border border-void-border-2 rounded-md text-sm text-void-fg-1 placeholder:text-void-fg-4 focus:outline-none focus:border-void-accent"
+						/>
+					</div>
+
+					{/* Loading state */}
+					{marketplaceLoading && (
+						<div className="flex items-center justify-center gap-2 py-8 text-void-fg-3">
+							<Loader2 size={16} className="animate-spin" />
+							<span className="text-sm">Loading skills from registry...</span>
+						</div>
+					)}
+
+					{/* Error state */}
+					{marketplaceError && (
+						<div className="text-center py-6">
+							<div className="text-red-400 text-sm mb-2">Failed to load skills</div>
+							<div className="text-void-fg-4 text-xs">{marketplaceError}</div>
+							<button
+								onClick={() => {
+									setMarketplaceError(null);
+									setMarketplaceSkills([]);
+								}}
+								className="mt-2 text-xs text-void-accent hover:underline"
+							>
+								Retry
+							</button>
+						</div>
+					)}
+
+					{/* Marketplace skills grid */}
+					{!marketplaceLoading && !marketplaceError && (
+						<div className="grid gap-3">
+							{filteredMarketplaceSkills.map(skill => {
+								const isInstalled = skills.some(s => s.name === skill.id || s.name === skill.name);
+								const isInstalling = installingSkill === skill.id;
+
+								return (
+									<div key={skill.id} className="void-card p-4 hover:border-void-accent/30 transition-all">
+										<div className="flex items-start justify-between gap-3">
+											<div className="flex-1 min-w-0">
+												<div className="flex items-center gap-2">
+													<div className="p-1.5 bg-void-accent/10 rounded-md">
+														<Zap size={14} className="text-void-accent" />
+													</div>
+													<div className="text-sm font-medium text-void-fg-1">{skill.name}</div>
+													{skill.version && (
+														<span className="text-[10px] px-1.5 py-0.5 rounded bg-void-bg-3 text-void-fg-4">
+															v{skill.version}
+														</span>
+													)}
+													{isInstalled && (
+														<span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">
+															Installed
+														</span>
+													)}
+												</div>
+												<div className="text-xs text-void-fg-3 mt-1 line-clamp-2">{skill.description}</div>
+												<div className="flex items-center gap-3 mt-2">
+													<span className="text-[10px] text-void-fg-4">by {skill.author}</span>
+												</div>
+												{skill.tags && skill.tags.length > 0 && (
+													<div className="flex flex-wrap gap-1 mt-2">
+														{skill.tags.map(tag => (
+															<span key={tag} className="text-[10px] px-1.5 py-0.5 rounded bg-void-bg-3 text-void-fg-4">
+																{tag}
+															</span>
+														))}
+													</div>
+												)}
+											</div>
+											<button
+												onClick={() => handleInstallFromMarketplace(skill)}
+												disabled={isInstalled || isInstalling}
+												className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${
+													isInstalled
+														? 'bg-void-bg-3 text-void-fg-4 cursor-not-allowed'
+														: isInstalling
+															? 'bg-void-bg-3 text-void-fg-4 cursor-wait'
+															: 'bg-void-accent text-white hover:bg-void-accent/80'
+												}`}
+											>
+												{isInstalling ? (
+													<>
+														<Loader2 size={12} className="animate-spin" />
+														Installing...
+													</>
+												) : isInstalled ? (
+													<>
+														<Check size={12} />
+														Installed
+													</>
+												) : (
+													<>
+														<Download size={12} />
+														Install
+													</>
+												)}
+											</button>
+										</div>
+									</div>
+								);
+							})}
+							{filteredMarketplaceSkills.length === 0 && !marketplaceLoading && (
+								<div className="text-void-fg-4 text-sm text-center py-8">
+									{searchQuery ? `No skills found matching "${searchQuery}"` : 'No skills available in the registry'}
+								</div>
+							)}
+						</div>
+					)}
+				</>
 			)}
 		</div>
 	);

@@ -30,6 +30,7 @@ import { IPathService } from '../../../services/path/common/pathService.js'
 import { IWebviewToolService } from './webviewToolService.js'
 import { IVisionService } from './visionService.js'
 import { ICommandService } from '../../../../platform/commands/common/commands.js'
+import { parseSkillFile, detectScriptLanguage, detectAssetType } from '../common/skillParser.js'
 
 
 // tool use for AI
@@ -792,6 +793,70 @@ export class ToolsService implements IToolsService {
 
 			list_skills: (params: RawToolParamsObj) => {
 				return {};
+			},
+
+			execute_skill_script: (params: RawToolParamsObj) => {
+				const { skill_name, script_name, args, timeout_ms } = params;
+				return {
+					skill_name: validateStr('skill_name', skill_name),
+					script_name: validateStr('script_name', script_name),
+					args: args !== undefined ? (typeof args === 'object' ? args : {}) : undefined,
+					timeout_ms: timeout_ms !== undefined ? (typeof timeout_ms === 'number' ? timeout_ms : 60000) : undefined
+				};
+			},
+
+			load_skill_reference: (params: RawToolParamsObj) => {
+				const { skill_name, reference_name } = params;
+				return {
+					skill_name: validateStr('skill_name', skill_name),
+					reference_name: validateStr('reference_name', reference_name)
+				};
+			},
+
+			get_skill_asset: (params: RawToolParamsObj) => {
+				const { skill_name, asset_name, interpolate, variables } = params;
+				return {
+					skill_name: validateStr('skill_name', skill_name),
+					asset_name: validateStr('asset_name', asset_name),
+					interpolate: interpolate !== undefined ? (typeof interpolate === 'boolean' ? interpolate : false) : false,
+					variables: variables !== undefined ? (typeof variables === 'object' ? variables as Record<string, string> : {}) : undefined
+				};
+			},
+
+			install_skill: (params: RawToolParamsObj) => {
+				const { source, url, path, branch } = params;
+				return {
+					source: validateStr('source', source) as 'github' | 'url' | 'local',
+					url: url !== undefined ? validateStr('url', url) : undefined,
+					path: path !== undefined ? validateStr('path', path) : undefined,
+					branch: branch !== undefined ? validateStr('branch', branch) : undefined
+				};
+			},
+
+			uninstall_skill: (params: RawToolParamsObj) => {
+				const { skill_name } = params;
+				return { skill_name: validateStr('skill_name', skill_name) };
+			},
+
+			run_skill_benchmark: (params: RawToolParamsObj) => {
+				const { skill_name, benchmark_name } = params;
+				return {
+					skill_name: validateStr('skill_name', skill_name),
+					benchmark_name: benchmark_name !== undefined ? validateStr('benchmark_name', benchmark_name) : undefined
+				};
+			},
+
+			get_skill_metrics: (params: RawToolParamsObj) => {
+				const { skill_name, timeframe } = params;
+				return {
+					skill_name: validateStr('skill_name', skill_name),
+					timeframe: timeframe !== undefined ? validateStr('timeframe', timeframe) as 'day' | 'week' | 'month' | 'all' : undefined
+				};
+			},
+
+			list_skill_benchmarks: (params: RawToolParamsObj) => {
+				const { skill_name } = params;
+				return { skill_name: validateStr('skill_name', skill_name) };
 			},
 
 			generate_image: (params: RawToolParamsObj) => {
@@ -1923,14 +1988,104 @@ For each module include:
 			load_skill: async ({ skill_name }, opts) => {
 				const userHome = await this._pathService.userHome();
 				const skillsDir = URI.joinPath(userHome, '.a-coder', 'skills');
-				const skillPath = URI.joinPath(skillsDir, skill_name, 'SKILL.md');
+				const skillFolder = URI.joinPath(skillsDir, skill_name);
+				const skillPath = URI.joinPath(skillFolder, 'SKILL.md');
 
 				opts?.onData?.(`Loading skill: ${skill_name}...`);
 
 				try {
+					// Read and parse the SKILL.md file
 					const content = await this._fileService.readFile(skillPath);
-					const instructions = content.value.toString();
-					return { result: { skill_name, instructions, success: true } };
+					const rawContent = content.value.toString();
+					const parsed = parseSkillFile(rawContent);
+
+					// Use folder name if metadata doesn't have a name
+					const metadata = {
+						...parsed.metadata,
+						name: parsed.metadata.name || skill_name
+					};
+
+					// Check for scripts, references, and assets folders
+					const scripts: Array<{ name: string; path: string; language: string }> = [];
+					const references: Array<{ name: string; path: string }> = [];
+					const assets: Array<{ name: string; path: string; type: string }> = [];
+
+					// Scan for scripts folder
+					try {
+						const scriptsDir = URI.joinPath(skillFolder, 'scripts');
+						const scriptsStat = await this._fileService.resolve(scriptsDir);
+						if (scriptsStat.children) {
+							for (const scriptFile of scriptsStat.children) {
+								if (!scriptFile.isDirectory) {
+									const language = detectScriptLanguage(scriptFile.name);
+									scripts.push({
+										name: scriptFile.name,
+										path: URI.joinPath(scriptsDir, scriptFile.name).fsPath,
+										language
+									});
+								}
+							}
+						}
+					} catch (e) {
+						// Scripts folder doesn't exist
+					}
+
+					// Scan for references folder
+					try {
+						const refsDir = URI.joinPath(skillFolder, 'references');
+						const refsStat = await this._fileService.resolve(refsDir);
+						if (refsStat.children) {
+							for (const refFile of refsStat.children) {
+								if (!refFile.isDirectory) {
+									references.push({
+										name: refFile.name,
+										path: URI.joinPath(refsDir, refFile.name).fsPath
+									});
+								}
+							}
+						}
+					} catch (e) {
+						// References folder doesn't exist
+					}
+
+					// Scan for assets folder
+					try {
+						const assetsDir = URI.joinPath(skillFolder, 'assets');
+						const assetsStat = await this._fileService.resolve(assetsDir);
+						if (assetsStat.children) {
+							for (const assetFile of assetsStat.children) {
+								if (!assetFile.isDirectory) {
+									const type = detectAssetType(assetFile.name);
+									assets.push({
+										name: assetFile.name,
+										path: URI.joinPath(assetsDir, assetFile.name).fsPath,
+										type
+									});
+								}
+							}
+						}
+					} catch (e) {
+						// Assets folder doesn't exist
+					}
+
+					return {
+						result: {
+							skill_name,
+							instructions: parsed.content,
+							success: true,
+							metadata: {
+								name: metadata.name,
+								description: metadata.description,
+								version: metadata.version,
+								author: metadata.author,
+								tags: metadata.tags,
+								dependencies: metadata.dependencies
+							},
+							scripts: scripts.length > 0 ? scripts : undefined,
+							references: references.length > 0 ? references : undefined,
+							assets: assets.length > 0 ? assets : undefined
+						}
+					};
 				} catch (error) {
 					console.error(`[ToolsService] Failed to load skill ${skill_name}:`, error);
 					// Try to list available skills to help the LLM
@@ -1956,7 +2111,16 @@ For each module include:
 				const skillsDir = URI.joinPath(userHome, '.a-coder', 'skills');
 				opts?.onData?.('Listing available skills...');
 
-				const skills: Array<{ name: string, description: string }> = [];
+				const skills: Array<{
+					name: string;
+					description: string;
+					version?: string;
+					author?: string;
+					tags?: string[];
+					hasScripts: boolean;
+					hasReferences: boolean;
+					hasAssets: boolean;
+				}> = [];
 
 				try {
 					const stat = await this._fileService.resolve(skillsDir);
@@ -1964,14 +2128,44 @@ For each module include:
 						for (const child of stat.children) {
 							if (child.isDirectory) {
 								const skillName = child.name;
-								const skillPath = URI.joinPath(skillsDir, skillName, 'SKILL.md');
+								const skillFolder = URI.joinPath(skillsDir, skillName);
+								const skillPath = URI.joinPath(skillFolder, 'SKILL.md');
 								try {
 									const content = await this._fileService.readFile(skillPath);
 									const text = content.value.toString();
-									// Extract first paragraph or first 100 chars as description
-									const lines = text.split('\n').filter(l => l.trim().length > 0 && !l.trim().startsWith('#'));
-									const description = lines.length > 0 ? lines[0].substring(0, 150) : 'No description available.';
-									skills.push({ name: skillName, description });
+									const parsed = parseSkillFile(text);
+
+									// Use folder name if metadata doesn't have a name
+									const name = parsed.metadata.name || skillName;
+									const description = parsed.metadata.description || 'No description available.';
+
+									// Check for optional folders
+									let hasScripts = false;
+									let hasReferences = false;
+									let hasAssets = false;
+
+									try {
+										await this._fileService.resolve(URI.joinPath(skillFolder, 'scripts')).then(s => hasScripts = (s.children?.length ?? 0) > 0);
+									} catch (e) { /* scripts folder doesn't exist */ }
+
+									try {
+										await this._fileService.resolve(URI.joinPath(skillFolder, 'references')).then(r => hasReferences = (r.children?.length ?? 0) > 0);
+									} catch (e) { /* references folder doesn't exist */ }
+
+									try {
+										await this._fileService.resolve(URI.joinPath(skillFolder, 'assets')).then(a => hasAssets = (a.children?.length ?? 0) > 0);
+									} catch (e) { /* assets folder doesn't exist */ }
+
+									skills.push({
+										name,
+										description,
+										version: parsed.metadata.version,
+										author: parsed.metadata.author,
+										tags: parsed.metadata.tags,
+										hasScripts,
+										hasReferences,
+										hasAssets
+									});
 								} catch (e) {
 									// Skip if SKILL.md is missing
 								}
@@ -1983,6 +2177,560 @@ For each module include:
 				}
 
 				return { result: { skills } };
+			},
+
+			execute_skill_script: async ({ skill_name, script_name, args, timeout_ms }, opts) => {
+				const userHome = await this._pathService.userHome();
+				const skillsDir = URI.joinPath(userHome, '.a-coder', 'skills');
+				const scriptPath = URI.joinPath(skillsDir, skill_name, 'scripts', script_name);
+
+				opts?.onData?.(`Executing script: ${skill_name}/${script_name}...`);
+
+				const startTime = Date.now();
+				// Note: max timeout enforced by terminal service
+
+				try {
+					// Check if script exists
+					const scriptStat = await this._fileService.resolve(scriptPath);
+					if (scriptStat.isDirectory) {
+						throw new Error(`Script path is a directory: ${script_name}`);
+					}
+
+					// Detect script language from extension
+					const ext = script_name.toLowerCase().split('.').pop() || '';
+					let command: string;
+					let scriptArgs: string[] = [];
+
+					switch (ext) {
+						case 'py':
+							command = 'python3';
+							scriptArgs = [scriptPath.fsPath];
+							break;
+						case 'sh':
+						case 'bash':
+							command = 'bash';
+							scriptArgs = [scriptPath.fsPath];
+							break;
+						case 'js':
+						case 'mjs':
+							command = 'node';
+							scriptArgs = [scriptPath.fsPath];
+							break;
+						default:
+							throw new Error(`Unsupported script type: ${ext}`);
+					}
+
+					// Prepare input - pass args via environment variable and stdin
+					const envVars = args ? Object.entries(args)
+						.map(([k, v]) => `SKILL_ARG_${k.toUpperCase()}=${JSON.stringify(v)}`)
+						.join(' ') : '';
+
+					const fullCommand = envVars ? `${envVars} ${command} ${scriptArgs.join(' ')}` : `${command} ${scriptArgs.join(' ')}`;
+					const cwdPath = URI.joinPath(skillsDir, skill_name).fsPath;
+
+					// Execute using terminal service
+					const tempId = `skill-script-${Date.now()}`;
+					const { resPromise } = await this._terminalToolService.runCommand(fullCommand, {
+						type: 'temporary',
+						cwd: cwdPath,
+						terminalId: tempId,
+						onData: opts?.onData
+					});
+
+					const result = await resPromise;
+					const duration = Date.now() - startTime;
+
+					// Parse result
+					const exitCode = result.resolveReason.type === 'done' ? result.resolveReason.exitCode : 1;
+					const success = exitCode === 0;
+
+					return {
+						result: {
+							skill_name,
+							script_name,
+							success,
+							output: result.result,
+							error: success ? undefined : result.result,
+							exitCode,
+							duration
+						}
+					};
+				} catch (error: any) {
+					const duration = Date.now() - startTime;
+					const errorMessage = error?.message || String(error);
+
+					return {
+						result: {
+							skill_name,
+							script_name,
+							success: false,
+							output: '',
+							error: errorMessage,
+							exitCode: 1,
+							duration
+						}
+					};
+				}
+			},
+
+			load_skill_reference: async ({ skill_name, reference_name }, opts) => {
+				const userHome = await this._pathService.userHome();
+				const skillsDir = URI.joinPath(userHome, '.a-coder', 'skills');
+				const refPath = URI.joinPath(skillsDir, skill_name, 'references', reference_name);
+
+				opts?.onData?.(`Loading reference: ${skill_name}/${reference_name}...`);
+
+				try {
+					const content = await this._fileService.readFile(refPath);
+					return {
+						result: {
+							skill_name,
+							reference_name,
+							content: content.value.toString(),
+							success: true
+						}
+					};
+				} catch (error: any) {
+					return {
+						result: {
+							skill_name,
+							reference_name,
+							content: '',
+							success: false
+						}
+					};
+				}
+			},
+
+			get_skill_asset: async ({ skill_name, asset_name, interpolate, variables }, opts) => {
+				const userHome = await this._pathService.userHome();
+				const skillsDir = URI.joinPath(userHome, '.a-coder', 'skills');
+				const assetPath = URI.joinPath(skillsDir, skill_name, 'assets', asset_name);
+
+				opts?.onData?.(`Getting asset: ${skill_name}/${asset_name}...`);
+
+				try {
+					const content = await this._fileService.readFile(assetPath);
+					const rawContent = content.value.toString();
+
+					// Determine asset type
+					const type = detectAssetType(asset_name);
+
+					// Template interpolation for text files
+					let finalContent = rawContent;
+					if (interpolate && variables && type !== 'image' && type !== 'font') {
+						// Replace {{variable}} with values
+						for (const [key, value] of Object.entries(variables)) {
+							const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+							finalContent = finalContent.replace(regex, value);
+						}
+					}
+
+					return {
+						result: {
+							skill_name,
+							asset_name,
+							content: finalContent,
+							type,
+							success: true
+						}
+					};
+				} catch (error: any) {
+					return {
+						result: {
+							skill_name,
+							asset_name,
+							content: '',
+							type: 'other' as const,
+							success: false
+						}
+					};
+				}
+			},
+
+			install_skill: async ({ source, url, path, branch }, opts) => {
+				const userHome = await this._pathService.userHome();
+				const skillsDir = URI.joinPath(userHome, '.a-coder', 'skills');
+
+				opts?.onData?.(`Installing skill from ${source}...`);
+
+				try {
+					// Ensure skills directory exists
+					try {
+						await this._fileService.resolve(skillsDir);
+					} catch {
+						await this._fileService.createFolder(skillsDir);
+					}
+
+					let skillName: string;
+					let skillPath: URI;
+
+					switch (source) {
+						case 'github': {
+							// Parse GitHub URL: user/repo or user/repo/tree/branch
+							const githubUrl = url || '';
+							const parts = githubUrl.replace(/^github\.com\//, '').split('/');
+							if (parts.length < 2) {
+								throw new Error('Invalid GitHub URL format. Use: user/repo or user/repo/tree/branch');
+							}
+							const [user, repo, , ref] = parts;
+							skillName = repo.replace(/-skill$/, '').replace(/\.git$/, '');
+
+							// Clone or download from GitHub
+							const cloneUrl = `https://github.com/${user}/${repo}.git`;
+							const cloneBranch = ref || branch || 'main';
+
+							// Use terminal service to git clone
+							const tempId = `install-skill-${Date.now()}`;
+							const { resPromise: clonePromise } = await this._terminalToolService.runCommand(
+								`git clone --depth 1 --branch ${cloneBranch} ${cloneUrl} "${URI.joinPath(skillsDir, skillName).fsPath}"`,
+								{ type: 'temporary', cwd: skillsDir.fsPath, terminalId: tempId, onData: opts?.onData }
+							);
+
+							const cloneResult = await clonePromise;
+							if (!cloneResult.result.includes('Cloning into') && !cloneResult.result.includes('already exists')) {
+								throw new Error(`Failed to clone repository: ${cloneResult.result}`);
+							}
+
+							skillPath = URI.joinPath(skillsDir, skillName);
+							break;
+						}
+						case 'url': {
+							// Download and extract from URL
+							const downloadUrl = url || '';
+							const filename = downloadUrl.split('/').pop() || 'skill';
+							skillName = filename.replace(/\.(zip|tar\.gz|tgz)$/, '').replace(/-skill$/, '');
+
+							// Download and extract (simplified - would need proper implementation)
+							throw new Error('URL installation not yet implemented. Use GitHub source instead.');
+						}
+						case 'local': {
+							const localPath = path || '';
+							if (!localPath) {
+								throw new Error('Local path is required for local source.');
+							}
+
+							// Read SKILL.md to get skill name
+							const localSkillMd = URI.parse(localPath);
+							try {
+								const skillMdContent = await this._fileService.readFile(URI.joinPath(localSkillMd, 'SKILL.md'));
+								const parsed = parseSkillFile(skillMdContent.value.toString());
+								skillName = parsed.metadata.name || URI.parse(localPath).path.split('/').pop() || 'unknown-skill';
+							} catch {
+								skillName = URI.parse(localPath).path.split('/').pop() || 'unknown-skill';
+							}
+
+							// Copy directory recursively
+							const destPath = URI.joinPath(skillsDir, skillName);
+							await this._fileService.copy(localSkillMd, destPath, true);
+
+							skillPath = destPath;
+							break;
+						}
+						default:
+							throw new Error(`Unknown source type: ${source}`);
+					}
+
+					// Verify SKILL.md exists
+					try {
+						await this._fileService.readFile(URI.joinPath(skillPath, 'SKILL.md'));
+					} catch {
+						throw new Error('Installed skill does not contain a SKILL.md file.');
+					}
+
+					// Read version from SKILL.md
+					let version: string | undefined;
+					try {
+						const skillMdContent = await this._fileService.readFile(URI.joinPath(skillPath, 'SKILL.md'));
+						const parsed = parseSkillFile(skillMdContent.value.toString());
+						version = parsed.metadata.version;
+					} catch {
+						// Ignore
+					}
+
+					return {
+						result: {
+							skill_name: skillName,
+							success: true,
+							message: `Skill "${skillName}" installed successfully.`,
+							version
+						}
+					};
+				} catch (error: any) {
+					return {
+						result: {
+							skill_name: '',
+							success: false,
+							message: `Failed to install skill: ${error?.message || String(error)}`
+						}
+					};
+				}
+			},
+
+			uninstall_skill: async ({ skill_name }, opts) => {
+				const userHome = await this._pathService.userHome();
+				const skillsDir = URI.joinPath(userHome, '.a-coder', 'skills');
+				const skillPath = URI.joinPath(skillsDir, skill_name);
+
+				opts?.onData?.(`Uninstalling skill: ${skill_name}...`);
+
+				try {
+					// Check if skill exists
+					await this._fileService.resolve(skillPath);
+
+					// Delete skill directory
+					await this._fileService.del(skillPath, { recursive: true });
+
+					return {
+						result: {
+							skill_name,
+							success: true,
+							message: `Skill "${skill_name}" uninstalled successfully.`
+						}
+					};
+				} catch (error: any) {
+					return {
+						result: {
+							skill_name,
+							success: false,
+							message: `Failed to uninstall skill "${skill_name}": ${error?.message || String(error)}`
+						}
+					};
+				}
+			},
+
+			run_skill_benchmark: async ({ skill_name, benchmark_name }, opts) => {
+				const userHome = await this._pathService.userHome();
+				const skillsDir = URI.joinPath(userHome, '.a-coder', 'skills');
+				const skillPath = URI.joinPath(skillsDir, skill_name);
+				const benchmarksDir = URI.joinPath(skillPath, 'benchmarks');
+
+				opts?.onData?.(`Running benchmark for skill: ${skill_name}...`);
+
+				const startTime = Date.now();
+
+				try {
+					// Check if skill exists
+					await this._fileService.resolve(skillPath);
+
+					// Check for benchmarks directory
+					let benchmarkFiles: string[] = [];
+					try {
+						const benchStat = await this._fileService.resolve(benchmarksDir);
+						if (benchStat.children) {
+							benchmarkFiles = benchStat.children
+								.filter(child => !child.isDirectory && (child.name.endsWith('.test.js') || child.name.endsWith('.test.py') || child.name.endsWith('.test.sh')))
+								.map(child => child.name);
+						}
+					} catch {
+						// No benchmarks directory
+					}
+
+					if (benchmarkFiles.length === 0) {
+						return {
+							result: {
+								skill_name,
+								benchmark_name: benchmark_name || 'default',
+								success: false,
+								score: 0,
+								results: [],
+								duration: Date.now() - startTime,
+								message: 'No benchmarks found for this skill. Add test files to the benchmarks/ folder.'
+							}
+						};
+					}
+
+					// Run specified benchmark or all benchmarks
+					const benchToRun = benchmark_name
+						? benchmarkFiles.filter(f => f.includes(benchmark_name))
+						: benchmarkFiles;
+
+					if (benchToRun.length === 0) {
+						return {
+							result: {
+								skill_name,
+								benchmark_name: benchmark_name || 'all',
+								success: false,
+								score: 0,
+								results: [{
+									test_name: benchmark_name || 'unknown',
+									passed: false,
+									message: 'Specified benchmark not found.'
+								}],
+								duration: Date.now() - startTime
+							}
+						};
+					}
+
+					// Execute each benchmark
+					const results: Array<{ test_name: string; passed: boolean; message?: string }> = [];
+					let passCount = 0;
+
+					for (const benchFile of benchToRun) {
+						const benchPath = URI.joinPath(benchmarksDir, benchFile);
+						const ext = benchFile.split('.').pop()?.toLowerCase();
+						let command: string;
+
+						switch (ext) {
+							case 'py':
+								command = `python3 "${benchPath.fsPath}"`;
+								break;
+							case 'js':
+								command = `node "${benchPath.fsPath}"`;
+								break;
+							case 'sh':
+								command = `bash "${benchPath.fsPath}"`;
+								break;
+							default:
+								results.push({ test_name: benchFile, passed: false, message: `Unsupported benchmark type: ${ext}` });
+								continue;
+						}
+
+						opts?.onData?.(`Running ${benchFile}...`);
+
+						try {
+							const tempId = `benchmark-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+							const { resPromise } = await this._terminalToolService.runCommand(command, {
+								type: 'temporary',
+								cwd: skillPath.fsPath,
+								terminalId: tempId,
+								onData: opts?.onData
+							});
+
+							const runResult = await resPromise;
+							const passed = runResult.resolveReason.type === 'done' && runResult.resolveReason.exitCode === 0;
+
+							if (passed) passCount++;
+							results.push({
+								test_name: benchFile,
+								passed,
+								message: passed ? 'Passed' : runResult.result.substring(0, 500)
+							});
+						} catch (err: any) {
+							results.push({
+								test_name: benchFile,
+								passed: false,
+								message: err?.message || 'Execution failed'
+							});
+						}
+					}
+
+					const duration = Date.now() - startTime;
+					const score = Math.round((passCount / benchToRun.length) * 100);
+
+					return {
+						result: {
+							skill_name,
+							benchmark_name: benchmark_name || 'all',
+							success: passCount === benchToRun.length,
+							score,
+							results,
+							duration
+						}
+					};
+				} catch (error: any) {
+					return {
+						result: {
+							skill_name,
+							benchmark_name: benchmark_name || 'unknown',
+							success: false,
+							score: 0,
+							results: [{
+								test_name: 'benchmark',
+								passed: false,
+								message: error?.message || String(error)
+							}],
+							duration: Date.now() - startTime
+						}
+					};
+				}
+			},
+
+			get_skill_metrics: async ({ skill_name, timeframe }) => {
+				const userHome = await this._pathService.userHome();
+				const metricsDir = URI.joinPath(userHome, '.a-coder', 'metrics', skill_name);
+
+				// Default metrics structure
+				const defaultMetrics = {
+					total_uses: 0,
+					success_rate: 0,
+					average_duration: 0,
+					benchmark_scores: [],
+					improvement_trend: 'stable' as const
+				};
+
+				try {
+					// Try to read metrics file
+					const metricsFile = URI.joinPath(metricsDir, 'metrics.json');
+					const content = await this._fileService.readFile(metricsFile);
+					const metrics = JSON.parse(content.value.toString());
+
+					// Filter by timeframe if specified
+					if (timeframe && timeframe !== 'all' && metrics.benchmark_scores) {
+						const now = Date.now();
+						const cutoff = {
+							day: 24 * 60 * 60 * 1000,
+							week: 7 * 24 * 60 * 60 * 1000,
+							month: 30 * 24 * 60 * 60 * 1000
+						}[timeframe] || 0;
+
+						metrics.benchmark_scores = metrics.benchmark_scores.filter((bs: any) =>
+							(now - new Date(bs.date).getTime()) < cutoff
+						);
+					}
+
+					return { result: { skill_name, metrics } };
+				} catch {
+					// Return default metrics if file doesn't exist
+					return { result: { skill_name, metrics: defaultMetrics } };
+				}
+			},
+
+			list_skill_benchmarks: async ({ skill_name }) => {
+				const userHome = await this._pathService.userHome();
+				const skillsDir = URI.joinPath(userHome, '.a-coder', 'skills');
+				const skillPath = URI.joinPath(skillsDir, skill_name);
+				const benchmarksDir = URI.joinPath(skillPath, 'benchmarks');
+
+				const benchmarks: Array<{ name: string; description: string; type: 'test' | 'evaluation' | 'benchmark' }> = [];
+
+				try {
+					const benchStat = await this._fileService.resolve(benchmarksDir);
+					if (benchStat.children) {
+						for (const child of benchStat.children) {
+							if (child.isDirectory) continue;
+
+							const name = child.name;
+
+							// Determine type from filename pattern
+							let type: 'test' | 'evaluation' | 'benchmark' = 'test';
+							if (name.includes('eval') || name.includes('evaluation')) {
+								type = 'evaluation';
+							} else if (name.includes('benchmark') || name.includes('perf')) {
+								type = 'benchmark';
+							}
+
+							// Read first few lines for description
+							let description = `${type.charAt(0).toUpperCase() + type.slice(1)} file: ${name}`;
+							try {
+								const fileContent = await this._fileService.readFile(URI.joinPath(benchmarksDir, name));
+								const lines = fileContent.value.toString().split('\n').slice(0, 5);
+								const descLine = lines.find(l => l.trim().startsWith('#') || l.trim().startsWith('//'));
+								if (descLine) {
+									description = descLine.replace(/^[#/]+\s*/, '').trim().substring(0, 100);
+								}
+							} catch {
+								// Use default description
+							}
+
+							benchmarks.push({ name, description, type });
+						}
+					}
+				} catch {
+					// Benchmarks directory doesn't exist
+				}
+
+				return { result: { skill_name, benchmarks } };
 			},
 
 			generate_image: async ({ prompt, filename, width, height, quality }, opts) => {
@@ -2650,7 +3398,34 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 
 			load_skill: (params, result) => {
 				if (result.success) {
-					return `\u{2705} Skill "${result.skill_name}" loaded successfully!\n\n${result.instructions}`;
+					let output = `\u{2705} Skill "${result.skill_name}" loaded successfully!`;
+
+					// Show metadata if available
+					if (result.metadata) {
+						const meta = result.metadata;
+						if (meta.version) output += `\n   Version: ${meta.version}`;
+						if (meta.author) output += `\n   Author: ${meta.author}`;
+						if (meta.tags && meta.tags.length > 0) output += `\n   Tags: ${meta.tags.join(', ')}`;
+						if (meta.dependencies && meta.dependencies.length > 0) output += `\n   Dependencies: ${meta.dependencies.join(', ')}`;
+					}
+
+					// Show available components
+					const components: string[] = [];
+					if (result.scripts && result.scripts.length > 0) {
+						components.push(`Scripts: ${result.scripts.map(s => s.name).join(', ')}`);
+					}
+					if (result.references && result.references.length > 0) {
+						components.push(`References: ${result.references.map(r => r.name).join(', ')}`);
+					}
+					if (result.assets && result.assets.length > 0) {
+						components.push(`Assets: ${result.assets.map(a => a.name).join(', ')}`);
+					}
+					if (components.length > 0) {
+						output += `\n   ${components.join(' | ')}`;
+					}
+
+					output += `\n\n---\n\n${result.instructions}`;
+					return output;
 				} else {
 					return `\u{274C} Failed to load skill "${result.skill_name}":\n${result.instructions}`;
 				}
@@ -2663,31 +3438,195 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 
 				let output = 'Available specialized skills:\n\n';
 				for (const skill of result.skills) {
-					output += `- **${skill.name}**: ${skill.description}\n`;
+					output += `- **${skill.name}**`;
+					if (skill.version) output += ` (v${skill.version})`;
+					output += `: ${skill.description}`;
+
+					// Show component indicators
+					const indicators: string[] = [];
+					if (skill.hasScripts) indicators.push('scripts');
+					if (skill.hasReferences) indicators.push('refs');
+					if (skill.hasAssets) indicators.push('assets');
+					if (indicators.length > 0) {
+						output += ` [${indicators.join(', ')}]`;
+					}
+
+					if (skill.tags && skill.tags.length > 0) {
+						output += `\n  Tags: ${skill.tags.join(', ')}`;
+					}
+					output += '\n';
 				}
 				output += '\nUse `load_skill(skill_name="name")` to load a skill.';
-				                return result.skills.length === 0 ? 'No specialized skills are currently available.' : output;
-				            },
-				
-				            generate_image: (params, result) => {
-				                return `Successfully generated image for prompt: "${params.prompt}"\n\n${result.markdown}`;
-				            },
+				return output;
+			},
 
-				            render_form: (params, result) => {
-				                return result.template || 'Form rendered successfully. The user can now provide their responses.';
-				            },
+			execute_skill_script: (params, result) => {
+				if (result.success) {
+					let output = `\u{2705} Script "${params.script_name}" executed successfully`;
+					output += `\nDuration: ${result.duration}ms`;
+					if (result.output) {
+						output += `\n\n**Output:**\n${result.output}`;
+					}
+					return output;
+				} else {
+					let output = `\u{274C} Script "${params.script_name}" failed`;
+					output += `\nExit code: ${result.exitCode}`;
+					if (result.error) {
+						output += `\n**Error:** ${result.error}`;
+					}
+					return output;
+				}
+			},
 
-				            create_quiz: (params, result) => {
-				                return result.template || 'Quiz created successfully. The student can now answer the questions.';
-				            },
-				            // --- Browser / Webview Tools ---
-				            open_url: (params, result) => {
-				                return `Opened URL: ${params.url}\nWebview ID: ${result.webviewId}\nTitle: ${result.title}`;
-				            },
-				            open_html: (params, result) => {
-				                const htmlPreview = params.html.substring(0, 200).replace(/\n/g, ' ');
-				                return `Opened HTML content\nWebview ID: ${result.webviewId}\nTitle: ${result.title}\n\n**Preview:**\n${htmlPreview}...`;
-				            },
+			load_skill_reference: (params, result) => {
+				if (result.success) {
+					return `\u{2705} Reference "${params.reference_name}" loaded from skill "${params.skill_name}"\n\n---\n\n${result.content}`;
+				} else {
+					return `\u{274C} Failed to load reference "${params.reference_name}" from skill "${params.skill_name}". Make sure the reference exists in the skill's references/ folder.`;
+				}
+			},
+
+			get_skill_asset: (params, result) => {
+				if (result.success) {
+					let output = `\u{2705} Asset "${params.asset_name}" retrieved from skill "${params.skill_name}"`;
+					output += `\nType: ${result.type}`;
+					if (params.interpolate && params.variables) {
+						output += `\n(Interpolated with ${Object.keys(params.variables).length} variables)`;
+					}
+					output += `\n\n---\n\n${result.content}`;
+					return output;
+				} else {
+					return `\u{274C} Failed to get asset "${params.asset_name}" from skill "${params.skill_name}". Make sure the asset exists in the skill's assets/ folder.`;
+				}
+			},
+
+			install_skill: (params, result) => {
+				if (result.success) {
+					let output = `\u{2705} Skill "${result.skill_name}" installed successfully`;
+					if (result.version) {
+						output += ` (v${result.version})`;
+					}
+					output += `\n\n${result.message}`;
+					output += `\n\nUse \`load_skill(skill_name="${result.skill_name}")\` to load the skill.`;
+					return output;
+				} else {
+					return `\u{274C} ${result.message}`;
+				}
+			},
+
+			uninstall_skill: (params, result) => {
+				if (result.success) {
+					return `\u{2705} ${result.message}`;
+				} else {
+					return `\u{274C} ${result.message}`;
+				}
+			},
+
+			run_skill_benchmark: (params, result) => {
+				const statusEmoji = result.success ? '\u{2705}' : '\u{274C}';
+				const scoreEmoji = result.score >= 80 ? '\u{1F3C6}' : result.score >= 60 ? '\u{1F4CA}' : result.score >= 40 ? '\u{26A0}\u{FE0F}' : '\u{274C}';
+
+				let output = `${statusEmoji} Benchmark Results for "${result.skill_name}"\n\n`;
+				output += `${scoreEmoji} Score: ${result.score}% (${result.results.filter(r => r.passed).length}/${result.results.length} passed)\n`;
+				output += `\u{23F1}\u{FE0F} Duration: ${result.duration}ms\n\n`;
+
+				if (result.results.length > 0) {
+					output += `**Test Results:**\n`;
+					for (const r of result.results) {
+						const testEmoji = r.passed ? '\u{2705}' : '\u{274C}';
+						output += `${testEmoji} ${r.test_name}: ${r.passed ? 'Passed' : 'Failed'}`;
+						if (r.message) {
+							output += ` - ${r.message.substring(0, 100)}`;
+						}
+						output += '\n';
+					}
+				}
+
+				return output;
+			},
+
+			get_skill_metrics: (params, result) => {
+				const { metrics } = result;
+				const trendEmoji = metrics.improvement_trend === 'improving' ? '\u{1F4C8}' : metrics.improvement_trend === 'declining' ? '\u{1F4C9}' : '\u{2194}\u{FE0F}';
+
+				let output = `\u{1F4CA} Metrics for "${result.skill_name}"\n\n`;
+				output += `**Usage Statistics:**\n`;
+				output += `- Total Uses: ${metrics.total_uses}\n`;
+				output += `- Success Rate: ${metrics.success_rate.toFixed(1)}%\n`;
+				output += `- Avg Duration: ${metrics.average_duration}ms\n\n`;
+
+				output += `**Performance Trend:** ${trendEmoji} ${metrics.improvement_trend}\n\n`;
+
+				if (metrics.benchmark_scores.length > 0) {
+					output += `**Recent Benchmarks:**\n`;
+					for (const bs of metrics.benchmark_scores) {
+						output += `- ${bs.name}: ${bs.score}% (${bs.date})\n`;
+					}
+				}
+
+				return output;
+			},
+
+			list_skill_benchmarks: (params, result) => {
+				if (result.benchmarks.length === 0) {
+					return `\u{2139}\u{FE0F} No benchmarks found for skill "${result.skill_name}"\n\nTo add benchmarks, create test files in the skill's \`benchmarks/\` folder:\n- *.test.js for Node.js tests\n- *.test.py for Python tests\n- *.test.sh for Shell script tests`;
+				}
+
+				let output = `\u{1F4CB} Benchmarks for "${result.skill_name}"\n\n`;
+
+				const byType = {
+					test: result.benchmarks.filter(b => b.type === 'test'),
+					evaluation: result.benchmarks.filter(b => b.type === 'evaluation'),
+					benchmark: result.benchmarks.filter(b => b.type === 'benchmark')
+				};
+
+				if (byType.test.length > 0) {
+					output += `**Tests:**\n`;
+					for (const b of byType.test) {
+						output += `  \u{1F9EA} ${b.name}\n    ${b.description}\n`;
+					}
+					output += '\n';
+				}
+
+				if (byType.evaluation.length > 0) {
+					output += `**Evaluations:**\n`;
+					for (const b of byType.evaluation) {
+						output += `  \u{1F4CA} ${b.name}\n    ${b.description}\n`;
+					}
+					output += '\n';
+				}
+
+				if (byType.benchmark.length > 0) {
+					output += `**Benchmarks:**\n`;
+					for (const b of byType.benchmark) {
+						output += `  \u{23F1}\u{FE0F} ${b.name}\n    ${b.description}\n`;
+					}
+				}
+
+				output += `\n\u{1F4A1} Use \`run_skill_benchmark(skill_name="${result.skill_name}")\` to run all benchmarks.`;
+
+				return output;
+			},
+
+			generate_image: (params, result) => {
+				return `Successfully generated image for prompt: "${params.prompt}"\n\n${result.markdown}`;
+			},
+
+			render_form: (params, result) => {
+				return result.template || 'Form rendered successfully. The user can now provide their responses.';
+			},
+
+			create_quiz: (params, result) => {
+				return result.template || 'Quiz created successfully. The student can now answer the questions.';
+			},
+			// --- Browser / Webview Tools ---
+			open_url: (params, result) => {
+				return `Opened URL: ${params.url}\nWebview ID: ${result.webviewId}\nTitle: ${result.title}`;
+			},
+			open_html: (params, result) => {
+				const htmlPreview = params.html.substring(0, 200).replace(/\n/g, ' ');
+				return `Opened HTML content\nWebview ID: ${result.webviewId}\nTitle: ${result.title}\n\n**Preview:**\n${htmlPreview}...`;
+			},
 				            fetch_url: (params, result) => {
 				                if (result.text) {
 				                    return `Fetched content from: ${params.url}\n\n**Extracted Text:**\n${result.text.substring(0, 5000)}${result.text.length > 5000 ? '\n\n... (truncated)' : ''}\n\n**Full HTML available (${result.html.length} characters)**`;

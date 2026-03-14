@@ -1088,15 +1088,23 @@ Each call advances to the next hint level automatically.`,
 		name: 'load_skill',
 		description: `Loads a specialized skill to enhance your capabilities with domain-specific instructions and patterns.
 
+**Skill Structure:**
+Skills can contain:
+- \`SKILL.md\` - Main instructions with optional YAML frontmatter (name, version, author, tags, dependencies)
+- \`scripts/\` - Executable scripts (Python, Bash, Node.js) for deterministic tasks
+- \`references/\` - Documentation files loaded on-demand for deeper context
+- \`assets/\` - Templates, images, and other resources for output
+
 **When to use:**
-- When you identify a task that matches an available skill (e.g., "pdf-processing", "data-analysis")
+- When you identify a task that matches an available skill (e.g., "pdf-processing", "code-review")
 - When you need specialized instructions for a complex domain
 - At the beginning of a task if you know which skills will be needed
 
 **What happens:**
-1. Loads the skill's specific instructions and best practices
-2. Automatically enriches all subsequent turns in this conversation with these instructions
-3. Provides you with specialized patterns and tool usage guidelines for that domain
+1. Parses the skill's YAML frontmatter for metadata
+2. Loads the skill's instructions from SKILL.md
+3. Discovers available scripts, references, and assets
+4. Automatically enriches all subsequent turns with these instructions
 
 **Idempotency:** Loading the same skill multiple times has no additional effect.`,
 		params: {
@@ -1109,13 +1117,198 @@ Each call advances to the next hint level automatically.`,
 		description: `Lists all available specialized skills that can be loaded.
 
 **What you'll receive:**
-- A list of skill names
-- A brief description of what each skill provides
+- A list of skill names with descriptions
+- Version, author, and tags (if provided in YAML frontmatter)
+- Indicators showing which skills have scripts, references, or assets
 
 **When to use:**
 - To discover what specialized capabilities are available
-- If you're unsure of the exact name of a skill you want to load`,
+- If you're unsure of the exact name of a skill you want to load
+- To find skills with specific components (scripts, references, assets)`,
 		params: {}
+	},
+
+	execute_skill_script: {
+		name: 'execute_skill_script',
+		description: `Executes a script from a skill's scripts/ folder.
+
+**Supported Languages:**
+- Python (.py files)
+- Bash/Shell (.sh files)
+- Node.js (.js, .mjs, .cjs files)
+
+**What you'll receive:**
+- Script execution output (stdout)
+- Error output if failed (stderr)
+- Exit code and duration
+- Success/failure status
+
+**When to use:**
+- To run deterministic tasks defined in skill scripts
+- To process files with specialized tools
+- To perform validation or transformation steps
+
+**Important:** Scripts run in a sandboxed environment with timeout controls (default 60 seconds, max 5 minutes).`,
+		params: {
+			skill_name: { description: "The name of the skill containing the script." },
+			script_name: { description: "The filename of the script to execute (e.g., 'process.py')." },
+			args: { description: "Optional. JSON object of arguments to pass to the script." },
+			timeout_ms: { description: "Optional. Maximum execution time in milliseconds (default: 60000, max: 300000)." }
+		}
+	},
+
+	load_skill_reference: {
+		name: 'load_skill_reference',
+		description: `Loads a reference document from a skill's references/ folder.
+
+Reference documents provide detailed documentation that can be loaded on-demand when deeper context is needed. This avoids cluttering the main skill instructions while still making detailed docs available.
+
+**What you'll receive:**
+- The full content of the reference document
+- Success/failure status
+
+**When to use:**
+- When you need detailed documentation beyond the main skill instructions
+- When working with complex APIs or protocols
+- When the task requires reference material`,
+		params: {
+			skill_name: { description: "The name of the skill containing the reference." },
+			reference_name: { description: "The filename of the reference document (e.g., 'api.md')." }
+		}
+	},
+
+	get_skill_asset: {
+		name: 'get_skill_asset',
+		description: `Retrieves an asset from a skill's assets/ folder.
+
+Assets include templates, images, fonts, data files, and other resources used in output generation.
+
+**What you'll receive:**
+- The asset content (text for templates/data, base64 for binary)
+- Asset type (template, image, font, data, other)
+- Success/failure status
+
+**Template Interpolation:**
+If \`interpolate\` is true and the asset is a template, you can provide \`variables\` to replace placeholders like \`{{variable_name}}\`.
+
+**When to use:**
+- To use templates for generating consistent output
+- To access brand assets (fonts, images, icons)
+- To load configuration files or data`,
+		params: {
+			skill_name: { description: "The name of the skill containing the asset." },
+			asset_name: { description: "The filename of the asset (e.g., 'template.json')." },
+			interpolate: { description: "Optional. If true, replace {{variable}} placeholders with provided values." },
+			variables: { description: "Optional. JSON object of variables for template interpolation." }
+		}
+	},
+
+	install_skill: {
+		name: 'install_skill',
+		description: `Installs a skill from a remote source or local path.
+
+**Sources:**
+- \`github\`: Clone from a GitHub repository
+- \`url\`: Download from a direct URL
+- \`local\`: Copy from a local filesystem path
+
+**What you'll receive:**
+- Installation success/failure status
+- Installed skill name and version
+- Installation path
+
+**When to use:**
+- To add new specialized capabilities to A-Coder
+- To install skills from community repositories
+- To set up development workflows`,
+		params: {
+			source: { description: "The source type: 'github', 'url', or 'local'." },
+			url: { description: "Required for 'github' or 'url' sources. GitHub URL or direct download URL." },
+			path: { description: "Required for 'local' source. Local filesystem path." },
+			branch: { description: "Optional for 'github'. Branch to clone (default: main)." }
+		}
+	},
+
+	uninstall_skill: {
+		name: 'uninstall_skill',
+		description: `Removes a skill from the skills directory.
+
+**What you'll receive:**
+- Uninstallation success/failure status
+- Confirmation message
+
+**When to use:**
+- To remove skills that are no longer needed
+- To clean up unused skills
+- To reinstall a skill from scratch`,
+		params: {
+			skill_name: { description: "The name of the skill to uninstall." }
+		}
+	},
+
+	run_skill_benchmark: {
+		name: 'run_skill_benchmark',
+		description: `Runs benchmark tests for a skill to measure its performance and accuracy.
+
+**What you'll receive:**
+- Overall benchmark score (0-100)
+- Individual test results (passed/failed)
+- Duration of the benchmark
+- Recommendations for improvement
+
+**Benchmark Structure:**
+Skills can include a \`benchmarks/\` folder with test files:
+- \`{benchmark_name}.test.js\` - JavaScript tests
+- \`{benchmark_name}.test.py\` - Python tests
+- \`{benchmark_name}.eval.md\` - Evaluation criteria
+
+**When to use:**
+- After installing a new skill to verify it works correctly
+- Periodically to check skill performance
+- Before recommending a skill for critical tasks`,
+		params: {
+			skill_name: { description: 'The name of the skill to benchmark.' },
+			benchmark_name: { description: 'Optional. Specific benchmark to run. If not provided, runs all benchmarks.' }
+		}
+	},
+
+	get_skill_metrics: {
+		name: 'get_skill_metrics',
+		description: `Retrieves performance metrics for a skill over time.
+
+**What you'll receive:**
+- Total usage count
+- Success rate (0-100)
+- Average execution duration
+- Historical benchmark scores
+- Improvement trend analysis
+
+**When to use:**
+- To evaluate skill effectiveness
+- To identify skills that need improvement
+- To track progress over time
+- To make data-driven decisions about skill usage`,
+		params: {
+			skill_name: { description: 'The name of the skill to get metrics for.' },
+			timeframe: { description: 'Optional. Time period for metrics: "day", "week", "month", or "all". Default is "week".' }
+		}
+	},
+
+	list_skill_benchmarks: {
+		name: 'list_skill_benchmarks',
+		description: `Lists all available benchmarks for a skill.
+
+**What you'll receive:**
+- List of benchmark names
+- Description of each benchmark
+- Benchmark type (test, evaluation, benchmark)
+
+**When to use:**
+- To see what benchmarks are available before running
+- To understand skill quality metrics`,
+		params: {
+			skill_name: { description: 'The name of the skill to list benchmarks for.' }
+		}
 	},
 
 	generate_image: {
