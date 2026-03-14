@@ -9,7 +9,7 @@ GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 
 # Configure for Ollama Cloud API (OpenAI-compatible endpoint)
 OLLAMA_API_KEY = os.environ.get("OLLAMA_API_KEY", "")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3-coder-next:cloud")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "glm-5:cloud")
 
 client = OpenAI(
     api_key=OLLAMA_API_KEY,
