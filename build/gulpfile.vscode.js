@@ -84,6 +84,10 @@ const vscodeResourceIncludes = [
 	// Accessibility Signals
 	'out-build/vs/platform/accessibilitySignal/browser/media/*.mp3',
 
+	// A-Coder Notification Sounds
+	'out-build/a-coder-sounds/*.wav',
+	'out-build/vs/workbench/contrib/void/browser/media/*.wav',
+
 	// Welcome
 	'out-build/vs/workbench/contrib/welcomeGettingStarted/common/media/**/*.{svg,png}',
 
@@ -126,8 +130,17 @@ const bootstrapEntryPoints = [
 	'out-build/bootstrap-fork.js'
 ];
 
+// Copy A-Coder notification sounds to out-build (both root and vs structure for compatibility)
+const copySoundsTask = task.define('copy-sounds', () => {
+	return gulp.src('a-coder-sounds/*.wav', { base: 'a-coder-sounds' })
+		.pipe(gulp.dest('out-build/a-coder-sounds'))
+		.pipe(gulp.dest('out-build/vs/workbench/contrib/void/browser/media/'));
+});
+gulp.task(copySoundsTask);
+
 const bundleVSCodeTask = task.define('bundle-vscode', task.series(
 	util.rimraf('out-vscode'),
+	copySoundsTask,
 	// Optimize: bundles source files automatically based on
 	// import statements based on the passed in entry points.
 	// In addition, concat window related bootstrap files into

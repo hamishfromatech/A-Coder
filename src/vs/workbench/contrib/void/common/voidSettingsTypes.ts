@@ -525,6 +525,8 @@ export type GlobalSettings = {
 	composioTriggerPort?: number; // Port for trigger webhook listener (defaults to apiPort)
 	composioTriggerTunnelUrl?: string; // Optional Cloudflare Tunnel URL for triggers
 	composioTriggerSecret?: string; // Secret for webhook signature verification
+		// Notification sound settings
+		notificationSound: string; // Sound to play when LLM finishes responding ('none' | '1' | '2' | '3' | '4')
 }
 
 export const defaultGlobalSettings: GlobalSettings = {
@@ -572,6 +574,8 @@ export const defaultGlobalSettings: GlobalSettings = {
 	composioTriggerPort: undefined, // Defaults to apiPort
 	composioTriggerTunnelUrl: undefined, // No tunnel URL by default
 	composioTriggerSecret: undefined, // No secret by default (auto-generated on first webhook)
+	// Notification sound defaults
+	notificationSound: 'none', // No notification sound by default
 }
 
 export type GlobalSettingName = keyof GlobalSettings

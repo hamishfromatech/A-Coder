@@ -9,7 +9,7 @@ import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js'
 import { VoidButtonBgDarken, VoidCustomDropdownBox, VoidInputBox2, VoidSimpleInputBox, VoidSwitch } from '../util/inputs.js'
 import { useAccessor, useClipboardService, useIsDark, useIsOptedOut, useRefreshModelListener, useRefreshModelState, useSettingsState, /* useACoderOAuthState, useACoderModels */ } from '../util/services.js'
 // import { IACoderOAuthService, type ACoderModelInfo } from '../../../../common/aCoderOAuthService.js'
-import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, List, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User, Download, Star, MessageCircle, Store, Plug, ExternalLink, AlertTriangle, Eye, EyeOff, ChevronRight, Wind, Brain, Terminal, Code, BookOpen, Target, Trophy, Palette, Image as ImageIcon } from 'lucide-react'
+import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, List, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User, Download, Star, MessageCircle, Store, Plug, ExternalLink, AlertTriangle, Eye, EyeOff, ChevronRight, Wind, Brain, Terminal, Code, BookOpen, Target, Trophy, Palette, Image as ImageIcon, Volume2, Play } from 'lucide-react'
 import { URI } from '../../../../../../../base/common/uri.js'
 import { VSBuffer } from '../../../../../../../base/common/buffer.js'
 import { ModelDropdown } from './ModelDropdown.js'
@@ -255,6 +255,59 @@ const QuickToggleCard = ({
 			</h3>
 			<p className="text-[11px] text-void-fg-3/80 leading-relaxed">{description}</p>
 		</button>
+	)
+}
+
+const TestSoundButton = () => {
+	const settingsState = useSettingsState()
+	const [isPlaying, setIsPlaying] = useState(false)
+
+	const handlePlaySound = useCallback(async () => {
+		const soundName = settingsState.globalSettings.notificationSound || 'none'
+		if (soundName === 'none') return
+
+		try {
+			setIsPlaying(true)
+			const accessor = useAccessor()
+			const soundService = accessor.get('ISoundService')
+			const dataUrl = await soundService.playSound(soundName)
+			console.log('[TestSoundButton] Received dataUrl:', dataUrl ? 'yes' : 'no')
+			if (dataUrl) {
+				const audio = new Audio(dataUrl)
+				audio.volume = 0.5
+				await audio.play()
+				console.log('[TestSoundButton] Audio playing...')
+			}
+		} catch (e) {
+			console.warn('[A-Coder] Failed to preview sound:', e)
+		} finally {
+			setIsPlaying(false)
+		}
+	}, [settingsState.globalSettings.notificationSound])
+
+	const disabled = settingsState.globalSettings.notificationSound === 'none' || !settingsState.globalSettings.notificationSound
+
+	return (
+		<div className="flex items-center gap-3">
+			<button
+				onClick={handlePlaySound}
+				disabled={disabled || isPlaying}
+				className={`
+					flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors
+					${disabled 
+						? 'bg-void-bg-3 text-void-fg-3 cursor-not-allowed' 
+						: 'bg-void-accent/10 hover:bg-void-accent/20 text-void-accent cursor-pointer'}
+				`}
+			>
+				{isPlaying ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+				<span className="text-sm font-medium">{isPlaying ? 'Playing...' : 'Test Sound'}</span>
+			</button>
+			{disabled ? (
+				<span className="text-xs text-void-fg-3">Select a sound to preview</span>
+			) : (
+				<span className="text-xs text-void-fg-3">Preview "{settingsState.globalSettings.notificationSound}.wav"</span>
+			)}
+		</div>
 	)
 }
 
@@ -3366,6 +3419,37 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 																	/>
 																</SettingRow>
 															</SettingBox>
+
+									{/* Notification Sound Card */}
+									<SettingCard
+										isDark={isDark}
+										title="Notification Sound"
+										description="Play a sound when the AI finishes responding."
+										eyebrow="Feature Options"
+										icon={Volume2}
+									>
+										<SettingBox>
+											<div className="space-y-4">
+												<SettingRow label="Sound" description="Choose a notification sound to play when responses complete.">
+													<VoidCustomDropdownBox
+														options={['none', '1', '2', '3', '4']}
+														selectedOption={settingsState.globalSettings.notificationSound || 'none'}
+														onChangeOption={(newVal) => voidSettingsService.setGlobalSetting('notificationSound', newVal)}
+														getOptionDisplayName={(val) => val === 'none' ? 'None' : `Sound ${val}`}
+														getOptionDropdownName={(val) => val === 'none' ? 'None' : `Sound ${val}`}
+														getOptionsEqual={(a, b) => a === b}
+														className="w-40 bg-void-bg-1 border border-void-border-2 rounded-lg px-2 py-1.5 text-sm"
+														arrowTouchesText={false}
+													/>
+												</SettingRow>
+
+												<div className="pt-4 border-t border-void-border-2">
+													<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide mb-2 block">Preview Sound</label>
+													<TestSoundButton />
+												</div>
+											</div>
+										</SettingBox>
+									</SettingCard>
 														</SettingCard>
 													</div>
 												</section>

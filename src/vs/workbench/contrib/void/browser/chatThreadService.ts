@@ -31,7 +31,7 @@ import { IEditCodeService } from './editCodeServiceInterface.js';
 import { VoidFileSnapshot, DiffBasedCheckpoint, createDiffBasedCheckpoint, applyDiffBasedCheckpoint } from '../common/editCodeServiceTypes.js';
 import { INotificationService, Severity } from '../../../../platform/notification/common/notification.js';
 import { truncate } from '../../../../base/common/strings.js';
-import { THREAD_STORAGE_KEY } from '../common/storageKeys.js';
+import { THREAD_STORAGE_KEY, THREAD_STORAGE_VERSION_KEY, CURRENT_THREAD_STORAGE_VERSION } from '../common/storageKeys.js';
 import { IVisionService } from './visionService.js';
 import { IConvertToLLMMessageService } from './convertToLLMMessageService.js';
 import { IToolOrchestrationService } from './toolOrchestrationService.js';
@@ -77,14 +77,14 @@ const MAX_MESSAGE_QUEUE_PER_THREAD = 10;
 // MEMORY OPTIMIZATION: Maximum total size of all images in a message (10MB)
 const MAX_TOTAL_IMAGE_SIZE_MB = 10;
 
-// PARALLEL TOOL CALLING: Tools that are safe to execute in parallel.
-// Read-only tools have no side effects and can always run concurrently.
-// create_file_or_folder is also safe because creating different files/folders
-// doesn't conflict — and it's gated by auto-approve, so it only runs in parallel
-// when the user has auto-approved edits.
-// edit_file, rewrite_file, delete, run_command, run_code, repo operations must
-// run sequentially to avoid conflicts.
-const SAFE_PARALLEL_TOOLS: ReadonlySet<string> = new Set([
+// SIZE-BASED MEMORY LIMITS: New limits to prevent memory bloat from large content
+const MAX_MESSAGE_SIZE_KB = 500; // Max 500KB per message (includes tool results)
+const MAX_THREAD_SIZE_MB = 50;   // Max 50MB total per thread
+
+// DYNAMIC PARALLEL TOOL CALLING: Base sets for determining parallel safety
+// These are the default read-only tools that CAN be parallel-safe, but actual
+// safety is determined dynamically based on parameters and execution context.
+const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
 	'read_file',
 	'outline_file',
 	'ls_dir',
@@ -95,8 +95,157 @@ const SAFE_PARALLEL_TOOLS: ReadonlySet<string> = new Set([
 	'read_lint_errors',
 	'fast_context',
 	'codebase_search',
-	'create_file_or_folder',
 ])
+
+// Tools that are NEVER safe to run in parallel due to global state
+const SEQUENTIAL_ONLY_TOOLS: ReadonlySet<string> = new Set([
+	'run_command',      // Terminal state is shared
+	'run_code',         // Process execution state is shared
+	'edit_file',        // File editing can conflict
+	'rewrite_file',     // File rewriting can conflict
+	'delete',           // Deletions can conflict
+	'git_commit',       // Git state is shared
+	'git_diff',         // Git state is shared
+	'apply_diff',       // File editing can conflict
+])
+
+/**
+ * Determine if multiple tool calls can safely execute in parallel.
+ *
+ * Dynamic safety analysis based on:
+ * 1. Tool type (read-only vs write)
+ * 2. Target resources (file paths, directories)
+ * 3. Approval status (auto-approved vs requires approval)
+ * 4. MCP vs built-in tools
+ *
+ * @param toolCalls - Array of tool calls to analyze
+ * @returns Object with parallelSafe and sequential arrays
+ */
+function analyzeParallelToolSafety(
+	toolCalls: RawToolCallObj[]
+): { parallelSafe: RawToolCallObj[]; sequential: RawToolCallObj[] } {
+	const parallelSafe: RawToolCallObj[] = []
+	const sequential: RawToolCallObj[] = []
+
+	// Single tool is always safe (no concurrency concerns)
+	if (toolCalls.length <= 1) {
+		return { parallelSafe: toolCalls, sequential: [] }
+	}
+
+	// Group tool calls by their target resource (file path, directory, etc.)
+	const toolGroupsByResource = new Map<string, RawToolCallObj[]>()
+
+	for (const toolCall of toolCalls) {
+		const resourceKey = getToolResourceKey(toolCall)
+
+		if (!toolGroupsByResource.has(resourceKey)) {
+			toolGroupsByResource.set(resourceKey, [])
+		}
+		toolGroupsByResource.get(resourceKey)!.push(toolCall)
+	}
+
+	// Analyze each group
+	for (const [, group] of toolGroupsByResource.entries()) {
+		for (const toolCall of group) {
+			const canBeParallel = canToolRunParallel(toolCall)
+
+			if (canBeParallel) {
+				parallelSafe.push(toolCall)
+			} else {
+				sequential.push(toolCall)
+			}
+		}
+	}
+
+	// Additional safety check: if multiple tools target the same file,
+	// only read-only tools can run in parallel
+	for (const [resourceKey, group] of toolGroupsByResource.entries()) {
+		if (group.length > 1 && resourceKey.startsWith('file:')) {
+			// Multiple tools targeting same file - check for write conflicts
+			const hasWriteTool = group.some(tc => isWriteTool(tc.name))
+			if (hasWriteTool) {
+				// Move all tools in this group to sequential
+				const writeTools = group.filter(tc => isWriteTool(tc.name))
+				const readTools = group.filter(tc => !isWriteTool(tc.name))
+
+				// Remove from their current arrays
+				for (const tc of writeTools) {
+					const idx = parallelSafe.indexOf(tc)
+					if (idx !== -1) parallelSafe.splice(idx, 1)
+				}
+				for (const tc of readTools) {
+					const idx = parallelSafe.indexOf(tc)
+					if (idx !== -1) parallelSafe.splice(idx, 1)
+				}
+
+				// Add all to sequential
+				sequential.push(...group)
+			}
+		}
+	}
+
+	return { parallelSafe, sequential }
+}
+
+/**
+ * Get a resource key for a tool call (used for conflict detection)
+ */
+function getToolResourceKey(toolCall: RawToolCallObj): string {
+	const params = toolCall.rawParams || {}
+
+	// File-based tools
+	if (params.filePath) return `file:${params.filePath}`
+	if (params.path) return `file:${params.path}`
+	if (params.file) return `file:${params.file}`
+	if (params.directory) return `dir:${params.directory}`
+	if (params.dir) return `dir:${params.dir}`
+
+	// Command-based tools
+	if (params.command) return `command:${params.command.substring(0, 50)}`
+
+	// Search-based tools
+	if (params.query) return `search:${params.query.substring(0, 50)}`
+	if (params.pattern) return `pattern:${params.pattern}`
+
+	// Default: tool name as key
+	return `tool:${toolCall.name}`
+}
+
+/**
+ * Check if a tool is a write operation (modifies state)
+ */
+function isWriteTool(toolName: string): boolean {
+	return SEQUENTIAL_ONLY_TOOLS.has(toolName) ||
+		toolName === 'create_file_or_folder' ||
+		toolName === 'edit_file' ||
+		toolName === 'rewrite_file' ||
+		toolName === 'delete' ||
+		toolName === 'apply_diff'
+}
+
+/**
+ * Determine if a single tool can potentially run in parallel
+ * (actual parallel safety also depends on other concurrent tools)
+ */
+function canToolRunParallel(toolCall: RawToolCallObj): boolean {
+	// Sequential-only tools are never safe in parallel
+	if (SEQUENTIAL_ONLY_TOOLS.has(toolCall.name)) {
+		return false
+	}
+
+	// Read-only tools are generally safe for parallel execution
+	if (READ_ONLY_TOOLS.has(toolCall.name)) {
+		return true
+	}
+
+	// create_file_or_folder is safe in parallel ONLY if targeting different paths
+	if (toolCall.name === 'create_file_or_folder') {
+		return true // Path conflict detection handled by analyzeParallelToolSafety
+	}
+
+	// Unknown tools default to sequential for safety
+	return false
+}
 
 const splitThinkTags = (input: string): { displayText: string; reasoningText: string } => {
 	if (!input) {
@@ -727,12 +876,79 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		});
 	}
 
+	/**
+	 * Migrate thread data from older storage versions
+	 * Add migration logic here when changing data structures
+	 */
+	private _migrateThreads(threads: ChatThreads, fromVersion: number): ChatThreads {
+		let migratedThreads = threads;
+
+		// Version 1 migrations (current version)
+		if (fromVersion < 1) {
+			console.log(`[Migration] Migrating threads from version ${fromVersion} to version 1`);
+
+			// Migration: Ensure all messages have required fields
+			// Migration: Convert old Set serialization to arrays
+			for (const [, thread] of Object.entries(migratedThreads)) {
+				if (thread && 'filesWithUserChanges' in thread) {
+					// Convert Set to array if serialized as object
+					if (!(thread.filesWithUserChanges instanceof Set)) {
+						const arr = thread.filesWithUserChanges as any;
+						if (Array.isArray(arr)) {
+							thread.filesWithUserChanges = new Set(arr);
+						} else if (typeof arr === 'object' && arr !== null) {
+							// Handle object serialization of Set
+							thread.filesWithUserChanges = new Set(Object.values(arr));
+						}
+					}
+				}
+			}
+
+			console.log(`[Migration] Migration complete. Processed ${Object.keys(migratedThreads).length} threads`);
+		}
+
+		return migratedThreads;
+	}
+
+	/**
+	 * Get storage version from storage service
+	 */
+	private _getStorageVersion(): number {
+		const versionStr = this._storageService.get(THREAD_STORAGE_VERSION_KEY, StorageScope.APPLICATION);
+		if (!versionStr) return 0; // No version means old data (pre-versioning)
+		return parseInt(versionStr, 10) || 0;
+	}
+
+	/**
+	 * Save storage version to storage service
+	 */
+	private _saveStorageVersion(version: number): void {
+		this._storageService.store(
+			THREAD_STORAGE_VERSION_KEY,
+			version.toString(),
+			StorageScope.APPLICATION,
+			StorageTarget.USER
+		);
+	}
+
 	private _readAllThreads(): ChatThreads | null {
 		const threadsStr = this._storageService.get(THREAD_STORAGE_KEY, StorageScope.APPLICATION);
 		if (!threadsStr) {
 			return null
 		}
+
 		const threads = this._convertThreadDataFromStorage(threadsStr);
+		const storedVersion = this._getStorageVersion();
+
+		// Apply migrations if needed
+		if (storedVersion < CURRENT_THREAD_STORAGE_VERSION) {
+			console.log(`[Storage] Found threads from version ${storedVersion}, current is ${CURRENT_THREAD_STORAGE_VERSION}`);
+			const migratedThreads = this._migrateThreads(threads, storedVersion);
+			// Save migrated data
+			this._storeAllThreads(migratedThreads);
+			this._saveStorageVersion(CURRENT_THREAD_STORAGE_VERSION);
+			return migratedThreads;
+		}
 
 		return threads
 	}
@@ -1964,16 +2180,17 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 					let anyToolRan = false;
 
-					// Separate tool calls into groups: safe for parallel execution vs sequential.
-					// Only built-in read-only tools that auto-approve can run in parallel.
-					// Write tools, MCP tools, and tools requiring approval must run sequentially
-					// to avoid race conditions on shared state (file edits, terminal, etc.).
-					const parallelSafe: typeof toolCalls = []
-					const sequential: typeof toolCalls = []
+					// DYNAMIC PARALLEL SAFETY: Analyze tool calls for parallel execution safety.
+					// This considers tool types, target resources, and potential conflicts.
+					const { parallelSafe, sequential } = analyzeParallelToolSafety(toolCalls)
 
-					for (const toolCall of toolCalls) {
+					// Additional check: auto-approval status affects parallel safety
+					// Even read-only tools need auto-approval for parallel execution
+					const finalParallelSafe: typeof toolCalls = []
+					const finalSequential: typeof toolCalls = [...sequential]
+
+					for (const toolCall of parallelSafe) {
 						const isBuiltin = isABuiltinToolName(toolCall.name)
-						const isReadOnly = SAFE_PARALLEL_TOOLS.has(toolCall.name)
 						const needsApproval = isBuiltin
 							? !!approvalTypeOfBuiltinToolName[toolCall.name as BuiltinToolName]
 							: true // MCP tools always need approval
@@ -1981,21 +2198,21 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 							? !!this._settingsService.state.globalSettings.autoApprove[isBuiltin ? approvalTypeOfBuiltinToolName[toolCall.name as BuiltinToolName]! : 'MCP tools']
 							: true
 
-						// A tool can run in parallel only if it's a built-in read-only tool that auto-approves
-						if (isBuiltin && isReadOnly && autoApprove) {
-							parallelSafe.push(toolCall)
+						// Parallel execution requires auto-approval
+						if (autoApprove) {
+							finalParallelSafe.push(toolCall)
 						} else {
-							sequential.push(toolCall)
+							finalSequential.push(toolCall)
 						}
 					}
 
 					// Run parallel-safe tools concurrently when there are 2+ read-only tools.
 					// Uses parallelMode=true in _runToolCall which appends messages instead of
 					// replacing the last one, preventing concurrent tools from overwriting each other.
-					if (parallelSafe.length > 1) {
-						console.log(`[chatThreadService] Running ${parallelSafe.length} read-only tools in parallel: ${parallelSafe.map(t => t.name).join(', ')}`)
+					if (finalParallelSafe.length > 1) {
+						console.log(`[chatThreadService] Running ${finalParallelSafe.length} read-only tools in parallel: ${finalParallelSafe.map(t => t.name).join(', ')}`)
 						const parallelResults = await Promise.all(
-							parallelSafe.map(toolCall =>
+							finalParallelSafe.map(toolCall =>
 								this._runToolCall(threadId, toolCall.name, toolCall.id, undefined, { preapproved: false, unvalidatedToolParams: toolCall.rawParams, thought_signature: toolCall.thought_signature }, true)
 							)
 						)
@@ -2011,9 +2228,9 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 								anyToolRan = true
 							}
 						}
-					} else if (parallelSafe.length === 1) {
+					} else if (finalParallelSafe.length === 1) {
 						// Single parallel-safe tool, run normally
-						const toolCall = parallelSafe[0]
+						const toolCall = finalParallelSafe[0]
 						console.log(`[chatThreadService] LLM calling tool: ${toolCall.name}`)
 						const { awaitingUserApproval, interrupted } = await this._runToolCall(threadId, toolCall.name, toolCall.id, undefined, { preapproved: false, unvalidatedToolParams: toolCall.rawParams, thought_signature: toolCall.thought_signature })
 						if (interrupted) {
@@ -2029,7 +2246,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 					}
 
 					// Run sequential tools one at a time
-					for (const toolCall of sequential) {
+					for (const toolCall of finalSequential) {
 						console.log(`[chatThreadService] LLM calling tool: ${toolCall.name}`)
 						const paramsStr = JSON.stringify(toolCall.rawParams);
 						console.log(`[chatThreadService] Tool call params:`, paramsStr.length > 1000 ? paramsStr.substring(0, 1000) + '...' : paramsStr)
@@ -3353,18 +3570,164 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 	}
 
 
+	/**
+	 * Calculate approximate size of a message in KB
+	 * Includes content, tool results, and reasoning
+	 */
+	private _calculateMessageSizeKB(message: ChatMessage): number {
+		let sizeBytes = 0;
+
+		// Content size
+		if ('displayContent' in message && message.displayContent) {
+			sizeBytes += new Blob([message.displayContent]).size;
+		}
+		if ('content' in message && message.content) {
+			sizeBytes += new Blob([message.content]).size;
+		}
+		if ('reasoning' in message && message.reasoning) {
+			sizeBytes += new Blob([message.reasoning]).size;
+		}
+
+		// Tool result size
+		if ('result' in message && message.result) {
+			const resultStr = typeof message.result === 'string'
+				? message.result
+				: JSON.stringify(message.result);
+			sizeBytes += new Blob([resultStr]).size;
+		}
+
+		// Tool params size
+		if ('params' in message && message.params) {
+			const paramsStr = JSON.stringify(message.params);
+			sizeBytes += new Blob([paramsStr]).size;
+		}
+
+		// Convert to KB
+		return sizeBytes / 1024;
+	}
+
+	/**
+	 * Calculate total thread size in MB
+	 */
+	private _calculateThreadSizeMB(messages: ChatMessage[]): number {
+		let totalBytes = 0;
+
+		for (const message of messages) {
+			// Content size
+			if ('displayContent' in message && message.displayContent) {
+				totalBytes += new Blob([message.displayContent]).size;
+			}
+			if ('content' in message && message.content) {
+				totalBytes += new Blob([message.content]).size;
+			}
+			if ('reasoning' in message && message.reasoning) {
+				totalBytes += new Blob([message.reasoning]).size;
+			}
+
+			// Tool result size
+			if ('result' in message && message.result) {
+				const resultStr = typeof message.result === 'string'
+					? message.result
+					: JSON.stringify(message.result);
+				totalBytes += new Blob([resultStr]).size;
+			}
+
+			// Tool params size
+			if ('params' in message && message.params) {
+				const paramsStr = JSON.stringify(message.params);
+				totalBytes += new Blob([paramsStr]).size;
+			}
+		}
+
+		// Convert to MB
+		return totalBytes / (1024 * 1024);
+	}
+
+	/**
+	 * Truncate tool results in a message to fit size limits
+	 */
+	private _truncateMessageToFitSizeLimit(message: ChatMessage, maxSizeKB: number): ChatMessage {
+		const currentSize = this._calculateMessageSizeKB(message);
+		if (currentSize <= maxSizeKB) return message;
+
+		const truncatedMessage = { ...message };
+
+		// Truncate tool results first (largest contributor)
+		if ('result' in truncatedMessage && truncatedMessage.result) {
+			const resultStr = typeof truncatedMessage.result === 'string'
+				? truncatedMessage.result
+				: JSON.stringify(truncatedMessage.result);
+
+			if (resultStr.length > 100) {
+				const truncatedResult = resultStr.substring(0, 100) + `\n\n[... truncated for memory management - original size: ${(resultStr.length / 1024).toFixed(1)}KB]`;
+				truncatedMessage.result = typeof truncatedMessage.result === 'string'
+					? truncatedResult
+					: JSON.parse(truncatedResult);
+
+				console.log(`[Memory] Truncated tool result from ${(resultStr.length / 1024).toFixed(1)}KB to ${(truncatedResult.length / 1024).toFixed(1)}KB`);
+			}
+		}
+
+		// Truncate content if still over limit
+		if ('displayContent' in truncatedMessage && truncatedMessage.displayContent) {
+			const contentSize = new Blob([truncatedMessage.displayContent]).size / 1024;
+			if (contentSize > maxSizeKB / 2) {
+				const maxChars = Math.floor((maxSizeKB / 2) * 1024);
+				if (truncatedMessage.displayContent.length > maxChars) {
+					truncatedMessage.displayContent = truncatedMessage.displayContent.substring(0, maxChars) + `\n\n[... truncated for memory management]`;
+					console.log(`[Memory] Truncated displayContent from ${(contentSize).toFixed(1)}KB to ${(maxSizeKB / 2).toFixed(1)}KB`);
+				}
+			}
+		}
+
+		return truncatedMessage;
+	}
+
 	private _addMessageToThread(threadId: string, message: ChatMessage) {
 		const { allThreads } = this.state
 		const oldThread = allThreads[threadId]
 		if (!oldThread) return // should never happen
 
+		// SIZE-BASED LIMIT: Truncate message if it exceeds size limit before adding
+		let processedMessage = message;
+		const messageSizeKB = this._calculateMessageSizeKB(message);
+
+		if (messageSizeKB > MAX_MESSAGE_SIZE_KB) {
+			console.log(`[Memory] Message size (${messageSizeKB.toFixed(1)}KB) exceeds limit (${MAX_MESSAGE_SIZE_KB}KB), truncating`);
+			processedMessage = this._truncateMessageToFitSizeLimit(message, MAX_MESSAGE_SIZE_KB);
+		}
+
 		// MEMORY OPTIMIZATION: Prune old messages if exceeding max limit
-		let messages = [...oldThread.messages, message];
+		let messages = [...oldThread.messages, processedMessage];
 
 		// Limit total messages
 		if (messages.length > MAX_MESSAGES_PER_THREAD) {
 			messages = messages.slice(-MAX_MESSAGES_PER_THREAD);
 			console.log(`[Memory] Pruned thread ${threadId} total messages to ${messages.length}`);
+		}
+
+		// SIZE-BASED LIMIT: Check total thread size and prune if necessary
+		let threadSizeMB = this._calculateThreadSizeMB(messages);
+		if (threadSizeMB > MAX_THREAD_SIZE_MB) {
+			console.log(`[Memory] Thread size (${threadSizeMB.toFixed(1)}MB) exceeds limit (${MAX_THREAD_SIZE_MB}MB), pruning old messages`);
+
+			// Progressively remove oldest non-checkpoint messages until under limit
+			let removeIdx = 0;
+			while (threadSizeMB > MAX_THREAD_SIZE_MB && removeIdx < messages.length - 10) {
+				// Skip checkpoints - they're important for state restoration
+				if (messages[removeIdx].role === 'checkpoint') {
+					removeIdx++;
+					continue;
+				}
+				messages.splice(removeIdx, 1);
+				threadSizeMB = this._calculateThreadSizeMB(messages);
+				console.log(`[Memory] Removed message at index ${removeIdx}, new size: ${threadSizeMB.toFixed(1)}MB`);
+			}
+
+			// If still over limit even after removing non-checkpoints, warn user
+			if (threadSizeMB > MAX_THREAD_SIZE_MB) {
+				console.warn(`[Memory] Thread ${threadId} still exceeds size limit (${threadSizeMB.toFixed(1)}MB) after pruning. Consider starting a new thread.`);
+			}
 		}
 
 		// MEMORY OPTIMIZATION: Limit number of checkpoints to prevent snapshot bloat

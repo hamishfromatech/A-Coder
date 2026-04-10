@@ -1290,6 +1290,7 @@ export class CodeApplication extends Disposable {
 		// Void - Image Generation
 		mainProcessElectronServer.registerChannel('void-channel-image-generation', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new ImageGenerationChannel())));
 
+
 		// Void - Browser / Webview
 		mainProcessElectronServer.registerChannel('void-channel-browser', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new BrowserChannel())));
 

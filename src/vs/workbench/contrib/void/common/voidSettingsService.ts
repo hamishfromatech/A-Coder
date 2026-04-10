@@ -341,6 +341,9 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 				readS.globalSettings.composioConnections = {};
 			}
 			if (readS.globalSettings.composioEnabledToolkits === undefined) {
+
+				// notification sound setting (1.6.8+)
+				if (readS.globalSettings.notificationSound === undefined) readS.globalSettings.notificationSound = 'none';
 				readS.globalSettings.composioEnabledToolkits = [];
 			}
 		}

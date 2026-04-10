@@ -55,6 +55,7 @@ import { IExtensionManagementService } from '../../../../../../../platform/exten
 import { IMCPService } from '../../../../common/mcpService.js';
 import { IMCPModalService } from '../../../mcpModalService.js';
 import { IStorageService, StorageScope } from '../../../../../../../platform/storage/common/storage.js'
+import { ISoundService } from '../../../soundService.js'
 import { OPT_OUT_KEY } from '../../../../common/storageKeys.js'
 import { IAgentManagerService } from '../../../agentManager.contribution.js'
 import { ILearningProgressService } from '../../../../common/learningProgressService.js'
@@ -344,6 +345,7 @@ const getReactAccessor = (accessor: ServicesAccessor) => {
 
 		ILearningProgressService: accessor.get(ILearningProgressService),
 		IStorageService: accessor.get(IStorageService),
+		ISoundService: accessor.get(ISoundService),
 		// IACoderOAuthService: accessor.get(IACoderOAuthService),
 
 	} as const

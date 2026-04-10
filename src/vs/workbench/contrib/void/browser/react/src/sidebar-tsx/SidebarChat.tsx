@@ -2709,6 +2709,36 @@ export const SidebarChat = () => {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [threadId])
 
+		// Notification sound on LLM response complete (text-only responses)
+		const prevIsRunningRef = useRef<IsRunningType | undefined>(undefined)
+		useEffect(() => {
+			const prevIsRunning = prevIsRunningRef.current
+			prevIsRunningRef.current = isRunning
+			const soundSetting = settingsState.globalSettings.notificationSound
+			
+			// Only play sound if it was a text-only response (no tool calls)
+			const hasToolCalls = !!(toolCallsSoFar && toolCallsSoFar.some(tc => tc.name && tc.name !== 'detecting...'))
+			const hasXMLToolCalls = !!(_rawTextBeforeStripping && _rawTextBeforeStripping.includes('<function_calls>'))
+			
+			if (soundSetting && soundSetting !== 'none' && prevIsRunning && prevIsRunning !== 'idle' && !isRunning && !hasToolCalls && !hasXMLToolCalls) {
+				// Play notification sound via SoundService
+				;(async () => {
+					try {
+						const accessor = useAccessor()
+						const soundService = accessor.get('ISoundService')
+						const dataUrl = await soundService.playSound(soundSetting)
+						if (dataUrl) {
+							const audio = new Audio(dataUrl)
+							audio.volume = 0.5
+							audio.play().catch(() => { })
+						}
+					} catch (e) {
+						console.warn('[A-Coder] Failed to play notification sound:', e)
+					}
+				})()
+			}
+		}, [isRunning, settingsState.globalSettings.notificationSound, toolCallsSoFar, _rawTextBeforeStripping])
+
 	// Task handlers
 	const handleCreateTask = (description: string) => {
 		if (threadId) {

@@ -14,9 +14,14 @@ export const VOID_SETTINGS_STORAGE_KEY = 'void.settingsServiceStorageII'
 // past values:
 // 'void.chatThreadStorage'
 // 'void.chatThreadStorageI' // 1.0.2
+// 'void.chatThreadStorageII' // 1.0.3 - added size-based limits
 
-// 1.0.3
-export const THREAD_STORAGE_KEY = 'void.chatThreadStorageII'
+// Current: 1.0.4 - added storage versioning and migration support
+export const THREAD_STORAGE_KEY = 'void.chatThreadStorageIII'
+
+// Storage version key - used for migration tracking
+export const THREAD_STORAGE_VERSION_KEY = 'void.chatThreadStorage.version'
+export const CURRENT_THREAD_STORAGE_VERSION = 1
 
 // Learning progress storage key
 export const LEARNING_PROGRESS_STORAGE_KEY = 'void.learningProgressStorage'

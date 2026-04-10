@@ -5,6 +5,7 @@
 
 import { LLMChatMessage } from './sendLLMMessageTypes.js';
 import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
+import { CompressionConfig, CompressionStats } from './contextCompressionService.js';
 
 /**
  * Service for counting tokens in messages and managing context windows.
@@ -21,23 +22,49 @@ export class TokenCountingService {
 	private _historyCache = new Map<string, { count: number, lastMessageHash: string }>();
 	private readonly MAX_HISTORY_CACHE_SIZE = 20;
 
+	// MEMORY OPTIMIZATION: TTL for cache entries (10 minutes)
+	private _cacheTimestamps = new Map<string, number>();
+	private readonly CACHE_TTL_MS = 10 * 60 * 1000;
+
+	// CRITICAL OPERATIONS: Track pending async operations to avoid duplicate IPC calls
+	private _pendingAsyncCounts = new Map<string, Promise<number>>();
+
+	// DYNAMIC CONTEXT WINDOWS: Cache for dynamically fetched context windows
+	private _dynamicContextWindows = new Map<string, { window: number; timestamp: number }>();
+	private readonly CONTEXT_WINDOW_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
 	constructor(
 		@IMainProcessService private readonly mainProcessService: IMainProcessService,
 	) {
 		console.log('[TokenCountingService] Using tiktoken via IPC with character-based fallback');
+		// Start cache cleanup interval
+		setInterval(() => this._cleanupExpiredCache(), this.CACHE_TTL_MS / 2);
 	}
 
-	private _getCached(text: string, modelName: string): number | undefined {
-		return this._countCache.get(`${modelName}:${text.length}:${text.substring(0, 50)}`);
-	}
-
-	private _setCached(text: string, modelName: string, count: number): void {
-		if (this._countCache.size >= this.MAX_CACHE_SIZE) {
-			const firstKey = this._countCache.keys().next().value;
-			if (firstKey) this._countCache.delete(firstKey);
+	/**
+	 * Clean up expired cache entries
+	 */
+	private _cleanupExpiredCache(): void {
+		const now = Date.now();
+		for (const [key, timestamp] of this._cacheTimestamps.entries()) {
+			if (now - timestamp > this.CACHE_TTL_MS) {
+				this._cacheTimestamps.delete(key);
+				this._countCache.delete(key);
+			}
 		}
-		this._countCache.set(`${modelName}:${text.length}:${text.substring(0, 50)}`, count);
+		// Clean up history cache separately
+		for (const [hKey] of this._historyCache.entries()) {
+			// History cache uses TTL from main cache entries
+			const modelName = hKey.split(':')[0];
+			for (const [tsKey, tsValue] of this._cacheTimestamps.entries()) {
+				if (tsKey.startsWith(modelName) && now - tsValue > this.CACHE_TTL_MS) {
+					this._historyCache.delete(hKey);
+					break;
+				}
+			}
+		}
 	}
+
 
 	/**
 	 * Update the token ratio for a specific model based on actual usage.
@@ -116,22 +143,79 @@ export class TokenCountingService {
 	/**
 	 * Async version: count tokens in a single text string using tiktoken via IPC.
 	 * Falls back to character estimation on IPC error.
+	 * Deduplicates concurrent calls for the same text.
 	 */
 	public async countTextTokensAsync(text: string, modelName: string): Promise<number> {
-		const cached = this._getCached(text, modelName);
-		if (cached !== undefined) return cached;
+		const cacheKey = `${modelName}:${text.length}:${text.substring(0, 50)}`;
 
+		// Check cache with TTL
+		const cached = this._getCachedWithTTL(text, modelName);
+		if (cached !== undefined) {
+			return cached;
+		}
+
+		// Deduplicate concurrent calls
+		const pendingKey = `text:${cacheKey}`;
+		if (this._pendingAsyncCounts.has(pendingKey)) {
+			return this._pendingAsyncCounts.get(pendingKey)!;
+		}
+
+		const countPromise = this._countTextTokensAsyncInternal(text, modelName);
+		this._pendingAsyncCounts.set(pendingKey, countPromise);
+
+		try {
+			const result = await countPromise;
+			return result;
+		} finally {
+			this._pendingAsyncCounts.delete(pendingKey);
+		}
+	}
+
+	private async _countTextTokensAsyncInternal(text: string, modelName: string): Promise<number> {
 		const multiplier = this._getTokenCountMultiplier(modelName);
+
 		try {
 			const channel = this.mainProcessService.getChannel('void-channel-token-counting');
 			const count = await channel.call('countTokens', { text, modelName });
 			const finalCount = Math.ceil((typeof count === 'number' ? count : Math.ceil(text.length / 4)) * multiplier);
-			this._setCached(text, modelName, finalCount);
+			this._setCachedWithTimestamp(text, modelName, finalCount);
 			return finalCount;
 		} catch (error) {
 			console.warn('[TokenCountingService] IPC token counting failed, using character estimate:', error);
 			return Math.ceil((text.length / 4) * multiplier);
 		}
+	}
+
+	/**
+	 * Check cache with TTL validation
+	 */
+	private _getCachedWithTTL(text: string, modelName: string): number | undefined {
+		const cacheKey = `${modelName}:${text.length}:${text.substring(0, 50)}`;
+		const timestamp = this._cacheTimestamps.get(cacheKey);
+		if (timestamp === undefined) return undefined;
+
+		if (Date.now() - timestamp > this.CACHE_TTL_MS) {
+			this._cacheTimestamps.delete(cacheKey);
+			this._countCache.delete(cacheKey);
+			return undefined;
+		}
+
+		return this._countCache.get(cacheKey);
+	}
+
+	private _setCachedWithTimestamp(text: string, modelName: string, count: number): void {
+		const cacheKey = `${modelName}:${text.length}:${text.substring(0, 50)}`;
+
+		if (this._countCache.size >= this.MAX_CACHE_SIZE) {
+			const firstKey = this._countCache.keys().next().value;
+			if (firstKey) {
+				this._countCache.delete(firstKey);
+				this._cacheTimestamps.delete(firstKey);
+			}
+		}
+
+		this._countCache.set(cacheKey, count);
+		this._cacheTimestamps.set(cacheKey, Date.now());
 	}
 
 	/**
@@ -217,10 +301,40 @@ export class TokenCountingService {
 	/**
 	 * Async version: count tokens in an array of chat messages using tiktoken via IPC.
 	 * Falls back to character estimation on IPC error.
+	 * Deduplicates concurrent calls and uses TTL-based caching.
+	 * CRITICAL: Use this for compression decisions and context window checks.
 	 */
 	public async countMessagesTokensAsync(messages: LLMChatMessage[], modelName: string): Promise<number> {
 		if (messages.length === 0) return 0;
 
+		// Generate cache key based on content hashes
+		const contentHash = this._hashMessages(messages);
+		const cacheKey = `${modelName}:${messages.length}:${contentHash}`;
+
+		// Check cache with TTL
+		const cached = this._getCachedWithTTLByKey(cacheKey, modelName);
+		if (cached !== undefined) {
+			return cached;
+		}
+
+		// Deduplicate concurrent calls
+		const pendingKey = `messages:${cacheKey}`;
+		if (this._pendingAsyncCounts.has(pendingKey)) {
+			return this._pendingAsyncCounts.get(pendingKey)!;
+		}
+
+		const countPromise = this._countMessagesTokensAsyncInternal(messages, modelName);
+		this._pendingAsyncCounts.set(pendingKey, countPromise);
+
+		try {
+			const result = await countPromise;
+			return result;
+		} finally {
+			this._pendingAsyncCounts.delete(pendingKey);
+		}
+	}
+
+	private async _countMessagesTokensAsyncInternal(messages: LLMChatMessage[], modelName: string): Promise<number> {
 		const multiplier = this._getTokenCountMultiplier(modelName);
 
 		// PERFORMANCE: Check history cache for O(1) count if only last message changed
@@ -266,6 +380,39 @@ export class TokenCountingService {
 			return Math.ceil(this._estimateMessagesTokens(messages) * multiplier);
 		}
 	}
+
+	/**
+	 * Hash messages for cache key generation
+	 */
+	private _hashMessages(messages: LLMChatMessage[]): string {
+		// Simple hash based on message count and content lengths
+		// More sophisticated hashing would be overkill for cache deduplication
+		let hash = messages.length.toString();
+		for (let i = 0; i < messages.length; i++) {
+			const msg = messages[i];
+			const content = this._extractContent(msg);
+			hash += `:${i}:${content.length}:${content.substring(0, 20)}`;
+		}
+		return hash;
+	}
+
+	/**
+	 * Check cache with TTL validation using pre-computed cacheKey
+	 */
+	private _getCachedWithTTLByKey(cacheKey: string, modelName: string): number | undefined {
+		const fullKey = `${modelName}:${cacheKey}`;
+		const timestamp = this._cacheTimestamps.get(fullKey);
+		if (timestamp === undefined) return undefined;
+
+		if (Date.now() - timestamp > this.CACHE_TTL_MS) {
+			this._cacheTimestamps.delete(fullKey);
+			this._countCache.delete(fullKey);
+			return undefined;
+		}
+
+		return this._countCache.get(fullKey);
+	}
+
 
 	/**
 	 * Internal helper: character-based estimate for messages (fallback).
@@ -324,9 +471,17 @@ export class TokenCountingService {
 
 
 	/**
-	 * Get the context window size for a model
+	 * Get the context window size for a model.
+	 * Checks dynamic cache first, then falls back to static mappings.
+	 * For models with unknown context windows, attempts to fetch dynamically.
 	 */
 	public getContextWindowSize(modelName: string): number {
+		// Check dynamic cache first
+		const cached = this._getDynamicContextWindow(modelName);
+		if (cached !== undefined) {
+			return cached;
+		}
+
 		// Strip provider prefix if present (e.g., "ollama:minimax-m2:cloud" → "minimax-m2:cloud")
 		// Also handle OpenRouter format (e.g., "openRouter:z-ai/glm-4.6:exacto" → "glm-4.6:exacto")
 		const lowerModelName = modelName.toLowerCase();
@@ -467,7 +622,8 @@ export class TokenCountingService {
 	}
 
 	/**
-	 * Calculate remaining tokens in context window
+	 * Calculate remaining tokens in context window (sync, uses estimation)
+	 * Use for non-critical operations where speed is more important than accuracy.
 	 */
 	public getRemainingTokens(messages: LLMChatMessage[], modelName: string): number {
 		const usedTokens = this.countMessagesTokens(messages, modelName);
@@ -476,10 +632,65 @@ export class TokenCountingService {
 	}
 
 	/**
-	 * Check if messages fit within context window
+	 * Calculate remaining tokens in context window (async, uses accurate tiktoken)
+	 * CRITICAL: Use this for compression decisions and context window checks.
+	 */
+	public async getRemainingTokensAsync(messages: LLMChatMessage[], modelName: string): Promise<number> {
+		const usedTokens = await this.countMessagesTokensAsync(messages, modelName);
+		const contextWindow = this.getContextWindowSize(modelName);
+		return Math.max(0, contextWindow - usedTokens);
+	}
+
+	/**
+	 * Check if messages fit within context window (sync, uses estimation)
 	 */
 	public fitsInContextWindow(messages: LLMChatMessage[], modelName: string): boolean {
 		return this.getRemainingTokens(messages, modelName) > 0;
+	}
+
+	/**
+	 * Check if messages fit within context window (async, uses accurate tiktoken)
+	 * CRITICAL: Use this for critical operations before making LLM calls.
+	 */
+	public async fitsInContextWindowAsync(messages: LLMChatMessage[], modelName: string): Promise<boolean> {
+		const remaining = await this.getRemainingTokensAsync(messages, modelName);
+		return remaining > 0;
+	}
+
+	/**
+	 * Check if compression is needed with accurate async token counting
+	 * CRITICAL: Use this instead of sync version for compression decisions.
+	 */
+	public async needsCompressionAsync(messages: LLMChatMessage[], modelName: string, threshold: number = 0.8): Promise<boolean> {
+		const currentTokens = await this.countMessagesTokensAsync(messages, modelName);
+		const contextWindow = this.getContextWindowSize(modelName);
+		const usage = currentTokens / contextWindow;
+		return usage > threshold;
+	}
+
+	/**
+	 * Get compression preview with accurate async token counting
+	 * CRITICAL: Use this for accurate compression statistics.
+	 */
+	public async getCompressionPreviewAsync(messages: LLMChatMessage[], modelName: string, config?: Partial<CompressionConfig>): Promise<CompressionStats> {
+		// This will be called by ContextCompressionService
+		// The implementation is in ContextCompressionService but uses this for token counting
+		const currentTokens = await this.countMessagesTokensAsync(messages, modelName);
+		const contextWindow = this.getContextWindowSize(modelName);
+		const effectiveContextWindow = contextWindow - this.getLargeContextBuffer(contextWindow);
+		const targetTokens = Math.floor((effectiveContextWindow - 8192) * 0.85);
+
+		return {
+			originalTokens: currentTokens,
+			originalMessageCount: messages.length,
+			targetTokens,
+			finalTokens: 0,
+			finalMessageCount: 0,
+			messagesRemoved: 0,
+			messagesSummarized: 0,
+			toolResultsTruncated: 0,
+			compressionRatio: Math.round((currentTokens / targetTokens) * 100)
+		};
 	}
 
 	/**
@@ -546,9 +757,114 @@ export class TokenCountingService {
 	}
 
 	/**
-	 * Dispose (no-op for character-based estimation)
+	 * Get dynamically cached context window for a model
+	 */
+	private _getDynamicContextWindow(modelName: string): number | undefined {
+		const cached = this._dynamicContextWindows.get(modelName);
+		if (!cached) return undefined;
+
+		// Check if cache is still valid
+		if (Date.now() - cached.timestamp > this.CONTEXT_WINDOW_CACHE_TTL_MS) {
+			this._dynamicContextWindows.delete(modelName);
+			return undefined;
+		}
+
+		return cached.window;
+	}
+
+	/**
+	 * Set dynamic context window cache
+	 */
+	public setDynamicContextWindow(modelName: string, contextWindow: number): void {
+		this._dynamicContextWindows.set(modelName, {
+			window: contextWindow,
+			timestamp: Date.now()
+		});
+		console.log(`[TokenCountingService] Cached context window for ${modelName}: ${contextWindow}`);
+	}
+
+	/**
+	 * Fetch context window from model API dynamically.
+	 * This should be called when static lookup fails.
+	 * Currently returns undefined but provides framework for future API integration.
+	 */
+	public async fetchDynamicContextWindow(modelName: string): Promise<number | undefined> {
+		// Check cache first
+		const cached = this._getDynamicContextWindow(modelName);
+		if (cached !== undefined) {
+			return cached;
+		}
+
+		try {
+			// TODO: Implement API calls to fetch context windows from:
+			// - OpenAI: GET /v1/models/{model}
+			// - Anthropic: GET /v1/models
+			// - OpenRouter: GET /api/v1/models
+			// - Ollama: GET /api/tags or /api/show
+
+			// For now, we rely on static mappings
+			// This framework allows easy addition of dynamic fetching later
+
+			// Attempt to infer from model name patterns
+			const inferredWindow = this._inferContextWindowFromName(modelName);
+			if (inferredWindow) {
+				this.setDynamicContextWindow(modelName, inferredWindow);
+				return inferredWindow;
+			}
+
+			return undefined;
+		} catch (error) {
+			console.warn(`[TokenCountingService] Failed to fetch dynamic context window for ${modelName}:`, error);
+			return undefined;
+		}
+	}
+
+	/**
+	 * Infer context window from model name patterns
+	 * Uses common naming conventions to make educated guesses
+	 */
+	private _inferContextWindowFromName(modelName: string): number | undefined {
+		const lowerName = modelName.toLowerCase();
+
+		// Check for context window indicators in model name
+		if (lowerName.includes('128k') || lowerName.includes('128000')) return 128000;
+		if (lowerName.includes('200k') || lowerName.includes('200000')) return 200000;
+		if (lowerName.includes('256k') || lowerName.includes('256000')) return 256000;
+		if (lowerName.includes('512k') || lowerName.includes('512000')) return 512000;
+		if (lowerName.includes('1m') || lowerName.includes('1000000')) return 1000000;
+		if (lowerName.includes('2m') || lowerName.includes('2000000')) return 2000000;
+
+		// Check for model family patterns
+		if (lowerName.includes('claude-3')) return 200000; // All Claude 3 models have 200k
+		if (lowerName.includes('claude-3.5')) return 200000;
+		if (lowerName.includes('claude-3.7')) return 200000;
+		if (lowerName.includes('gemini-1.5')) return 1000000; // Gemini 1.5 has 1M
+		if (lowerName.includes('gemini-2')) return 1000000;
+		if (lowerName.includes('gemini-3')) return 1000000;
+
+		return undefined;
+	}
+
+	/**
+	 * Clear expired cache entries
+	 */
+	public clearExpiredCaches(): void {
+		const now = Date.now();
+		for (const [key, data] of this._dynamicContextWindows.entries()) {
+			if (now - data.timestamp > this.CONTEXT_WINDOW_CACHE_TTL_MS) {
+				this._dynamicContextWindows.delete(key);
+			}
+		}
+	}
+
+	/**
+	 * Dispose and clean up resources
 	 */
 	public dispose(): void {
-		// No cleanup needed
+		this._countCache.clear();
+		this._historyCache.clear();
+		this._cacheTimestamps.clear();
+		this._dynamicContextWindows.clear();
+		this._pendingAsyncCounts.clear();
 	}
 }
