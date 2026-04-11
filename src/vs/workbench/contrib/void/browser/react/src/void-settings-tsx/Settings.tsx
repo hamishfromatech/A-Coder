@@ -3903,7 +3903,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 									</div>
 
 									<div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto">
-										<a href="https://discord.gg/KxxAuBxp" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 p-4 rounded-xl bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2 transition-all hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-void-accent">
+										<a href="https://discord.gg/wnh7BVRQGC" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 p-4 rounded-xl bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2 transition-all hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-void-accent">
 											<MessageCircle size={18} />
 											<span className="text-sm font-medium">Discord</span>
 										</a>

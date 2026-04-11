@@ -565,6 +565,7 @@ export type ThreadStreamState = {
 		toolInfo?: undefined;
 		interrupt: 'not_needed' | Promise<() => void>; // calling this should have no effect on state - would be too confusing. it just cancels the tool
 		tokenUsage?: { used: number, total: number, percentage: number };
+		stopReason?: string; // The LLM stop_reason/finish_reason from the last response
 	}
 }
 
@@ -1808,7 +1809,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 				nAttempts += 1
 
 				type ResTypes =
-					| { type: 'llmDone', toolCalls?: RawToolCallObj[], info: { fullText: string, fullReasoning: string, anthropicReasoning: AnthropicReasoning[] | null }, usage?: { promptTokens: number; completionTokens: number; } }
+					| { type: 'llmDone', toolCalls?: RawToolCallObj[], info: { fullText: string, fullReasoning: string, anthropicReasoning: AnthropicReasoning[] | null }, usage?: { promptTokens: number; completionTokens: number; }, stopReason?: string }
 					| { type: 'llmError', error?: { message: string; fullError: Error | null; } }
 					| { type: 'llmAborted' }
 
@@ -1981,7 +1982,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 						}
 						const parsed = partitionReasoningContent(fullText, fullReasoning)
 						console.log(`[chatThreadService] After partitioning - reasoningText length: ${parsed.reasoningText?.length ?? 0}`)
-						resMessageIsDonePromise({ type: 'llmDone', toolCalls, info: { fullText: parsed.displayText, fullReasoning: parsed.reasoningText, anthropicReasoning }, usage }) // resolve with tool calls
+						resMessageIsDonePromise({ type: 'llmDone', toolCalls, info: { fullText: parsed.displayText, fullReasoning: parsed.reasoningText, anthropicReasoning }, usage, stopReason: params.stopReason }) // resolve with tool calls
 					},
 					onError: async (error) => {
 						resMessageIsDonePromise({ type: 'llmError', error: error })
@@ -2093,7 +2094,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 				}
 
 				// llm res success
-				const { toolCalls, info } = llmRes
+				const { toolCalls, info, stopReason } = llmRes
 
 									const responseLog = JSON.stringify({
 										hasToolCalls: !!toolCalls && toolCalls.length > 0,
@@ -2171,7 +2172,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 					this._addMessageToThread(threadId, { role: 'assistant', displayContent: info.fullText, reasoning: info.fullReasoning, anthropicReasoning: info.anthropicReasoning })
 				}
 
-				this._setStreamState(threadId, { isRunning: 'idle', interrupt: 'not_needed' }) // just decorative for clarity
+				this._setStreamState(threadId, { isRunning: 'idle', interrupt: 'not_needed', stopReason }) // just decorative for clarity
 
 				// call tool(s) if there are any
 				if (toolCalls && toolCalls.length > 0) {

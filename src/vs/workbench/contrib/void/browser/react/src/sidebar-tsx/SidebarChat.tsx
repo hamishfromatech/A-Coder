@@ -2629,6 +2629,7 @@ export const SidebarChat = () => {
 	const currThreadStreamState = useChatThreadsStreamState(chatThreadsState.currentThreadId)
 	const isRunning = currThreadStreamState?.isRunning
 	const latestError = currThreadStreamState?.error
+	const stopReason = isRunning === 'idle' ? currThreadStreamState?.stopReason : undefined
 	const { displayContentSoFar, toolCallsSoFar, reasoningSoFar, _rawTextBeforeStripping, reactPhase } = currThreadStreamState?.llmInfo ?? {}
 
 	// Use displayContentSoFar directly for streaming
@@ -2709,18 +2710,19 @@ export const SidebarChat = () => {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [threadId])
 
-		// Notification sound on LLM response complete (text-only responses)
+		// Notification sound on LLM response complete (natural stop only)
 		const prevIsRunningRef = useRef<IsRunningType | undefined>(undefined)
 		useEffect(() => {
 			const prevIsRunning = prevIsRunningRef.current
 			prevIsRunningRef.current = isRunning
 			const soundSetting = settingsState.globalSettings.notificationSound
 			
-			// Only play sound if it was a text-only response (no tool calls)
-			const hasToolCalls = !!(toolCallsSoFar && toolCallsSoFar.some(tc => tc.name && tc.name !== 'detecting...'))
-			const hasXMLToolCalls = !!(_rawTextBeforeStripping && _rawTextBeforeStripping.includes('<function_calls>'))
-			
-			if (soundSetting && soundSetting !== 'none' && prevIsRunning && prevIsRunning !== 'idle' && !isRunning && !hasToolCalls && !hasXMLToolCalls) {
+			// Only play sound on natural stop reasons (stop, end_turn, or unknown/missing — many providers don't return finish_reason)
+			// Skip explicit non-natural stops: tool_calls, max_tokens, length, content_filter
+			const nonNaturalStops = ['tool_calls', 'max_tokens', 'length', 'content_filter']
+			const isNaturalStop = !stopReason || !(nonNaturalStops.includes(stopReason))
+
+			if (soundSetting && soundSetting !== 'none' && prevIsRunning && prevIsRunning !== 'idle' && isRunning === 'idle' && isNaturalStop) {
 				// Play notification sound via SoundService
 				;(async () => {
 					try {
@@ -2737,7 +2739,7 @@ export const SidebarChat = () => {
 					}
 				})()
 			}
-		}, [isRunning, settingsState.globalSettings.notificationSound, toolCallsSoFar, _rawTextBeforeStripping])
+		}, [isRunning, settingsState.globalSettings.notificationSound, stopReason])
 
 	// Task handlers
 	const handleCreateTask = (description: string) => {

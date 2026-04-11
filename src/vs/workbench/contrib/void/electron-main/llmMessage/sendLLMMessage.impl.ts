@@ -635,6 +635,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 
 			// when receive text
 			let chunkCount = 0
+			let lastFinishReason: string | undefined
 			for await (const chunk of response) {
 				chunkCount++
 				if (chunkCount <= 3) {
@@ -644,6 +645,10 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 				if (!choice) {
 					console.log(`[sendLLMMessage] Chunk ${chunkCount} has no choice, skipping`)
 					continue
+				}
+
+				if (choice.finish_reason) {
+					lastFinishReason = choice.finish_reason
 				}
 
 				if (choice.finish_reason && choice.finish_reason !== 'stop' && choice.finish_reason !== 'tool_calls') {
@@ -773,7 +778,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 				const anthropicReasoning: AnthropicReasoning[] | null = fullReasoningSoFar ? [{ type: 'thinking', thinking: fullReasoningSoFar, signature: firstValidToolCall?.thoughtSignature || '' }] : null
 				
 				console.log(`[sendLLMMessage] Final message - text length: ${fullTextSoFar.length}, reasoning length: ${fullReasoningSoFar.length}, toolCalls: ${finalToolCalls.length}`)
-				onFinalMessage({ fullText: fullTextSoFar, fullReasoning: fullReasoningSoFar, anthropicReasoning, ...toolCallObj, usage: finalUsage });
+				onFinalMessage({ fullText: fullTextSoFar, fullReasoning: fullReasoningSoFar, anthropicReasoning, ...toolCallObj, usage: finalUsage, stopReason: lastFinishReason });
 			}
 		})
 		// when error/fail - this catches errors of both .create() and .then(for await)
@@ -806,10 +811,15 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 						const { stripXMLBlocks } = await import('../../common/helpers/extractXMLTools.js')
 
 						let chunkCount = 0
+						let retryFinishReason: string | undefined
 						for await (const chunk of retryResponse as any) {
 							chunkCount++
 							const choice = chunk.choices?.[0]
 							if (!choice) continue
+
+							if (choice.finish_reason) {
+								retryFinishReason = choice.finish_reason
+							}
 
 							if (choice.finish_reason && choice.finish_reason !== 'stop' && choice.finish_reason !== 'tool_calls') {
 								onError({ message: `Model ended response with finish_reason "${choice.finish_reason}"`, fullError: null })
@@ -898,7 +908,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 						
 						const firstValidToolCall = toolCalls.find(tc => !!tc);
 						const anthropicReasoning: AnthropicReasoning[] | null = fullReasoningSoFar ? [{ type: 'thinking', thinking: fullReasoningSoFar, signature: firstValidToolCall?.thoughtSignature || '' }] : null
-						onFinalMessage({ fullText: fullTextSoFar, fullReasoning: fullReasoningSoFar, anthropicReasoning, ...toolCallObj })
+						onFinalMessage({ fullText: fullTextSoFar, fullReasoning: fullReasoningSoFar, anthropicReasoning, ...toolCallObj, stopReason: retryFinishReason })
 					})
 					.catch(retryError => {
 						console.log(`[sendLLMMessage] \u{274C} Retry also failed:`, retryError?.message)
@@ -1135,7 +1145,7 @@ const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessag
 		const finalToolCalls = tools.map(t => rawToolCallObjOfAnthropicParams(t)).filter(tc => !!tc) as RawToolCallObj[]
 		const toolCallObj = finalToolCalls.length > 0 ? { toolCalls: finalToolCalls } : {}
 
-		onFinalMessage({ fullText, fullReasoning, anthropicReasoning, ...toolCallObj })
+		onFinalMessage({ fullText, fullReasoning, anthropicReasoning, ...toolCallObj, stopReason: response.stop_reason ?? undefined })
 	})
 	// on error
 	stream.on('error', (error) => {
@@ -1421,6 +1431,7 @@ const sendGeminiChat = async ({
 	let fullTextSoFar = ''
 
 	let toolCallsAccumulator: { name: string, id: string, paramsStr: string, thoughtSignature?: string }[] = []
+	let lastGeminiFinishReason: string | undefined
 
 
 	genAI.models.generateContentStream({
@@ -1443,6 +1454,9 @@ const sendGeminiChat = async ({
 
 				// reasoning and thought signature
 				const candidates = (chunk as any).candidates
+				if (candidates && candidates[0] && candidates[0].finishReason) {
+					lastGeminiFinishReason = candidates[0].finishReason
+				}
 				if (candidates && candidates[0] && candidates[0].content && candidates[0].content.parts) {
 					for (const part of candidates[0].content.parts) {
 						if (part.thought) {
@@ -1491,7 +1505,7 @@ const sendGeminiChat = async ({
 				const finalToolCalls = toolCallsAccumulator.map(tc => rawToolCallObjOfParamsStr(tc.name, tc.paramsStr, tc.id || generateUuid(), tc.thoughtSignature)).filter(tc => !!tc) as RawToolCallObj[]
 				const toolCallObj = finalToolCalls.length > 0 ? { toolCalls: finalToolCalls } : {}
 				const anthropicReasoning: AnthropicReasoning[] | null = fullReasoningSoFar ? [{ type: 'thinking', thinking: fullReasoningSoFar, signature: toolCallsAccumulator[0]?.thoughtSignature || '' }] : null
-				onFinalMessage({ fullText: fullTextSoFar, fullReasoning: fullReasoningSoFar, anthropicReasoning, ...toolCallObj });
+				onFinalMessage({ fullText: fullTextSoFar, fullReasoning: fullReasoningSoFar, anthropicReasoning, ...toolCallObj, stopReason: lastGeminiFinishReason });
 			}
 		})
 		.catch(error => {
