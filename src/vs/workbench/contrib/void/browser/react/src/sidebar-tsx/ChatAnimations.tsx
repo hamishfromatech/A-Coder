@@ -45,10 +45,6 @@ export const SlideInRight = ({ children }: { children: React.ReactNode, delay?: 
 	return <>{children}</>;
 };
 
-/**
- * Enhanced typing indicator with smooth cross-fade transitions and shimmer text
- * Optimized for better immersion and reduced jitter
- */
 const MESSAGES_BY_STATE: Record<'thinking' | 'processing' | 'generating', string[]> = {
 	thinking: [
 		'A-Coder is thinking',
@@ -67,8 +63,11 @@ const MESSAGES_BY_STATE: Record<'thinking' | 'processing' | 'generating', string
 	],
 };
 
+/**
+ * Typing indicator with smooth cross-fade shimmer text
+ */
 export const TypingIndicator = ({
-	state = 'thinking', // 'thinking' | 'processing' | 'generating'
+	state = 'thinking',
 }: {
 	state?: 'thinking' | 'processing' | 'generating';
 }) => {
@@ -76,38 +75,29 @@ export const TypingIndicator = ({
 	const [messageIndex, setMessageIndex] = useState(() => Math.floor(Math.random() * allMessages.length));
 	const [isTransitioning, setIsTransitioning] = useState(false);
 	const [displayMessage, setDisplayMessage] = useState(allMessages[messageIndex]);
-	const [isInitialShow, setIsInitialShow] = useState(true);
 	const prefersReducedMotion = usePrefersReducedMotion();
 
-	// Advance message every few seconds with smooth cross-fade
 	useEffect(() => {
-		// Skip animations if user prefers reduced motion
-		if (prefersReducedMotion) {
-			setIsTransitioning(false);
-			return;
-		}
+		if (prefersReducedMotion) return;
 
 		let transitionTimer: ReturnType<typeof setTimeout> | null = null;
 		const interval = window.setInterval(() => {
-			setIsInitialShow(false); // After first interval, it's no longer initial
 			setIsTransitioning(true);
 			transitionTimer = setTimeout(() => {
 				setMessageIndex(prev => (prev + 1) % allMessages.length);
 				setIsTransitioning(false);
-			}, 300); // Half of transition duration
-		}, 8000); // Increased delay to 8s so it doesn't happen as frequently
+			}, 300);
+		}, 8000);
 		return () => {
 			window.clearInterval(interval);
 			if (transitionTimer) clearTimeout(transitionTimer);
 		};
-	}, [allMessages.length, prefersReducedMotion]); // Only depend on length and motion preference
+	}, [allMessages.length, prefersReducedMotion]);
 
-	// Update display message when index or allMessages changes
 	useEffect(() => {
 		setDisplayMessage(allMessages[messageIndex]);
 	}, [messageIndex, allMessages]);
 
-	// Update display message when state changes
 	useEffect(() => {
 		if (prefersReducedMotion) {
 			const newMessages = MESSAGES_BY_STATE[state] || MESSAGES_BY_STATE.thinking;
@@ -118,7 +108,6 @@ export const TypingIndicator = ({
 			return;
 		}
 
-		setIsInitialShow(false);
 		setIsTransitioning(true);
 		setTimeout(() => {
 			const newMessages = MESSAGES_BY_STATE[state] || MESSAGES_BY_STATE.thinking;
@@ -132,7 +121,7 @@ export const TypingIndicator = ({
 	return (
 		<div className="py-2 h-8 flex items-center">
 			<span
-				className={`text-sm select-none ${prefersReducedMotion ? '' : 'text-shimmer animate-text-shimmer'} transition-all duration-500 ease-in-out ${isTransitioning && !prefersReducedMotion ? 'opacity-0 translate-y-1' : 'opacity-100 translate-y-0'} ${isInitialShow ? 'transition-none' : ''}`}
+				className={`text-sm select-none text-shimmer animate-text-shimmer transition-all duration-500 ease-in-out ${isTransitioning && !prefersReducedMotion ? 'opacity-0 translate-y-1' : 'opacity-100 translate-y-0'}`}
 			>
 				{displayMessage}
 			</span>
@@ -141,9 +130,7 @@ export const TypingIndicator = ({
 };
 
 /**
- * ReAct phase indicator for showing Thought/Action/Observation phases
- * Optimized with debouncing and smooth transitions to prevent jitter
- * Uses CSS variables for theme consistency
+ * ReAct phase indicator — icon-only by default, expands on hover
  */
 export const ReActPhaseIndicator = ({
 	phase,
@@ -161,7 +148,6 @@ export const ReActPhaseIndicator = ({
 	useEffect(() => {
 		if (phase === displayPhase) return;
 
-		// Skip animations if user prefers reduced motion
 		if (prefersReducedMotion) {
 			setDisplayPhase(phase);
 			setIsTransitioning(false);
@@ -177,7 +163,7 @@ export const ReActPhaseIndicator = ({
 				setDisplayPhase(phase);
 				setIsTransitioning(false);
 				lastPhaseChange.current = Date.now();
-			}, 150); // Half of transition duration
+			}, 150);
 		};
 
 		if (timeSinceLastChange < MIN_PHASE_DURATION) {
@@ -192,263 +178,75 @@ export const ReActPhaseIndicator = ({
 
 	const phaseConfig = {
 		thought: {
-			icon: <Brain size={16} />,
-			text: 'Thinking',
-			description: 'Reasoning about next steps',
-			className: 'react-phase-thought'
+			icon: <Brain size={14} />,
+			label: 'Thinking'
 		},
 		action: {
-			icon: null,
-			text: 'Taking Action',
-			description: 'Executing tools',
-			className: 'react-phase-action'
+			icon: <Loader2 size={14} className={prefersReducedMotion ? '' : 'animate-spin'} />,
+			label: 'Acting'
 		},
 		observation: {
-			icon: <Eye size={16} />,
-			text: 'Observing',
-			description: 'Analyzing results',
-			className: 'react-phase-observation'
+			icon: <Eye size={14} />,
+			label: 'Observing'
 		}
 	};
 
 	const config = phaseConfig[displayPhase];
 
 	return (
-		<div
-			className={`react-phase-indicator ${config.className} ${prefersReducedMotion ? '' : 'react-phase-transition'} ${isTransitioning && !prefersReducedMotion ? 'react-phase-transitioning' : ''}`}
-		>
-			{/* Phase icon */}
-			<div className="react-phase-icon">
+		<div className={`react-phase-compact group relative flex items-center gap-2 py-2 px-1 ${isTransitioning && !prefersReducedMotion ? 'opacity-60' : 'opacity-100'} ${prefersReducedMotion ? '' : 'transition-opacity duration-150'}`}>
+			<span className="text-void-fg-4 flex items-center">
 				{config.icon}
-			</div>
-
-			{/* Phase info */}
-			<div className="react-phase-content">
-				<div className="flex items-center gap-2">
-					<span className="react-phase-text">
-						{config.text}
-					</span>
-					{/* Thinking dots for thought phase - skip animation for reduced motion */}
-					{displayPhase === 'thought' && !prefersReducedMotion && (
-						<div className="react-phase-dots">
-							<div className="react-phase-dot" style={{ animationDelay: '0s' }} />
-							<div className="react-phase-dot" style={{ animationDelay: '0.2s' }} />
-							<div className="react-phase-dot" style={{ animationDelay: '0.4s' }} />
-						</div>
-					)}
-					{/* Static dots for reduced motion preference */}
-					{displayPhase === 'thought' && prefersReducedMotion && (
-						<div className="react-phase-dots react-phase-dots-static">
-							<div className="react-phase-dot" />
-							<div className="react-phase-dot" />
-							<div className="react-phase-dot" />
-						</div>
-					)}
-					{/* Spinner for action phase - skip for reduced motion */}
-					{displayPhase === 'action' && !prefersReducedMotion && (
-						<Loader2 className="react-phase-spinner" />
-					)}
-					{/* Static icon for reduced motion */}
-					{displayPhase === 'action' && prefersReducedMotion && (
-						<Loader2 className="react-phase-spinner-static" />
-					)}
+			</span>
+			{/* Label visible on hover */}
+			<span className="text-xs text-void-fg-4 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+				{config.label}
+			</span>
+			{phaseContent && (
+				<div className="absolute left-6 top-full mt-1 text-[10px] text-void-fg-4 max-w-xs truncate opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none" title={phaseContent}>
+					{phaseContent}
 				</div>
-
-				{/* Phase description */}
-				<div className="react-phase-description">
-					{config.description}
-				</div>
-
-				{/* Phase content if available */}
-				{phaseContent && (
-					<div className="react-phase-detail" title={phaseContent}>
-						{phaseContent}
-					</div>
-				)}
-			</div>
+			)}
 		</div>
 	);
 };
 
 /**
- * Enhanced tool loading indicator with progress states and smooth transitions
+ * Minimal tool loading indicator — single line with icon, name, and subtle spinner
  */
 export const ToolLoadingIndicator = ({
 	toolName,
 	toolParams,
-	stage = 'executing', // 'preparing' | 'executing' | 'completing'
-	progress = undefined // 0-1 for tools with progress
 }: {
 	toolName?: string,
 	toolParams?: any,
 	stage?: 'preparing' | 'executing' | 'completing',
 	progress?: number
 }) => {
-	const [isExpanded, setIsExpanded] = useState(false);
-	const [prevStage, setPrevStage] = useState(stage);
 	const prefersReducedMotion = usePrefersReducedMotion();
 
-	// Smooth stage transitions
-	useEffect(() => {
-		if (prefersReducedMotion) {
-			setPrevStage(stage);
-			return;
-		}
-		if (prevStage !== stage) {
-			const timer = setTimeout(() => setPrevStage(stage), 150);
-			return () => clearTimeout(timer);
-		}
-	}, [stage, prevStage, prefersReducedMotion]);
-
-	// Extract file info for file-related tools
-	const getFileInfo = () => {
+	// Extract file name for file-related tools
+	const getFileName = () => {
 		if (!toolParams) return null;
-
-		if (toolName === 'edit_file' || toolName === 'rewrite_file') {
+		if (toolName === 'edit_file' || toolName === 'rewrite_file' || toolName === 'read_file' || toolName === 'create_file_or_folder') {
 			const uri = toolParams.uri?.fsPath || toolParams.uri;
-			if (uri) {
-				const fileName = uri.split('/').pop() || uri;
-
-				// Calculate diff stats for edit_file
-				let diffStats = null;
-				if (toolName === 'edit_file' && toolParams.originalUpdatedBlocks) {
-					let addedLines = 0;
-					let removedLines = 0;
-					const blocks = toolParams.originalUpdatedBlocks.split('<<<<<<< ORIGINAL').slice(1);
-					blocks.forEach((block: string) => {
-						const parts = block.split('=======');
-						if (parts.length === 2) {
-							const original = parts[0].trim();
-							const updated = parts[1].split('>>>>>>> UPDATED')[0].trim();
-							removedLines += original ? original.split('\n').length : 0;
-							addedLines += updated ? updated.split('\n').length : 0;
-						}
-					});
-					if (addedLines > 0 || removedLines > 0) {
-						diffStats = { addedLines, removedLines };
-					}
-				}
-
-				return { type: 'file', path: uri, fileName, diffStats };
-			}
+			if (uri) return uri.split('/').pop() || uri;
 		}
-
-		if (toolName === 'read_file') {
-			const uri = toolParams.uri?.fsPath || toolParams.uri;
-			if (uri) {
-				const fileName = uri.split('/').pop() || uri;
-				const lineInfo = toolParams.startLine || toolParams.endLine
-					? ` (lines ${toolParams.startLine || 1}-${toolParams.endLine || '∞'})`
-					: '';
-				return { type: 'file', path: uri, fileName, extra: lineInfo };
-			}
-		}
-
 		return null;
 	};
 
-	const fileInfo = getFileInfo();
-	const hasDetails = fileInfo !== null;
-
-	// Stage-based styling
-	const stageConfig = {
-		preparing: {
-			color: '#f97316', // orange-500
-			text: 'Preparing',
-			icon: <Database size={12} />
-		},
-		executing: {
-			color: '#0ea5e9', // blue-500
-			text: 'Executing',
-			icon: null
-		},
-		completing: {
-			color: '#10b981', // emerald-500
-			text: 'Finalizing',
-			icon: <Check size={12} />
-		}
-	};
-
-	const currentConfig = stageConfig[stage];
-	const isTransitioning = prevStage !== stage && !prefersReducedMotion;
+	const fileName = getFileName();
+	const displayName = fileName || (toolName === 'detecting...' ? 'Thinking...' : toolName?.replace(/_/g, ' '));
 
 	return (
-		<div className={`flex flex-col gap-2 py-3 px-1 ${isTransitioning ? 'opacity-70 transition-all duration-150' : ''}`}>
-			<div className="flex items-center justify-between bg-void-bg-2/30 border border-void-border-2 rounded-xl px-3 py-2 shadow-sm">
-				<div className="flex items-center gap-2.5 min-w-0">
-					{/* Icon for tool type */}
-					<div className={`p-1.5 rounded-lg ${toolName?.includes('read') ? 'bg-void-bg-3' : 'bg-void-accent/10 text-void-accent'}`}>
-						{toolName?.includes('read') || toolName?.includes('search') ? <File size={14} /> :
-						 toolName?.includes('edit') || toolName?.includes('rewrite') ? <Pencil size={14} /> :
-						 <Database size={14} />}
-					</div>
-
-					{/* File name or tool name */}
-					<div className="flex flex-col min-w-0">
-						{fileInfo && fileInfo.fileName ? (
-							<div className="flex items-center gap-1.5 min-w-0">
-								<span className="text-void-fg-1 text-xs font-bold truncate">{fileInfo.fileName}</span>
-								{fileInfo.diffStats && (
-									<span className='flex items-center gap-1 text-[10px] font-bold'>
-										{fileInfo.diffStats.addedLines > 0 && <span className='text-emerald-500'>+{fileInfo.diffStats.addedLines}</span>}
-										{fileInfo.diffStats.removedLines > 0 && <span className='text-rose-500'>-{fileInfo.diffStats.removedLines}</span>}
-									</span>
-								)}
-							</div>
-						) : (
-							<span className="text-void-fg-1 text-xs font-bold truncate uppercase tracking-tight">
-								{toolName === 'detecting...' ? 'Thinking...' : toolName?.replace(/_/g, ' ')}
-							</span>
-						)}
-						<div className="flex items-center gap-1.5">
-							<span className="text-[10px] font-bold uppercase tracking-widest opacity-60" style={{ color: currentConfig.color }}>
-								{currentConfig.text}
-							</span>
-							{/* Only animate spinner if reduced motion is not preferred */}
-							{prefersReducedMotion ? (
-								<Loader2 className="w-2.5 h-2.5" style={{ color: currentConfig.color }} />
-							) : (
-								<Loader2 className="w-2.5 h-2.5 animate-spin" style={{ color: currentConfig.color }} />
-							)}
-						</div>
-					</div>
-				</div>
-
-				{/* Collapsible/Progress section */}
-				<div className="flex items-center gap-2">
-					{progress !== undefined && (
-						<div className="w-12 h-1 bg-void-bg-3 rounded-full overflow-hidden">
-							<div
-								className={`h-full ${prefersReducedMotion ? '' : 'transition-all duration-500 ease-out'}`}
-								style={{ width: `${progress * 100}%`, backgroundColor: currentConfig.color }}
-							/>
-						</div>
-					)}
-					{hasDetails && (
-						<button
-							onClick={() => setIsExpanded(!isExpanded)}
-							className={`p-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center hover:bg-void-bg-3 rounded-md transition-all focus:outline-none focus:ring-2 focus:ring-void-accent ${isExpanded ? 'text-void-accent bg-void-accent/5' : 'text-void-fg-4'}`}
-							aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
-							aria-expanded={isExpanded}
-						>
-							<ChevronDown size={14} className={`${prefersReducedMotion ? '' : 'transition-transform duration-200'} ${isExpanded ? 'rotate-180' : ''}`} />
-						</button>
-					)}
-				</div>
-			</div>
-
-			{/* Enhanced collapsible file details */}
-			<ExpandCollapse isExpanded={isExpanded}>
-				{hasDetails && fileInfo && (
-					<div className={`mx-2 p-3 bg-void-bg-4/50 rounded-xl border border-void-border-2/50 ${prefersReducedMotion ? '' : 'animate-in fade-in zoom-in-95 duration-200'}`}>
-						<div className="flex items-center gap-2 text-[10px] font-mono text-void-fg-3 truncate">
-							<Folder size={10} className="opacity-50" />
-							{fileInfo.path}
-						</div>
-						{fileInfo.extra && <div className="mt-1 text-[10px] font-bold text-void-accent opacity-80">{fileInfo.extra}</div>}
-					</div>
-				)}
-			</ExpandCollapse>
+		<div className="flex items-center gap-2 py-2 px-1">
+			<span className="text-void-fg-4 flex items-center">
+				{toolName?.includes('read') || toolName?.includes('search') ? <File size={14} /> :
+				 toolName?.includes('edit') || toolName?.includes('rewrite') ? <Pencil size={14} /> :
+				 <Database size={14} />}
+			</span>
+			<span className="text-xs text-void-fg-3 truncate">{displayName}</span>
+			<Loader2 size={12} className={`text-void-fg-4 flex-shrink-0 ${prefersReducedMotion ? '' : 'animate-spin'}`} />
 		</div>
 	);
 };

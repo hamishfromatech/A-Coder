@@ -33,7 +33,7 @@ import ErrorBoundary from './ErrorBoundary.js';
 import { ToolApprovalTypeSwitch } from '../void-settings-tsx/Settings.js';
 
 import { persistentTerminalNameOfId } from '../../../terminalToolService.js';
-import { TypingIndicator, ToolLoadingIndicator, ReActPhaseIndicator } from './ChatAnimations.js';
+import { TypingIndicator, ToolLoadingIndicator, ReActPhaseIndicator, SmoothHeight } from './ChatAnimations.js';
 import { MCPServerModal } from './MCPServerModal.js';
 import { TaskPlan } from '../../../chatThreadService.js';
 import { CheckpointTimeline } from './CheckpointTimeline.js';
@@ -3138,17 +3138,17 @@ export const SidebarChat = () => {
 		{previousMessagesHTML}
 		{currStreamingMessageHTML}
 
-		{/* ReAct Phase Indicator - show when we have a detected ReAct phase */}
-		{reactPhaseIndicator}
+		{/* ReAct Phase Indicator - show only when no tool UI is active */}
+		{reactPhaseIndicator && !shouldShowToolUI && !generatingTool ? reactPhaseIndicator : null}
 
 		{/* Inline Task Plan View - rendered within chat stream */}
 		{taskPlanView}
 
-		{/* Generating tool */}
+		{/* Generating tool — highest priority indicator */}
 		{generatingTool}
 
-		{/* loading indicator - show when LLM is running and NOT generating a tool */}
-		{(isRunning === 'LLM' || isRunning === 'idle') && !isAnyToolActivity ? <ProseWrapper>
+		{/* loading indicator - show only when LLM is running and no other indicator is active */}
+		{(isRunning === 'LLM' || isRunning === 'idle') && !isAnyToolActivity && !reactPhaseIndicator ? <ProseWrapper>
 			<TypingIndicator />
 		</ProseWrapper> : null}
 
@@ -3280,17 +3280,20 @@ export const SidebarChat = () => {
 		setAttachedImages(prev => prev.filter((_, i) => i !== index));
 	}, []);
 
-	// Get queued message count - only recalculate when threadId changes
-	const queuedCount = useMemo(() => {
-		return chatThreadsService.getQueuedMessagesCount(threadId);
-		// chatThreadsState removed from deps - queued messages are internal to the service
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [chatThreadsService, threadId]);
+	// Reactive queue state — updates when the dedicated queue event fires
+	const [queuedCount, setQueuedCount] = useState(() => chatThreadsService.getQueuedMessagesCount(threadId));
+	const [queuedMessages, setQueuedMessages] = useState(() => chatThreadsService.getQueuedMessages(threadId));
 
-	const queuedMessages = useMemo(() => {
-		return chatThreadsService.getQueuedMessages(threadId);
-		// chatThreadsState removed from deps - queued messages are internal to the service
-		// eslint-disable-next-line react-hooks/exhaustive-deps
+	useEffect(() => {
+		const updateQueue = () => {
+			setQueuedCount(chatThreadsService.getQueuedMessagesCount(threadId));
+			setQueuedMessages([...chatThreadsService.getQueuedMessages(threadId)]);
+		};
+		updateQueue(); // initial sync
+		const disposable = chatThreadsService.onDidChangeMessageQueue((e) => {
+			if (e.threadId === threadId) updateQueue();
+		});
+		return () => disposable.dispose();
 	}, [chatThreadsService, threadId]);
 
 	const [isQueueExpanded, setIsQueueExpanded] = useState(false);
@@ -3302,94 +3305,80 @@ export const SidebarChat = () => {
 		onPaste={handlePaste}
 		className={isDraggingOver ? 'ring-2 ring-void-accent rounded-md' : ''}
 	>
-		{/* Queue indicator */}
+		{/* Queue pill */}
 		{queuedCount > 0 && (
-			<div className="mb-3 border border-void-border-2 rounded-xl overflow-hidden shadow-sm">
-				{/* Header - always visible */}
-				<div
-					className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-void-bg-2-hover transition-all duration-200"
-					onClick={() => setIsQueueExpanded(!isQueueExpanded)}
-				>
-					<div className="flex items-center gap-3">
-						{isQueueExpanded ? <ChevronDown size={16} className="text-void-fg-3" /> : <ChevronRight size={16} className="text-void-fg-3" />}
-						<div className="flex items-center gap-2">
-							<span className="text-sm font-semibold text-void-fg-1">Queued Messages</span>
-							<span className="px-2 py-0.5 text-xs font-medium bg-void-accent/20 text-void-accent rounded-full">
-								{queuedCount}
-							</span>
-						</div>
-					</div>
-					<div className="flex items-center gap-3">
-						<span className="text-xs text-void-fg-4 font-medium">
-							Press Enter to send
-						</span>
-						<button
-							onClick={(e) => {
-								e.stopPropagation();
-								chatThreadsService.clearMessageQueue(threadId);
-							}}
-							className="px-3 py-1.5 text-xs font-medium text-void-fg-3 hover:text-void-fg-1 bg-void-bg-3 hover:bg-void-bg-4 border border-void-border-2 rounded-lg transition-colors duration-200"
-							data-tooltip-id='void-tooltip'
-							data-tooltip-content='Cancel all queued messages'
-							data-tooltip-place='top'
-						>
-							Clear All
-						</button>
-					</div>
+			<div className="mb-2">
+				<div className="flex items-center gap-1.5">
+					<button
+						className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs text-void-fg-3 hover:text-void-fg-2 bg-void-bg-3/80 hover:bg-void-bg-3 rounded-full transition-colors duration-150"
+						onClick={() => setIsQueueExpanded(!isQueueExpanded)}
+						data-tooltip-id='void-tooltip'
+						data-tooltip-content={isQueueExpanded ? 'Collapse queue' : 'View queued messages'}
+						data-tooltip-place='top'
+					>
+						<CircleEllipsis size={12} />
+						<span>{queuedCount} queued</span>
+						<ChevronDown size={10} className={`transition-transform duration-150 ${isQueueExpanded ? 'rotate-180' : ''}`} />
+					</button>
+					<button
+						onClick={() => chatThreadsService.clearMessageQueue(threadId)}
+						className="p-1 text-void-fg-4 hover:text-void-fg-2 rounded-full transition-colors duration-150"
+						data-tooltip-id='void-tooltip'
+						data-tooltip-content='Clear all'
+						data-tooltip-place='top'
+					>
+						<X size={12} />
+					</button>
 				</div>
 
 				{/* Expanded queue list */}
-				{isQueueExpanded && (
-					<div className="border-t border-void-border-2 max-h-80 overflow-y-auto">
+				<SmoothHeight isVisible={isQueueExpanded}>
+					<div className="mt-1.5 max-h-60 overflow-y-auto rounded-lg bg-void-bg-3/50 border border-void-border-1">
 						{queuedMessages.map((msg, index) => (
 							<div
 								key={index}
-								className="group relative px-4 py-3 border-b border-void-border-1 last:border-b-0 hover:bg-void-bg-2 transition-all duration-200 cursor-pointer"
+								className="group relative px-3 py-2 border-b border-void-border-1/50 last:border-b-0 hover:bg-void-bg-2/50 transition-colors duration-100 cursor-pointer"
 								onClick={() => {
-									// Load message into input box for editing
 									if (textAreaFnsRef.current) {
 										textAreaFnsRef.current.setValue(msg.userMessage);
 									}
-									// Remove from queue
 									chatThreadsService.removeQueuedMessage(threadId, index);
-									// Focus the input
 									textAreaRef.current?.focus();
 								}}
 							>
-								<div className="pr-20 text-sm text-void-fg-2 leading-relaxed line-clamp-2">
+								<div className="pr-16 text-xs text-void-fg-3 leading-relaxed line-clamp-2">
 									{msg.userMessage}
 								</div>
-								{/* Quick actions - show on hover */}
-								<div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+								<div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-100">
 									<button
 										onClick={(e) => {
 											e.stopPropagation();
 											chatThreadsService.forceSendQueuedMessage(threadId, index);
 										}}
-										className="p-2 text-void-fg-3 hover:text-void-accent hover:bg-void-bg-3 border border-void-border-2 rounded-lg transition-all duration-200"
+										className="p-1 text-void-fg-4 hover:text-void-accent rounded transition-colors duration-100"
 										data-tooltip-id='void-tooltip'
-										data-tooltip-content='Force send (stops AI and sends this message)'
+										data-tooltip-content='Force send'
 										data-tooltip-place='left'
 									>
-										<Send size={14} />
+										<Send size={11} />
 									</button>
 									<button
 										onClick={(e) => {
 											e.stopPropagation();
 											chatThreadsService.removeQueuedMessage(threadId, index);
 										}}
-										className="p-2 text-void-fg-3 hover:text-red-400 hover:bg-red-500/10 border border-void-border-2 rounded-lg transition-all duration-200"
+										className="p-1 text-void-fg-4 hover:text-red-400 rounded transition-colors duration-100"
 										data-tooltip-id='void-tooltip'
-										data-tooltip-content='Remove from queue'
+										data-tooltip-content='Remove'
 										data-tooltip-place='left'
 									>
-										<Trash2 size={14} />
+										<Trash2 size={11} />
 									</button>
 								</div>
 							</div>
 						))}
 					</div>
-				)}
+				</SmoothHeight>
 			</div>
 		)}
 

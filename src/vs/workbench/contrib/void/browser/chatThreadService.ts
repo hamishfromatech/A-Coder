@@ -49,7 +49,7 @@ import { ToonService } from '../common/toonService.js';
 
 // related to retrying when LLM message has error
 const CHAT_RETRIES = 3 // Number of retries for LLM errors (including empty responses)
-const RETRY_DELAY = 2000 // Delay between retries in milliseconds
+const RETRY_DELAY_BASE = 1000 // Base delay between retries in milliseconds (exponential backoff: 1s, 2s, 4s)
 export const AUTO_CONTINUE_CHAR_THRESHOLD = 200; // Still used by UI auto-continue
 
 // MEMORY OPTIMIZATION: Maximum messages per thread to prevent unbounded memory growth
@@ -602,7 +602,8 @@ export interface IChatThreadService {
 	readonly streamState: ThreadStreamState; // not persistent
 
 	onDidChangeCurrentThread: Event<void>;
-	onDidChangeStreamState: Event<{ threadId: string }>
+	onDidChangeStreamState: Event<{ threadId: string }>;
+	onDidChangeMessageQueue: Event<{ threadId: string }>;
 
 	getCurrentThread(): ThreadType;
 	openNewThread(): void;
@@ -714,6 +715,10 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 	private readonly _onDidChangeStreamState = new Emitter<{ threadId: string }>();
 	readonly onDidChangeStreamState: Event<{ threadId: string }> = this._onDidChangeStreamState.event;
+
+	// dedicated event for queue changes — fires with the threadId that changed
+	private readonly _onDidChangeMessageQueue = new Emitter<{ threadId: string }>();
+	readonly onDidChangeMessageQueue: Event<{ threadId: string }> = this._onDidChangeMessageQueue.event;
 
 	readonly streamState: ThreadStreamState = {}
 	state: ThreadsState // allThreads is persisted, currentThread is not
@@ -2063,7 +2068,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 							isRunning: undefined,
 							error: { message: `Retrying... (attempt ${nAttempts}/${CHAT_RETRIES})`, fullError: null }
 						})
-						await timeout(RETRY_DELAY)
+						await timeout(RETRY_DELAY_BASE * Math.pow(2, nAttempts - 1))
 						if (interruptedWhenIdle) {
 							this._setStreamState(threadId, undefined)
 							return
@@ -2120,7 +2125,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 							error: { message: `Empty response, retrying... (attempt ${nAttempts}/${CHAT_RETRIES})`, fullError: null }
 						})
 						
-						await timeout(RETRY_DELAY)
+						await timeout(RETRY_DELAY_BASE * Math.pow(2, nAttempts - 1))
 						if (interruptedWhenIdle) {
 							this._setStreamState(threadId, undefined)
 							return
@@ -3071,15 +3076,34 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		if (!this.messageQueue[threadId]) {
 			this.messageQueue[threadId] = [];
 		}
+		// Deduplication: skip if identical to the last queued or last sent message
+		const queue = this.messageQueue[threadId];
+		const trimmed = message.userMessage.trim();
+		if (trimmed && queue.length > 0 && queue[queue.length - 1].userMessage.trim() === trimmed) {
+			console.log(`[chatThreadService] Skipping duplicate queued message for thread ${threadId}`);
+			return;
+		}
+		// Also check against the last user message in the thread
+		const threadMessages = this.state.allThreads[threadId]?.messages;
+		if (trimmed && threadMessages) {
+			const lastUserMsg = [...threadMessages].reverse().find(m => m.role === 'user');
+			if (lastUserMsg?.content?.trim() === trimmed) {
+				console.log(`[chatThreadService] Skipping duplicate queued message (matches last sent) for thread ${threadId}`);
+				return;
+			}
+		}
 		// MEMORY OPTIMIZATION: Limit queue size to prevent unbounded memory growth
 		if (this.messageQueue[threadId].length >= MAX_MESSAGE_QUEUE_PER_THREAD) {
 			console.warn(`[Memory] Message queue for thread ${threadId} is full (${MAX_MESSAGE_QUEUE_PER_THREAD}). Dropping oldest message.`);
-			this.messageQueue[threadId].shift(); // Remove oldest message
+			const dropped = this.messageQueue[threadId].shift(); // Remove oldest message
+			// Fire event with dropped message info so UI can notify the user
+			this._onDidChangeMessageQueue.fire({ threadId, droppedMessage: dropped?.userMessage } as any);
+			return;
 		}
 		this.messageQueue[threadId].push(message);
 		console.log(`[chatThreadService] Queued message for thread ${threadId}. Queue length: ${this.messageQueue[threadId].length}`);
-		// Fire event to update UI
-		this._onDidChangeCurrentThread.fire();
+		// Fire dedicated queue event to update UI
+		this._onDidChangeMessageQueue.fire({ threadId });
 		// Trigger processing logic if we're idle
 		if (!this.streamState[threadId]?.isRunning) {
 			this._processNextQueuedMessage(threadId)
@@ -3093,7 +3117,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 	private async _processNextQueuedMessage(threadId: string) {
 		if (!this._hasQueuedMessages(threadId)) {
 			// ensure UI updates if queue emptied
-			this._onDidChangeCurrentThread.fire();
+			this._onDidChangeMessageQueue.fire({ threadId });
 			return;
 		}
 		if (this.streamState[threadId]?.isRunning) {
@@ -3104,8 +3128,8 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		if (!nextMessage) return;
 
 		console.log(`[chatThreadService] Processing queued message. Remaining in queue: ${this.messageQueue[threadId].length}`);
-		// Fire event to update UI
-		this._onDidChangeCurrentThread.fire();
+		// Fire dedicated queue event to update UI
+		this._onDidChangeMessageQueue.fire({ threadId });
 
 		// Small delay to ensure UI updates
 		await timeout(100);
@@ -3132,7 +3156,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		if (this.messageQueue[threadId] && this.messageQueue[threadId][index]) {
 			this.messageQueue[threadId].splice(index, 1);
 			console.log(`[chatThreadService] Removed queued message at index ${index}. Remaining: ${this.messageQueue[threadId].length}`);
-			this._onDidChangeCurrentThread.fire();
+			this._onDidChangeMessageQueue.fire({ threadId });
 		}
 	}
 
@@ -3140,7 +3164,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		if (this.messageQueue[threadId]) {
 			this.messageQueue[threadId] = [];
 			console.log(`[chatThreadService] Cleared message queue for thread ${threadId}`);
-			this._onDidChangeCurrentThread.fire();
+			this._onDidChangeMessageQueue.fire({ threadId });
 		}
 	}
 
@@ -3151,19 +3175,18 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		// Remove from queue
 		this.messageQueue[threadId].splice(index, 1);
 		console.log(`[chatThreadService] Force sending queued message at index ${index}`);
-		this._onDidChangeCurrentThread.fire();
+		this._onDidChangeMessageQueue.fire({ threadId });
 
-		// Abort current LLM if running
+		// Abort current LLM if running — wait for the interrupt promise to resolve
 		const streamState = this.streamState[threadId];
 		if (streamState?.isRunning && streamState.interrupt !== 'not_needed') {
 			const interruptFn = await streamState.interrupt;
 			if (typeof interruptFn === 'function') {
 				interruptFn();
-			}
+				interruptFn();
+				}
+				// Grace period for stream state cleanup after abort
 		}
-
-		// Wait a bit for abort to complete
-		await new Promise(resolve => setTimeout(resolve, 100));
 
 		// Send the message
 		await this._addUserMessageAndStreamResponse({

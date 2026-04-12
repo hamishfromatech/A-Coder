@@ -1156,6 +1156,12 @@
 	to { transform: rotate(360deg); }
 }
 
+/* Compact ReAct phase indicator */
+.react-phase-compact {
+	display: inline-flex;
+	align-items: center;
+}
+
 /* ============================================
    FORM INPUTS
    Clear states, proper focus indication
