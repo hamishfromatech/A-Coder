@@ -3419,6 +3419,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 																	/>
 																</SettingRow>
 															</SettingBox>
+													</SettingCard>
 
 									{/* Notification Sound Card */}
 									<SettingCard
@@ -3450,11 +3451,49 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 											</div>
 										</SettingBox>
 									</SettingCard>
-														</SettingCard>
+										{/* Proactive Coach Card */}
+										<SettingCard
+											isDark={isDark}
+											title="Proactive Coach"
+											description="Get real-time guidance from an AI tutor as you code."
+											eyebrow="Feature Options"
+											icon={BookOpen}
+										>
+											<SettingBox>
+												<div className="space-y-4">
+													<SettingRow label="Enabled" description="Show coaching suggestions while you type.">
+														<VoidSwitch
+															size='sm'
+															value={settingsState.globalSettings.enableProactiveCoach}
+															onChange={(newVal) => voidSettingsService.setGlobalSetting('enableProactiveCoach', newVal)}
+														/>
+													</SettingRow>
+													<SettingRow
+														label="Check Interval (seconds)"
+														description="Minimum time between coach checks."
+													>
+														<VoidSimpleInputBox
+															value={String(settingsState.globalSettings.proactiveCoachIntervalSeconds)}
+															placeholder="120"
+															onChangeValue={(newVal) => {
+																const val = parseInt(newVal);
+																if (!isNaN(val) && val > 0) {
+																	voidSettingsService.setGlobalSetting('proactiveCoachIntervalSeconds', val);
+																}
+															}}
+															className="w-20 text-center"
+															compact
+														/>
+													</SettingRow>
+												</div>
+											</SettingBox>
+										</SettingCard>
 													</div>
 												</section>
 											</ErrorBoundary>
 										</div>
+
+
 
 										{/* Media Generation section */}
 										<div className={shouldShowTab('mediaGeneration') ? 'space-y-8' : 'hidden'}>

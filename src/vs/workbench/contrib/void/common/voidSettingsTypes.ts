@@ -526,7 +526,10 @@ export type GlobalSettings = {
 	composioTriggerTunnelUrl?: string; // Optional Cloudflare Tunnel URL for triggers
 	composioTriggerSecret?: string; // Secret for webhook signature verification
 		// Notification sound settings
-		notificationSound: string; // Sound to play when LLM finishes responding ('none' | '1' | '2' | '3' | '4')
+		notificationSound: string; // Sound to play when LLM finishes responding
+		// Proactive learning coach
+		enableProactiveCoach: boolean; // Enable/disable the proactive learning coach
+		proactiveCoachIntervalSeconds: number; // Minimum seconds between coach checks
 }
 
 export const defaultGlobalSettings: GlobalSettings = {
@@ -576,6 +579,9 @@ export const defaultGlobalSettings: GlobalSettings = {
 	composioTriggerSecret: undefined, // No secret by default (auto-generated on first webhook)
 	// Notification sound defaults
 	notificationSound: 'none', // No notification sound by default
+	// Proactive learning coach
+	enableProactiveCoach: false, // Disabled by default
+	proactiveCoachIntervalSeconds: 120, // 2 minutes between checks
 }
 
 export type GlobalSettingName = keyof GlobalSettings

@@ -53,6 +53,10 @@ import './helperServices/consistentItemService.js'
 // register selection helper
 import './voidSelectionHelperWidget.js'
 
+// register proactive learning coach
+import './proactiveLearningService.js'
+import './proactiveCoachWidget.js'
+
 // register tooltip service
 import './tooltipService.js'
 
