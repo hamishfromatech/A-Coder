@@ -97,6 +97,14 @@ const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
 	'codebase_search',
 ])
 
+// Planning/task tools are safe to run in parallel — they operate on in-memory
+// state with no file-system, terminal, or git conflicts.
+const PARALLEL_SAFE_WRITE_TOOLS: ReadonlySet<string> = new Set([
+	'create_plan',
+	'update_task_status',
+	'add_tasks_to_plan',
+])
+
 // Tools that are NEVER safe to run in parallel due to global state
 const SEQUENTIAL_ONLY_TOOLS: ReadonlySet<string> = new Set([
 	'run_command',      // Terminal state is shared
@@ -235,6 +243,11 @@ function canToolRunParallel(toolCall: RawToolCallObj): boolean {
 
 	// Read-only tools are generally safe for parallel execution
 	if (READ_ONLY_TOOLS.has(toolCall.name)) {
+		return true
+	}
+
+	// Planning/task tools are safe in parallel (in-memory state, no resource conflicts)
+	if (PARALLEL_SAFE_WRITE_TOOLS.has(toolCall.name)) {
 		return true
 	}
 

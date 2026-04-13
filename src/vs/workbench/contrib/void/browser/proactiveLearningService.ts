@@ -156,8 +156,9 @@ export class ProactiveLearningService extends Disposable implements IProactiveLe
 		const userMessage = this._buildUserMessage(context, model.getLanguageId());
 
 		// Prepare messages
-		const featureName: FeatureName = 'proactiveCoach' as FeatureName;
+		const featureName: FeatureName = 'Chat';
 			const modelSelection = this._voidSettingsService.state.modelSelectionOfFeature[featureName];
+			if (!modelSelection) return;
 		const { messages } = this._convertToLLMMessageService.prepareLLMSimpleMessages({
 			simpleMessages: [{ role: 'user', content: userMessage }],
 			systemMessage,
