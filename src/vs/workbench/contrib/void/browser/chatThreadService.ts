@@ -1301,8 +1301,9 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 	}
 
 	private _computeMCPServerOfToolName = (toolName: string) => {
-		// Composio tools use 'composio_tool_router' as the server name
-		if (toolName.startsWith('COMPOSIO_')) {
+		const isComposio = this._composioService.isComposioTool(toolName);
+		console.log(`[_computeMCPServerOfToolName] toolName="${toolName}", isComposio=${isComposio}`);
+		if (isComposio) {
 			return 'composio_tool_router'
 		}
 		return this._mcpService.getMCPTools()?.find(t => t.name === toolName)?.mcpServerName
@@ -1569,7 +1570,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 					const response = await this._composioService.executeToolViaSession(
 						sessionId,
-						toolName,
+						this._composioService.getComposioSlug(toolName),
 						toolParams as Record<string, unknown>
 					)
 
@@ -2231,9 +2232,10 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 					if (finalParallelSafe.length > 1) {
 						console.log(`[chatThreadService] Running ${finalParallelSafe.length} read-only tools in parallel: ${finalParallelSafe.map(t => t.name).join(', ')}`)
 						const parallelResults = await Promise.all(
-							finalParallelSafe.map(toolCall =>
-								this._runToolCall(threadId, toolCall.name, toolCall.id, undefined, { preapproved: false, unvalidatedToolParams: toolCall.rawParams, thought_signature: toolCall.thought_signature }, true)
-							)
+							finalParallelSafe.map(toolCall => {
+								const mcpServerName = this._computeMCPServerOfToolName(toolCall.name);
+								return this._runToolCall(threadId, toolCall.name, toolCall.id, mcpServerName, { preapproved: false, unvalidatedToolParams: toolCall.rawParams, thought_signature: toolCall.thought_signature }, true);
+							})
 						)
 						for (const result of parallelResults) {
 							if (result.interrupted) {
@@ -2251,7 +2253,8 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 						// Single parallel-safe tool, run normally
 						const toolCall = finalParallelSafe[0]
 						console.log(`[chatThreadService] LLM calling tool: ${toolCall.name}`)
-						const { awaitingUserApproval, interrupted } = await this._runToolCall(threadId, toolCall.name, toolCall.id, undefined, { preapproved: false, unvalidatedToolParams: toolCall.rawParams, thought_signature: toolCall.thought_signature })
+						const mcpServerName = this._computeMCPServerOfToolName(toolCall.name);
+						const { awaitingUserApproval, interrupted } = await this._runToolCall(threadId, toolCall.name, toolCall.id, mcpServerName, { preapproved: false, unvalidatedToolParams: toolCall.rawParams, thought_signature: toolCall.thought_signature })
 						if (interrupted) {
 							this._setStreamState(threadId, undefined)
 							return
@@ -2273,7 +2276,9 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 						// Determine mcpServerName - check for Composio tools first
 						let mcpServerName: string | undefined = mcpTool?.mcpServerName
-						if (toolCall.name.startsWith('COMPOSIO_')) {
+						const isComposio = this._composioService.isComposioTool(toolCall.name);
+						console.log(`[chatThreadService] Tool "${toolCall.name}" - mcpTool found: ${!!mcpTool}, isComposio=${isComposio}`);
+						if (isComposio) {
 							mcpServerName = 'composio_tool_router'
 						}
 

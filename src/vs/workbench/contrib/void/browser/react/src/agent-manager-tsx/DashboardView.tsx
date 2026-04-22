@@ -3,7 +3,7 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import React, { memo, useCallback } from 'react';
+import React, { memo } from 'react';
 import { MessageSquare, Zap, Clock, Sparkles, Folder, Settings, Plus } from 'lucide-react';
 import { StatCard } from './StatCard.js';
 import { formatDuration, formatTokens } from './utils.js';
@@ -52,18 +52,9 @@ export const DashboardView = memo(({ stats, onNewThread, onBrowseFiles, onOpenSe
 	return (
 		<div className="flex flex-col h-full overflow-hidden">
 			<div className="p-8 pb-4">
-				<div className="flex items-center justify-between mb-8">
-					<div>
-						<h2 className="text-2xl font-bold text-void-fg-1 tracking-tight">Dashboard</h2>
-						<p className="text-xs text-void-fg-4 mt-1">Overview of your activity and workspace</p>
-					</div>
-					<div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-						<div className="relative" aria-hidden="true">
-							<div className="w-2 h-2 rounded-full bg-emerald-500" />
-							<div className="absolute inset-0 w-2 h-2 rounded-full bg-emerald-500 animate-ping opacity-40" />
-						</div>
-						<span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">Connected</span>
-					</div>
+				<div className="mb-8">
+					<h2 className="text-2xl font-bold text-void-fg-1 tracking-tight">Dashboard</h2>
+					<p className="text-xs text-void-fg-4 mt-1">Overview of your activity and workspace</p>
 				</div>
 
 				<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -72,28 +63,24 @@ export const DashboardView = memo(({ stats, onNewThread, onBrowseFiles, onOpenSe
 						label="Conversations"
 						value={stats.threadsCount}
 						color="from-blue-500/10 to-blue-600/10"
-						glowColor="bg-blue-500"
 					/>
 					<StatCard
 						icon={Zap}
 						label="Messages"
 						value={stats.messagesCount}
 						color="from-purple-500/10 to-purple-600/10"
-						glowColor="bg-purple-500"
 					/>
 					<StatCard
 						icon={Clock}
 						label="Active Time"
 						value={formatDuration(stats.activeTime)}
 						color="from-amber-500/10 to-orange-600/10"
-						glowColor="bg-amber-500"
 					/>
 					<StatCard
 						icon={Sparkles}
 						label="AI Tokens"
 						value={formatTokens(stats.totalTokens)}
 						color="from-cyan-500/10 to-teal-600/10"
-						glowColor="bg-cyan-500"
 					/>
 				</div>
 			</div>

@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------*/
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useIsDark, useChatThreadsState, useOnAgentManagerOpenFile, useOnAgentManagerOpenWalkthrough, useOnAgentManagerOpenContent, useWorkspaceFolders, useAccessor } from '../util/services.js';
+import { useIsDark, useChatThreadsState, useFullChatThreadsStreamState, useOnAgentManagerOpenFile, useOnAgentManagerOpenWalkthrough, useOnAgentManagerOpenContent, useWorkspaceFolders, useAccessor } from '../util/services.js';
 import { SidebarChat } from '../sidebar-tsx/SidebarChat.js';
 import { PastThreadsList } from '../sidebar-tsx/SidebarThreadSelector.js';
 import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js';
@@ -85,9 +85,10 @@ export const AgentManager = ({ className }: { className: string }) => {
 	useOnAgentManagerOpenContent(handleOpenContent);
 
 	const chatThreadsState = useChatThreadsState();
+	const streamState = useFullChatThreadsStreamState();
 	const workspaceFolders = useWorkspaceFolders();
 
-	// Calculate stats from threads
+	// Calculate stats from threads and stream state
 	const stats = useMemo(() => {
 		const threads = Object.values(chatThreadsState.allThreads);
 		const threadsCount = threads.length;
@@ -102,13 +103,21 @@ export const AgentManager = ({ className }: { className: string }) => {
 			totalActiveTime += Math.min(sessionTime, 8 * 60 * 60 * 1000);
 		}
 
+		let totalTokens = 0;
+		for (const threadId in streamState) {
+			const usage = streamState[threadId]?.tokenUsage;
+			if (usage?.used) {
+				totalTokens += usage.used;
+			}
+		}
+
 		return {
 			threadsCount,
 			messagesCount,
 			activeTime: totalActiveTime,
-			totalTokens: 0,
+			totalTokens,
 		};
-	}, [chatThreadsState.allThreads]);
+	}, [chatThreadsState.allThreads, streamState]);
 
 	// Action handlers with stable references
 	const handleNewThread = useCallback(() => {
@@ -294,7 +303,7 @@ export const AgentManager = ({ className }: { className: string }) => {
 								<ErrorBoundary>
 									{activeTab === 'chats' ? (
 										<div className="p-2 space-y-1">
-											<PastThreadsList />
+											<PastThreadsList searchQuery={searchQuery} />
 										</div>
 									) : (
 										<WorkspacesView />

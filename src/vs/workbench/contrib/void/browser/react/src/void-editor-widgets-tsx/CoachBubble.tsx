@@ -9,12 +9,12 @@ import { Lightbulb, AlertTriangle, Info, X, MessageSquare } from 'lucide-react';
 import '../styles.css'
 
 export type CoachBubbleProps = {
-	observation: {
-		message: string;
-		severity: 'info' | 'warning' | 'error';
+	observation?: {
+		message?: string;
+		severity?: 'info' | 'warning' | 'error';
 	};
-	onDismiss: () => void;
-	onDiscuss: () => void;
+	onDismiss?: () => void;
+	onDiscuss?: () => void;
 };
 
 export const CoachBubble: React.FC<CoachBubbleProps> = ({
@@ -23,6 +23,11 @@ export const CoachBubble: React.FC<CoachBubbleProps> = ({
 	onDiscuss,
 }) => {
 	const [isVisible, setIsVisible] = useState(false);
+
+	// Guard against undefined observation
+	if (!observation) {
+		return null;
+	}
 
 	useEffect(() => {
 		const timer = setTimeout(() => setIsVisible(true), 100);

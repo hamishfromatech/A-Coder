@@ -770,23 +770,10 @@ const ChatModeDropdown = ({ className }: { className: string }) => {
 	const voidSettingsService = accessor.get('IVoidSettingsService')
 	const settingsState = useSettingsState()
 
-	const [showStudentOnboarding, setShowStudentOnboarding] = useState(false)
-
 	const options: ChatMode[] = useMemo(() => ['chat', 'plan', 'code', 'learn'], [])
 
-	const handleCloseOnboarding = useCallback(() => setShowStudentOnboarding(false), [])
-
 	const onChangeOption = useCallback((newVal: ChatMode) => {
-		// Show onboarding when switching to student mode for the first time
-		if (newVal === 'learn' && settingsState.globalSettings.chatMode !== 'learn') {
-			setShowStudentOnboarding(true)
-		}
 		voidSettingsService.setGlobalSetting('chatMode', newVal)
-	}, [voidSettingsService, settingsState.globalSettings.chatMode])
-
-	const handleSelectLevel = useCallback((level: 'beginner' | 'intermediate' | 'advanced') => {
-		voidSettingsService.setGlobalSetting('studentLevel', level)
-		setShowStudentOnboarding(false)
 	}, [voidSettingsService])
 
 	return <>
@@ -799,11 +786,6 @@ const ChatModeDropdown = ({ className }: { className: string }) => {
 			getOptionDropdownName={(val) => nameOfChatMode[val]}
 			getOptionDropdownDetail={(val) => detailOfChatMode[val]}
 			getOptionsEqual={(a, b) => a === b}
-		/>
-		<StudentOnboardingModal
-			isOpen={showStudentOnboarding}
-			onClose={handleCloseOnboarding}
-			onSelectLevel={handleSelectLevel}
 		/>
 	</>
 

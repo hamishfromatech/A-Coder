@@ -28,3 +28,5 @@ export const VOID_REJECT_ALL_DIFFS_ACTION_ID = 'void.rejectAllDiffs'
 export const VOID_OPEN_SETTINGS_ACTION_ID = 'workbench.action.openA-CoderSettings'
 
 export const VOID_TOGGLE_SETTINGS_ACTION_ID = 'workbench.action.toggleA-CoderSettings'
+
+export const VOID_OPEN_AGENT_MANAGER_ACTION_ID = 'void.agentManager.open'

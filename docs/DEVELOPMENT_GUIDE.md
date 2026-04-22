@@ -4,8 +4,8 @@ This guide covers how to develop, build, and package A-Coder for distribution.
 
 ## Prerequisites
 
-- **Node.js**: Version `20.18.2` (required)
-- **macOS**: For building macOS apps
+- **Node.js**: Version `22` (see `.nvmrc`)
+- **macOS/Windows/Linux**: For building respective platform apps
 - **npm**: Comes with Node.js
 
 ## Initial Setup
@@ -155,9 +155,11 @@ This will download the Electron binary and create the app structure.
 
 ## Project Structure
 
-- **`src/`** - TypeScript source code
-- **`src/vs/workbench/contrib/void/`** - A-Coder specific code
-- **`src/vs/workbench/contrib/void/browser/react/`** - React UI components
+- **`src/vs/workbench/contrib/void/`** - All A-Coder specific code (main entry: `void.contribution.ts`)
+- **`src/vs/workbench/contrib/void/browser/`** - Browser process code (React UI, tool execution)
+- **`src/vs/workbench/contrib/void/electron-main/`** - Main process code (LLM calls, MCP, settings)
+- **`src/vs/workbench/contrib/void/common/`** - Shared code (types, service interfaces)
+- **`src/vs/workbench/contrib/void/browser/react/`** - React UI components with scope-tailwind
 - **`out/`** - Compiled JavaScript output
 - **`.build/electron/`** - Development build output (not for distribution)
 - **`../VSCode-darwin-arm64/`** - Production build output (outside repo)
@@ -175,11 +177,11 @@ This will download the Electron binary and create the app structure.
 
 npm run buildreact && npm run compile && npm run gulp -- vscode-darwin-arm64 && hdiutil create -volname "A-Coder" -srcfolder ../VSCode-darwin-arm64/A-Coder.app -ov -format UDZO A-Coder.dmg
 
-
 ## Additional Resources
 
 - **Codebase Guide:** See `VOID_CODEBASE_GUIDE.md` for architecture details
 - **Contributing:** See `HOW_TO_CONTRIBUTE.md` for contribution guidelines
+- **Tool Architecture:** See `TOOL_ARCHITECTURE.md` for tool system documentation
 - **VS Code Docs:** https://github.com/microsoft/vscode/wiki
 
 ## Support

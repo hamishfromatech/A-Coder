@@ -13,7 +13,7 @@ import { IsRunningType, ThreadType } from '../../../chatThreadService.js';
 
 const numInitialThreads = 3
 
-export const PastThreadsList = ({ className = '' }: { className?: string }) => {
+export const PastThreadsList = ({ className = '', searchQuery = '' }: { className?: string; searchQuery?: string }) => {
 	const [showAll, setShowAll] = useState(false);
 
 	const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
@@ -33,10 +33,22 @@ export const PastThreadsList = ({ className = '' }: { className?: string }) => {
 		return <div key="error" className="p-1">{`Error accessing chat history.`}</div>;
 	}
 
-	// sorted by most recent to least recent
+	const query = searchQuery.toLowerCase().trim();
+
+	// sorted by most recent to least recent, filtered by search query
 	const sortedThreadIds = Object.keys(allThreads ?? {})
 		.sort((threadId1, threadId2) => (allThreads[threadId1]?.lastModified ?? 0) > (allThreads[threadId2]?.lastModified ?? 0) ? -1 : 1)
 		.filter(threadId => (allThreads![threadId]?.messages.length ?? 0) !== 0)
+		.filter(threadId => {
+			if (!query) return true;
+			const thread = allThreads![threadId];
+			if (!thread) return false;
+			const firstUserMsg = thread.messages.find(m => m.role === 'user');
+			if (firstUserMsg?.displayContent?.toLowerCase().includes(query)) return true;
+			const firstAsstMsg = thread.messages.find(m => m.role === 'assistant');
+			if (firstAsstMsg?.displayContent?.toLowerCase().includes(query)) return true;
+			return false;
+		})
 
 	// Get only first 5 threads if not showing all
 	const hasMoreThreads = sortedThreadIds.length > numInitialThreads;

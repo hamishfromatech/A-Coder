@@ -19,6 +19,7 @@ import { IMetricsService } from '../common/metricsService.js';
 import { ICommandService } from '../../../../platform/commands/common/commands.js';
 import { VOID_TOGGLE_SETTINGS_ACTION_ID } from './actionIDs.js';
 import { VOID_CTRL_L_ACTION_ID } from './actionIDs.js';
+import { VOID_OPEN_AGENT_MANAGER_ACTION_ID } from './actionIDs.js';
 import { localize2 } from '../../../../nls.js';
 import { IChatThreadService } from './chatThreadService.js';
 import { IViewsService } from '../../../services/views/common/viewsService.js';
@@ -286,7 +287,6 @@ registerAction2(class extends Action2 {
 })
 
 // Agent Manager action
-const VOID_OPEN_AGENT_MANAGER_ACTION_ID = 'void.agentManager.open'
 registerAction2(class extends Action2 {
 	constructor() {
 		super({
@@ -297,8 +297,12 @@ registerAction2(class extends Action2 {
 				id: MenuId.ViewTitle,
 				group: 'navigation',
 				when: ContextKeyExpr.equals('view', VOID_VIEW_ID),
-				order: 1000 // Put it first in this group
-			}]
+				order: 1000
+			}],
+			keybinding: {
+				primary: KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyA,
+				weight: KeybindingWeight.VoidExtension,
+			}
 		});
 	}
 	async run(accessor: ServicesAccessor): Promise<void> {

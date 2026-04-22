@@ -6,7 +6,7 @@ This directory contains technical documentation, implementation guides, and deve
 
 - [Development Guide](#development) - Get started building A-Coder
 - [Tool Architecture](#tools) - Understanding the tool system
-- [Contributing](#contributing) - How to contribute
+- [Codebase Guide](./VOID_CODEBASE_GUIDE.md) - Architecture overview
 
 ---
 
@@ -156,19 +156,22 @@ This repository follows these documentation standards:
 1. **Markdown format** - All documentation uses GitHub Flavored Markdown
 2. **Code blocks** - Code examples include syntax highlighting
 3. **Section headers** - Clear hierarchical structure
-4. **Date stamps** - Files include modification dates in filenames for tracking
-5. **Status indicators** - Implementation docs include completion status
+4. **Link syntax** - Use relative links for internal docs (e.g., `[Guide](./FILE.md)`)
 
 ---
 
 ## Key Concepts
 
-### A-Coder Modes
+### A-Coder Code Location
 
-- **Agent Mode** - Full agentic capabilities with tool access
-- **Gather Mode** - Information gathering and file exploration
-- **Normal Mode** - Chat without tools
-- **Student Mode** - Learning-focused interaction
+**All A-Coder code lives in `src/vs/workbench/contrib/void/`** - do NOT modify files outside this directory without consulting the user first.
+
+```
+src/vs/workbench/contrib/void/
+├── browser/          # Browser process (React UI, tool execution)
+├── electron-main/    # Main process (LLM calls, MCP connections)
+└── common/            # Shared types and service interfaces
+```
 
 ### Tool Categories
 
@@ -180,12 +183,13 @@ This repository follows these documentation standards:
 
 ### Supported LLM Providers
 
-- OpenAI-compatible APIs
+- OpenAI-compatible APIs (including Azure, AWS Bedrock, OpenRouter)
 - Anthropic (Claude)
 - Google Gemini
 - Ollama (local & cloud)
 - LM Studio
 - Pollinations
+- DeepSeek, Groq, Mistral, xAI Grok, vLLM, and more
 
 ---
 
@@ -195,10 +199,9 @@ See [HOW_TO_CONTRIBUTE.md](HOW_TO_CONTRIBUTE.md) for contribution guidelines.
 
 When adding new documentation:
 1. Use descriptive filenames
-2. Include date of creation/modification in filename if applicable
-3. Add a brief description at the top
-4. Update this README.md to reference new files
-5. Follow existing formatting conventions
+2. Add a brief description at the top
+3. Update this README.md to reference new files
+4. Follow existing formatting conventions
 
 ---
 

@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------*/
 
 import React, { memo } from 'react';
-import { BlockCode } from '../util/inputs.js';
+import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js';
 
 interface ContentPreviewProps {
 	title: string;
@@ -18,13 +18,8 @@ export const ContentPreview = memo(({ title, content }: ContentPreviewProps) => 
 				<span className="text-xs font-bold text-void-fg-1 uppercase tracking-widest">{title}</span>
 				<span className="px-2 py-0.5 rounded bg-void-accent/10 text-void-accent text-[9px] font-bold border border-void-accent/20 uppercase">Markdown</span>
 			</div>
-			<div className="flex-1 overflow-auto p-0">
-				<BlockCode
-					initValue={content}
-					language="markdown"
-					maxHeight={Infinity}
-					showScrollbars={true}
-				/>
+			<div className="flex-1 overflow-auto p-6 custom-scrollbar">
+				<ChatMarkdownRender string={content} chatMessageLocation={undefined} />
 			</div>
 		</div>
 	);

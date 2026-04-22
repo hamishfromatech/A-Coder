@@ -2,11 +2,9 @@
 
 The A-Coder codebase is not as intimidating as it seems!
 
-Most of A-Coder's code lives in the folder `src/vs/workbench/contrib/void/`.
+Most of A-Coder's code lives in `src/vs/workbench/contrib/void/`.
 
-The purpose of this document is to explain how A-Coder's codebase works. If you want build instructions instead, see [HOW_TO_CONTRIBUTE.md](./HOW_TO_CONTRIBUTE.md) or [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md).
-
-> **Note:** A-Coder is forked from the A-Coder Editor project. This guide retains much of the original A-Coder documentation while being adapted for A-Coder.
+The purpose of this document is to explain how A-Coder's codebase works. If you want build instructions instead, see [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md) or [HOW_TO_CONTRIBUTE.md](./HOW_TO_CONTRIBUTE.md).
 
 
 
@@ -24,12 +22,9 @@ Here's a VSCode rundown if you're just getting started with A-Coder. You can als
 <img src="https://github.com/user-attachments/assets/eef80306-2bfe-4cac-ba15-6156f65ab3bb" alt="Credit - https://github.com/microsoft/vscode/wiki/Source-Code-Organization" width="700px">
 </p>
 
-- Code in a  `browser/` folder always lives on the browser process, and it can use `window` and other browser items.
-- Code in an `electron-main/` folder always lives on the main process, and it can import `node_modules`.
-- Code in `common/` can be used by either process, but doesn't get any special imports.
-- The browser environment is not allowed to import `node_modules`. We came up with two workarounds:
-  1. Bundle the raw node_module code to the browser - we're doing this for React.
-  2. Implement the code on `electron-main/` and set up a channel between main/browser - we're doing this for sendLLMMessage.
+- Code in `browser/` lives on the browser process (DOM access, React UI)
+- Code in `electron-main/` lives on the main process (can import `node_modules`, LLM calls, MCP)
+- Code in `common/` can be used by either process
 
 
 
