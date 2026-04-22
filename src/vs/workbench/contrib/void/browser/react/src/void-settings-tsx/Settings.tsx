@@ -3550,6 +3550,18 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 																		/>
 																		<p className="text-[10px] text-void-fg-3/80 mt-1">The model to use for image generation (e.g., x/flux2-klein:4b, dall-e-3, stable-diffusion).</p>
 																	</div>
+
+																	<div>
+																		<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide mb-2 block">API Key</label>
+																		<VoidSimpleInputBox
+																			value={settingsState.globalSettings.imageGenerationApiKey}
+																			onChangeValue={(newVal) => voidSettingsService.setGlobalSetting('imageGenerationApiKey', newVal)}
+																			placeholder='sk-...'
+																			compact={true}
+																			passwordBlur={true}
+																		/>
+																		<p className="text-[10px] text-void-fg-3/80 mt-1">Your API key for the image generation service.</p>
+																	</div>
 																</div>
 															</SettingBox>
 														</SettingCard>

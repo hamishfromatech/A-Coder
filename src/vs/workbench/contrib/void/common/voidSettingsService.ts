@@ -323,6 +323,9 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 			if (readS.globalSettings.enableMediaGeneration === undefined) {
 				readS.globalSettings.enableMediaGeneration = true;
 			}
+			if (readS.globalSettings.imageGenerationApiKey === undefined) {
+				readS.globalSettings.imageGenerationApiKey = '';
+			}
 			// clean up old pollinations settings if they exist
 			delete (readS.globalSettings as any).pollinationsApiKey;
 			delete (readS.globalSettings as any).pollinationsImageModel;

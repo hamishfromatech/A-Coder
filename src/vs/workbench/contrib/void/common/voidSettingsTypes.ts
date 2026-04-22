@@ -509,6 +509,7 @@ export type GlobalSettings = {
 	maxAgentIterations: number; // Maximum number of iterations in agent mode
 	imageGenerationBaseUrl: string; // Base URL for OpenAI-compatible image generation API
 	imageGenerationModel: string; // Default model for image generation
+	imageGenerationApiKey: string; // API key for image generation service
 	enableMediaGeneration: boolean; // Enable/disable image generation tool
 	enableToolOrchestration: boolean; // Enable/disable universal tool orchestration
 	// Mobile API settings
@@ -560,6 +561,7 @@ export const defaultGlobalSettings: GlobalSettings = {
 	enableToolResultTOON: false,
 	maxAgentIterations: 50,
 	enableMediaGeneration: true, // Media generation enabled by default
+	imageGenerationApiKey: '', // No API key by default
 	imageGenerationBaseUrl: 'http://localhost:11434/v1', // Default to Ollama
 	imageGenerationModel: 'x/flux2-klein:4b', // Default model for image generation
 	enableToolOrchestration: false, // Tool orchestration disabled by default (requires setup)
