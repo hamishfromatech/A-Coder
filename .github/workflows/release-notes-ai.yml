@@ -53,9 +53,30 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           RELEASE_TAG: ${{ steps.release_dispatch.outputs.release_tag || steps.release_event.outputs.release_tag }}
           OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
-          OLLAMA_MODEL: qwen3-coder-next:cloud
+          OLLAMA_MODEL: glm-5.1:cloud
         run: |
-          NOTES=$(python .github/scripts/release_notes_generator.py)
+          NOTES=$(python .github/scripts/release_notes_generator.py) || {
+            echo "::warning::AI release notes generation failed, using fallback" >&2
+            NOTES=""
+          }
+
+          RELEASE_TAG="${{ steps.release_dispatch.outputs.release_tag || steps.release_event.outputs.release_tag }}"
+          REPO_URL="https://github.com/${{ github.repository }}"
+
+          if [ -z "$NOTES" ]; then
+            NOTES="## ⚠️ AI-generated release notes unavailable
+
+          The automated release notes generation failed. Please refer to the manually maintained release notes as a fallback:
+
+          **[docs/release-notes.md](${REPO_URL}/blob/dev/docs/release-notes.md)"
+          else
+            NOTES="${NOTES}
+
+          ---
+
+          > If these notes are incomplete or outdated, see the full manually maintained changelog: [docs/release-notes.md](${REPO_URL}/blob/dev/docs/release-notes.md)"
+          fi
+
           echo "notes<<EOF" >> $GITHUB_OUTPUT
           echo "$NOTES" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
