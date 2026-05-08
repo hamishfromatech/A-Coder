@@ -437,7 +437,7 @@
    ============================================ */
 
 /* User message - accent-aligned, left border emphasis */
-.message-user {
+.void-message-user {
 	background: linear-gradient(
 		135deg,
 		color-mix(in srgb, var(--vscode-button-background) 8%, var(--void-depth-elevated)) 0%,
@@ -457,7 +457,7 @@
 	hyphens: auto;
 }
 
-.message-user::before {
+.void-message-user::before {
 	content: '';
 	position: absolute;
 	left: 0;
@@ -469,7 +469,7 @@
 }
 
 /* Assistant message - subtle, clean */
-.message-assistant {
+.void-message-assistant {
 	background: var(--void-depth-elevated);
 	border: 1px solid color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
 	border-radius: var(--void-radius-md);
@@ -479,7 +479,7 @@
 }
 
 /* System message - accent gradient */
-.message-system {
+.void-message-system {
 	background: linear-gradient(
 		135deg,
 		color-mix(in srgb, var(--vscode-button-background) 12%, transparent) 0%,
@@ -488,6 +488,204 @@
 	border: 1px solid color-mix(in srgb, var(--vscode-button-background) 20%, transparent);
 	border-radius: var(--void-radius-md);
 	padding: 12px 16px;
+}
+
+/* ============================================
+   COLLAPSIBLE USER MESSAGE CARD
+   Modern, compact with smooth transitions
+   ============================================ */
+
+.void-user-message-card {
+	background: linear-gradient(
+		135deg,
+		color-mix(in srgb, var(--vscode-button-background) 8%, var(--void-depth-elevated)) 0%,
+		color-mix(in srgb, var(--vscode-button-background) 4%, var(--void-depth-elevated)) 100%
+	);
+	border-left: 2px solid var(--vscode-button-background);
+	border-radius: var(--void-radius-md);
+	border-top-left-radius: var(--void-radius-xs);
+	box-shadow: var(--void-shadow-sm), inset 0 1px 0 color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+	position: relative;
+	overflow: hidden;
+	max-width: 100%;
+	transition: box-shadow var(--void-duration-fast) var(--void-ease-out);
+}
+
+.void-user-message-card:hover {
+	box-shadow: var(--void-shadow-md);
+}
+
+.void-user-message-card::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	width: 2px;
+	background: var(--void-accent-gradient);
+	opacity: 0.6;
+}
+
+/* Header row */
+.void-user-message-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 10px 16px;
+	cursor: pointer;
+	transition: background-color var(--void-duration-fast) var(--void-ease-out);
+	min-height: 40px;
+}
+
+.void-user-message-header:hover {
+	background: color-mix(in srgb, var(--vscode-foreground) 3%, transparent);
+}
+
+/* Header left section */
+.void-user-message-header-left {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: 1;
+	min-width: 0;
+}
+
+/* User avatar/icon in header */
+.void-user-message-avatar {
+	width: 22px;
+	height: 22px;
+	border-radius: 50%;
+	background: color-mix(in srgb, var(--vscode-button-background) 20%, transparent);
+	border: 1px solid color-mix(in srgb, var(--vscode-button-background) 30%, transparent);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+
+.void-user-message-avatar svg {
+	width: 12px;
+	height: 12px;
+	color: var(--vscode-button-foreground);
+}
+
+/* Sender label */
+.void-user-message-label {
+	font-size: 10px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+	color: var(--void-fg-3);
+}
+
+/* Timestamp */
+.void-user-message-time {
+	font-size: 9px;
+	font-weight: 500;
+	color: var(--void-fg-4);
+	letter-spacing: 0.05em;
+}
+
+/* Header right section with actions */
+.void-user-message-header-right {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	opacity: 0;
+	transition: opacity var(--void-duration-fast) var(--void-ease-out);
+}
+
+.void-user-message-card:hover .void-user-message-header-right {
+	opacity: 1;
+}
+
+/* Small action buttons in header */
+.void-user-message-action-btn {
+	padding: 4px;
+	border-radius: var(--void-radius-sm);
+	color: var(--void-fg-4);
+	background: transparent;
+	border: none;
+	cursor: pointer;
+	transition: all var(--void-duration-fast) var(--void-ease-out);
+	line-height: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.void-user-message-action-btn:hover {
+	background: var(--void-bg-2-hover);
+	color: var(--void-fg-2);
+}
+
+.void-user-message-action-btn:active {
+	transform: scale(0.92);
+}
+
+/* Toggle chevron */
+.void-user-message-toggle {
+	transition: transform var(--void-duration-fast) var(--void-ease-out);
+	color: var(--void-fg-4);
+	flex-shrink: 0;
+}
+
+.void-user-message-toggle-open {
+	transform: rotate(90deg);
+}
+
+/* Content area */
+.void-user-message-content {
+	overflow-wrap: break-word;
+	word-wrap: break-word;
+	word-break: break-word;
+	hyphens: auto;
+	transition: all var(--void-duration-normal) var(--void-ease-out);
+}
+
+.void-user-message-content-inner {
+	padding: 0 16px 12px 16px;
+}
+
+/* Collapsed state - show ~3 lines */
+.void-user-message-collapsed .void-user-message-content {
+	max-height: 72px;
+	overflow: hidden;
+	position: relative;
+}
+
+.void-user-message-collapsed .void-user-message-content::after {
+	content: '';
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: 24px;
+	background: linear-gradient(to bottom, transparent, var(--void-depth-elevated));
+	pointer-events: none;
+}
+
+/* Expanded state */
+.void-user-message-expanded .void-user-message-content {
+	max-height: 2000px;
+	overflow: visible;
+}
+
+/* Show more / show less link */
+.void-user-message-show-more {
+	font-size: 10px;
+	font-weight: 600;
+	color: var(--void-fg-4);
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+	cursor: pointer;
+	padding: 4px 16px 12px;
+	transition: color var(--void-duration-fast) var(--void-ease-out);
+}
+
+.void-user-message-show-more:hover {
+	color: var(--void-fg-2);
 }
 
 /* ============================================
@@ -578,7 +776,7 @@
    Premium collapsible container for LLM reasoning
    ============================================ */
 
-.reasoning-card {
+.void-reasoning-card {
 	background: var(--void-depth-floating);
 	backdrop-filter: blur(8px);
 	border-radius: var(--void-radius-md);
@@ -589,16 +787,16 @@
 	overflow: hidden;
 }
 
-.reasoning-card:hover {
+.void-reasoning-card:hover {
 	box-shadow: var(--void-shadow-md);
 }
 
-.reasoning-card-active {
+.void-reasoning-card-active {
 	border-color: color-mix(in srgb, var(--void-accent-primary) 30%, transparent);
 	box-shadow: var(--void-shadow-sm), var(--void-glow-subtle);
 }
 
-.reasoning-card::before {
+.void-reasoning-card::before {
 	content: '';
 	position: absolute;
 	top: 0;
@@ -608,7 +806,7 @@
 	background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--vscode-foreground) 6%, transparent), transparent);
 }
 
-.reasoning-header {
+.void-reasoning-header {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -619,45 +817,45 @@
 	border-radius: var(--void-radius-md) var(--void-radius-md) 0 0;
 }
 
-.reasoning-header:hover {
+.void-reasoning-header:hover {
 	background: var(--void-bg-2-hover);
 }
 
-.reasoning-header:focus {
+.void-reasoning-header:focus {
 	outline: none;
 	background: var(--void-bg-2-hover);
 }
 
-.reasoning-header:focus-visible {
+.void-reasoning-header:focus-visible {
 	outline: 2px solid var(--void-accent-primary);
 	outline-offset: -2px;
 }
 
-.reasoning-chevron {
+.void-reasoning-chevron {
 	transition: transform 200ms ease-out;
 	color: var(--void-fg-4);
 }
 
-.reasoning-chevron:hover {
+.void-reasoning-chevron:hover {
 	color: var(--void-fg-2);
 }
 
-.reasoning-chevron-open {
+.void-reasoning-chevron-open {
 	transform: rotate(90deg);
 	color: var(--void-accent-primary);
 }
 
-.reasoning-icon {
+.void-reasoning-icon {
 	color: var(--void-fg-4);
 	transition: color 200ms ease-out;
 }
 
-.reasoning-icon-active {
+.void-reasoning-icon-active {
 	color: var(--void-accent-primary);
 	animation: breathe 2s ease-in-out infinite;
 }
 
-.reasoning-status {
+.void-reasoning-status {
 	font-size: 10px;
 	font-weight: 700;
 	text-transform: uppercase;
@@ -666,15 +864,15 @@
 	transition: color 200ms ease-out;
 }
 
-.reasoning-status:hover {
+.void-reasoning-status:hover {
 	color: var(--void-fg-2);
 }
 
-.reasoning-status-active {
+.void-reasoning-status-active {
 	color: var(--void-accent-primary);
 }
 
-.reasoning-badge {
+.void-reasoning-badge {
 	display: flex;
 	align-items: center;
 	gap: 6px;
@@ -684,7 +882,7 @@
 	border: 1px solid color-mix(in srgb, var(--void-accent-primary) 30%, transparent);
 }
 
-.reasoning-badge-text {
+.void-reasoning-badge-text {
 	font-size: 9px;
 	font-weight: 700;
 	text-transform: uppercase;
@@ -692,15 +890,15 @@
 	color: var(--void-accent-primary);
 }
 
-.reasoning-spinner {
+.void-reasoning-spinner {
 	color: var(--void-accent-primary);
 }
 
-.reasoning-content-wrapper {
+.void-reasoning-content-wrapper {
 	transition: all 300ms ease-out;
 }
 
-.reasoning-content-open {
+.void-reasoning-content-open {
 	max-height: 2000px;
 	opacity: 1;
 	overflow: auto;
@@ -708,14 +906,14 @@
 	padding: 12px;
 }
 
-.reasoning-content-closed {
+.void-reasoning-content-closed {
 	max-height: 0;
 	opacity: 0;
 	overflow: hidden;
 	padding: 0 12px;
 }
 
-.reasoning-content {
+.void-reasoning-content {
 	user-select: text;
 	cursor: auto;
 	font-size: 11px;
@@ -726,20 +924,20 @@
 }
 
 /* Custom scrollbar for reasoning content */
-.reasoning-content-wrapper::-webkit-scrollbar {
+.void-reasoning-content-wrapper::-webkit-scrollbar {
 	width: 6px;
 }
 
-.reasoning-content-wrapper::-webkit-scrollbar-track {
+.void-reasoning-content-wrapper::-webkit-scrollbar-track {
 	background: transparent;
 }
 
-.reasoning-content-wrapper::-webkit-scrollbar-thumb {
+.void-reasoning-content-wrapper::-webkit-scrollbar-thumb {
 	background: var(--void-border-2);
 	border-radius: 3px;
 }
 
-.reasoning-content-wrapper::-webkit-scrollbar-thumb:hover {
+.void-reasoning-content-wrapper::-webkit-scrollbar-thumb:hover {
 	background: var(--void-fg-4);
 }
 

@@ -347,7 +347,7 @@ const TokenCounter = ({ tokenUsage }: { tokenUsage?: { used: number, total: numb
 	// Show default state if no token usage data
 	if (!tokenUsage || tokenUsage.total === 0) {
 		return (
-			<div className='pill pill-neutral'>
+			<div className='pill pill-neutral gap-1'>
 				<span className='font-mono tabular-nums'>0/0</span>
 				<span className='font-medium'>(0.0%)</span>
 			</div>
@@ -359,7 +359,7 @@ const TokenCounter = ({ tokenUsage }: { tokenUsage?: { used: number, total: numb
 	const isMedium = percentage >= 50 && percentage < 80;
 
 	return (
-		<div className={`pill ${isHigh ? 'pill-error' : isMedium ? 'pill-warning' : 'pill-neutral'}`}>
+		<div className={`pill gap-1 ${isHigh ? 'pill-error' : isMedium ? 'pill-warning' : 'pill-neutral'}`}>
 			<span className='font-mono tabular-nums'>{used.toLocaleString()}/{total.toLocaleString()}</span>
 			<span className='font-medium'>
 				({percentage.toFixed(1)}%)
@@ -1491,36 +1491,116 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 
 	const isMsgAfterCheckpoint = currCheckpointIdx !== undefined && currCheckpointIdx === messageIdx - 1
 
+	// Collapsible state for display mode
+	const [isExpanded, setIsExpanded] = useState(false)
+
+	// Auto-detect if message is "long" enough to collapse (> 200 chars or has images)
+	const messageLength = (chatMessage.displayContent || '').length
+	const hasAttachments = !!(chatMessage.selections?.length || chatMessage.images?.length)
+	const shouldCollapse = messageLength > 200 || hasAttachments
+	
+	const displayContent = chatMessage.displayContent || ''
+
 	return (
-		<div className={`flex gap-3 mb-6 ${mode === 'edit' ? 'w-full' : 'self-end max-w-[85%]'} ${isCheckpointGhost && !isMsgAfterCheckpoint ? 'opacity-40 grayscale' : ''}`}
+		<div className={`flex gap-3 mb-6 ${mode === 'edit' ? 'w-full' : 'self-end max-w-[92%]'} ${isCheckpointGhost && !isMsgAfterCheckpoint ? 'opacity-40 grayscale' : ''}`}
 			onMouseEnter={useCallback(() => setIsHovered(true), [])}
 			onMouseLeave={useCallback(() => setIsHovered(false), [])}
 		>
 			<div className="flex flex-col items-end gap-1.5 flex-1 min-w-0">
-				<div
-					// style chatbubble according to role - using modernized message-user class
-					className={`
-					group relative
-					${mode === 'edit' ? 'w-full'
-							: mode === 'display' ? 'message-user cursor-pointer' : ''
-						}
-				`}
-					onClick={() => { if (mode === 'display') { onOpenEdit() } }}
-				>
-					{chatbubbleContents}
+				{mode === 'edit' ? (
+					// Edit mode: use existing chat area
+					<div className="w-full">
+						{chatbubbleContents}
+					</div>
+				) : (
+					// Display mode: premium collapsible card
+					<div className="user-message-card group w-full">
+						{/* Header row - always visible */}
+						<div
+							className="user-message-header"
+							onClick={() => {
+								if (shouldCollapse) {
+									setIsExpanded(v => !v)
+								}
+							}}
+							role="button"
+							tabIndex={shouldCollapse ? 0 : -1}
+						>
+							<div className="user-message-header-left">
+								<div className="user-message-avatar">
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+										<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+										<circle cx="12" cy="7" r="4" />
+									</svg>
+								</div>
+								<span className="user-message-label">You</span>
+								{/* Show a compact preview of the message in the header when collapsed */}
+								{!isExpanded && shouldCollapse && (
+									<span className="text-[11px] text-void-fg-4 truncate flex-1 min-w-0 ml-2">
+										{displayContent.slice(0, 60)}{displayContent.length > 60 ? '...' : ''}
+									</span>
+								)}
+							</div>
 
-					{mode === 'display' && (
-						<div className="absolute -left-10 top-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-							<button
-								onClick={(e) => { e.stopPropagation(); onOpenEdit(); }}
-								className="p-2 bg-void-bg-2 border border-void-border-2 rounded-lg hover:bg-void-bg-3 text-void-fg-4 hover:text-void-accent transition-all min-w-[44px] min-h-[44px] flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-void-accent"
-							>
-								<Pencil size={14} />
-							</button>
+							<div className="user-message-header-right">
+								{/* Edit button */}
+								<button
+									onClick={(e) => {
+										e.stopPropagation()
+										onOpenEdit()
+									}}
+									className="user-message-action-btn"
+									title="Edit message"
+								>
+										<Pencil size={12} />
+									</button>
+								{/* Collapse toggle */}
+								{shouldCollapse && (
+									<ChevronRight
+										size={14}
+										className={`user-message-toggle ${isExpanded ? 'user-message-toggle-open' : ''}`}
+									/>
+								)}
+							</div>
 						</div>
-					)}
-				</div>
-					{mode === 'display' && <span className="text-[9px] font-black uppercase tracking-[0.15em] text-void-fg-4/60 px-1">You</span>}
+
+						{/* Content area - expandable */}
+						<div className={`user-message-content ${!isExpanded && shouldCollapse ? 'user-message-collapsed' : 'user-message-expanded'}`}>
+							<SmoothHeight isVisible={isExpanded || !shouldCollapse} maxHeight="2000px">
+								<div
+									className="user-message-content-inner"
+									onClick={() => onOpenEdit()}
+									style={{ cursor: 'pointer' }}
+								>
+									{/* Show selections */}
+									{chatMessage.selections && chatMessage.selections.length > 0 && (
+										<div className="mb-2">
+											<SelectedFiles type="past" messageIdx={messageIdx} selections={chatMessage.selections} />
+										</div>
+									)}
+									{/* Show image thumbnails */}
+									{chatMessage.images && chatMessage.images.length > 0 && (
+										<div className="flex flex-wrap gap-2 mb-2">
+											{chatMessage.images.map((image, index) => (
+												<img
+													key={index}
+													src={`data:${image.mimeType};base64,${image.base64}`}
+													alt={image.name || `Image ${index + 1}`}
+													className="w-32 h-32 object-cover rounded-xl border border-void-border-1/30 cursor-pointer hover:opacity-90 transition-all duration-300 hover:scale-[1.02] shadow-md"
+													onClick={(e) => { e.stopPropagation() }}
+												/>
+											))}
+										</div>
+									)}
+									{/* Message content */}
+									<div className="text-[13px] leading-relaxed text-void-fg-1 font-medium break-words">
+										{displayContent}
+									</div>
+								</div>
+							</SmoothHeight>
+						</div>
+					</div>
+				)}
 			</div>
 		</div>
 	)
@@ -1585,112 +1665,6 @@ const AssistantMessageComponent = React.memo(({ chatMessage, isCheckpointGhost, 
 		</div>
 	)
 })
-
-const ReasoningWrapper = ({ isDoneReasoning, isStreaming, children }: { isDoneReasoning: boolean, isStreaming: boolean, children: React.ReactNode }) => {
-	const isDone = isDoneReasoning || !isStreaming
-	const isWriting = !isDone
-	// Start collapsed — user can expand to see thinking details
-	const [isOpen, setIsOpen] = useState(false)
-	// Track thinking duration
-	const startTimeRef = useRef<number | null>(null)
-	const [duration, setDuration] = useState<number | null>(null)
-
-	// Track start time and calculate duration
-	useEffect(() => {
-		if (isWriting && startTimeRef.current === null) {
-			// Thinking just started
-			startTimeRef.current = Date.now()
-		} else if (!isWriting && startTimeRef.current !== null) {
-			// Thinking just finished
-			const elapsed = Date.now() - startTimeRef.current
-			setDuration(elapsed)
-		}
-	}, [isWriting])
-
-	const scrollRef = useRef<HTMLDivElement>(null)
-	const contentId = useRef(`reasoning-content-${Math.random().toString(36).slice(2, 9)}`)
-
-	// Auto-scroll to bottom as content streams in
-	useEffect(() => {
-		if (isWriting && scrollRef.current && isOpen) {
-			scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-		}
-	}, [children, isWriting, isOpen])
-
-	// Keyboard accessibility
-	const handleKeyDown = (e: React.KeyboardEvent) => {
-		if (e.key === 'Enter' || e.key === ' ') {
-			e.preventDefault()
-			setIsOpen(v => !v)
-		}
-	}
-
-	// Format duration nicely
-	const formatDuration = (ms: number): string => {
-		const totalSeconds = Math.floor(ms / 1000)
-		const minutes = Math.floor(totalSeconds / 60)
-		const seconds = totalSeconds % 60
-
-		if (minutes > 0) {
-			return `${minutes}m ${seconds}s`
-		}
-		return `${seconds}s`
-	}
-
-	// Status text with duration
-	const statusText = isWriting ? 'Thinking' : duration !== null ? `Thought for ${formatDuration(duration)}` : 'Thinking Complete'
-
-	return (
-		<div className="my-3 mx-1">
-			<div className={`reasoning-card overflow-hidden ${isWriting ? 'reasoning-card-active' : ''}`}>
-				<div
-					className="reasoning-header group"
-					onClick={() => setIsOpen(v => !v)}
-					onKeyDown={handleKeyDown}
-					role="button"
-					tabIndex={0}
-					aria-expanded={isOpen}
-					aria-controls={contentId.current}
-				>
-					<div className="flex items-center gap-2">
-						<ChevronRight
-							size={12}
-							className={`reasoning-chevron ${isOpen ? 'reasoning-chevron-open' : ''}`}
-						/>
-						<div className="flex items-center gap-2">
-							<Brain size={12} className={`reasoning-icon ${isWriting ? 'reasoning-icon-active' : ''}`} />
-							<span className={`reasoning-status ${isWriting ? 'reasoning-status-active' : ''}`}>
-								{statusText}
-							</span>
-						</div>
-					</div>
-
-					{isWriting && (
-						<div className="reasoning-badge">
-							<span className="reasoning-badge-text">Thinking</span>
-							<Loader2 className="w-2.5 h-2.5 animate-spin reasoning-spinner" />
-						</div>
-					)}
-				</div>
-
-				<div
-					ref={scrollRef}
-					id={contentId.current}
-					className={`reasoning-content-wrapper ${isOpen ? 'reasoning-content-open' : 'reasoning-content-closed'}`}
-				>
-					<div className='reasoning-content'>
-						{children}
-					</div>
-				</div>
-			</div>
-		</div>
-	)
-}
-
-
-
-
-// should either be past or "-ing" tense, not present tense. Eg. when the LLM searches for something, the user expects it to say "I searched for X" or "I am searching for X". Not "I search X".
 
 
 
@@ -2581,6 +2555,113 @@ const EditToolSoFar = ({ toolCallSoFar, }: { toolCallSoFar: RawToolCallObj }) =>
 	</ToolHeaderWrapper>
 
 }
+
+
+const ReasoningWrapper = ({ isDoneReasoning, isStreaming, children }: { isDoneReasoning: boolean, isStreaming: boolean, children: React.ReactNode }) => {
+	const isDone = isDoneReasoning || !isStreaming
+	const isWriting = !isDone
+	// Start open — user can collapse to hide thinking details
+	const [isOpen, setIsOpen] = useState(true)
+	// Track thinking duration
+	const startTimeRef = useRef<number | null>(null)
+	const [duration, setDuration] = useState<number | null>(null)
+
+	// Track start time and calculate duration
+	useEffect(() => {
+		if (isWriting && startTimeRef.current === null) {
+			// Thinking just started
+			startTimeRef.current = Date.now()
+		} else if (!isWriting && startTimeRef.current !== null) {
+			// Thinking just finished
+			const elapsed = Date.now() - startTimeRef.current
+			setDuration(elapsed)
+		}
+	}, [isWriting])
+
+	const scrollRef = useRef<HTMLDivElement>(null)
+	const contentId = useRef(`reasoning-content-${Math.random().toString(36).slice(2, 9)}`)
+
+	// Auto-scroll to bottom as content streams in
+	useEffect(() => {
+		if (isWriting && scrollRef.current && isOpen) {
+			scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+		}
+	}, [children, isWriting, isOpen])
+
+	// Keyboard accessibility
+	const handleKeyDown = (e: React.KeyboardEvent) => {
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault()
+			setIsOpen(v => !v)
+		}
+	}
+
+	// Format duration nicely
+	const formatDuration = (ms: number): string => {
+		const totalSeconds = Math.floor(ms / 1000)
+		const minutes = Math.floor(totalSeconds / 60)
+		const seconds = totalSeconds % 60
+
+		if (minutes > 0) {
+			return `${minutes}m ${seconds}s`
+		}
+		return `${seconds}s`
+	}
+
+	// Status text with duration
+	const statusText = isWriting ? 'Thinking' : duration !== null ? `Thought for ${formatDuration(duration)}` : 'Thinking Complete'
+
+	return (
+		<div className="my-3 mx-1">
+			<div className={`reasoning-card overflow-hidden ${isWriting ? 'reasoning-card-active' : ''}`}>
+				<button
+					type="button"
+					className="reasoning-header group"
+					onClick={(e) => { e.stopPropagation(); setIsOpen(v => !v); }}
+					onKeyDown={handleKeyDown}
+					aria-expanded={isOpen}
+					aria-controls={contentId.current}
+				>
+					<div className="flex items-center gap-2">
+						<ChevronRight
+							size={12}
+							className={`reasoning-chevron ${isOpen ? 'reasoning-chevron-open' : ''}`}
+						/>
+						<div className="flex items-center gap-2">
+							<Brain size={12} className={`reasoning-icon ${isWriting ? 'reasoning-icon-active' : ''}`} />
+							<span className={`reasoning-status ${isWriting ? 'reasoning-status-active' : ''}`}>
+								{statusText}
+							</span>
+						</div>
+					</div>
+
+					{isWriting && (
+						<div className="reasoning-badge">
+							<span className="reasoning-badge-text">Thinking</span>
+							<Loader2 className="w-2.5 h-2.5 animate-spin reasoning-spinner" />
+						</div>
+					)}
+				</button>
+
+				<div
+					ref={scrollRef}
+					id={contentId.current}
+					className={`reasoning-content-wrapper ${isOpen ? 'reasoning-content-open' : 'reasoning-content-closed'}`}
+				>
+					<div className='reasoning-content'>
+						{children}
+					</div>
+				</div>
+			</div>
+		</div>
+	)
+}
+
+
+
+
+// should either be past or "-ing" tense, not present tense. Eg. when the LLM searches for something, the user expects it to say "I searched for X" or "I am searching for X". Not "I search X".
+
 
 
 export const SidebarChat = () => {
