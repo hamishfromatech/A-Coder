@@ -105,7 +105,7 @@ export const sendLLMMessage = async ({
 		if (_didAbort) return
 
 		// Legacy event capture (for backwards compatibility)
-		captureLLMEvent(`${loggingName} - Received Full Message`, { messageLength: fullText.length, reasoningLength: fullReasoning?.length, duration: new Date().getMilliseconds() - submit_time.getMilliseconds(), toolCallName: toolCalls?.[0]?.name })
+		captureLLMEvent(`${loggingName} - Received Full Message`, { messageLength: fullText.length, reasoningLength: fullReasoning?.length, duration: new Date().getTime() - submit_time.getTime(), toolCallName: toolCalls?.[0]?.name })
 
 		// LLM Observability capture
 		captureLLMGeneration('success', {
@@ -149,9 +149,9 @@ export const sendLLMMessage = async ({
 			responseLength: _fullTextSoFar.length,
 		})
 
+		_didAbort = true
 		try { _aborter?.() } // aborter sometimes automatically throws an error
 		catch (e) { }
-		_didAbort = true
 	}
 	abortRef_.current = onAbort
 

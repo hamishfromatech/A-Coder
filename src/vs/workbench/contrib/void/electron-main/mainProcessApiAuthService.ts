@@ -5,6 +5,7 @@
 
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { registerSingleton, InstantiationType } from '../../../../platform/instantiation/common/extensions.js';
+import { randomUUID } from 'crypto';
 
 export interface IMainProcessApiAuthService {
 	readonly _serviceBrand: undefined;
@@ -87,15 +88,11 @@ export class MainProcessApiAuthService implements IMainProcessApiAuthService {
 	}
 
 	/**
-	 * Generate a UUID v4
+	 * Generate a UUID v4 using Node.js crypto (CSPRNG)
 	 */
 	private generateUuid(): string {
-		// Simple UUID v4 generation
-		return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-			const r = Math.random() * 16 | 0;
-			const v = c === 'x' ? r : (r & 0x3 | 0x8);
-			return v.toString(16);
-		});
+		// Use Node.js native randomUUID for cryptographically secure tokens
+		return randomUUID();
 	}
 }
 

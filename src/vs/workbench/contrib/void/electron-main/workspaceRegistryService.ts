@@ -81,10 +81,15 @@ export class WorkspaceRegistryService extends Disposable implements IWorkspaceRe
 			id,
 			status: 'connected',
 			lastSeen: Date.now(),
-			threads: [],
+			threads: [...(workspace as any).threads || []], // Clone to prevent external mutation
 			activeOperations: 0,
 			color: workspace.color || WORKSPACE_COLORS[colorIndex]
 		};
+
+		if (this.workspaces.has(id)) {
+			console.warn(`[WorkspaceRegistry] Workspace ID ${id} already exists, rejecting registration to prevent hijacking`);
+			throw new Error(`Workspace ID ${id} is already registered`);
+		}
 
 		this.workspaces.set(id, newWorkspace);
 		this.notifyChange();

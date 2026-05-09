@@ -72,6 +72,9 @@ import './fileService.js'
 // register source control management
 import './voidSCMService.js'
 
+// register standalone session service for multi-workspace agent manager
+import './standaloneSessionService.js'
+
 // register Agent Manager
 import './agentManager.contribution.js'
 

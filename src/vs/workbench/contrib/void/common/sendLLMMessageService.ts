@@ -43,6 +43,10 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 		onAbort: {} as { [eventId: string]: (() => void) }, // NOT sent over the channel, result is instant when we call .abort()
 	}
 
+	// Track inflight Composio promises for abort safety
+	private readonly _composioPromises = new Map<string, Promise<unknown>>()
+	private readonly _abortedRequestIds = new Set<string>()
+
 	// list hooks
 	private readonly listHooks = {
 		ollama: {
@@ -134,8 +138,18 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 		this.llmMessageHooks.onError[requestId] = onError
 		this.llmMessageHooks.onAbort[requestId] = onAbort // used internally only
 
+		// Track the Composio promise for safe abort handling
+		this._composioPromises.set(requestId, composioToolsPromise)
+
 		// Handle Composio tools asynchronously
 		composioToolsPromise.then(composioTools => {
+			// Check if the request was already aborted while we were fetching tools
+			if (this._abortedRequestIds.has(requestId)) {
+				this._abortedRequestIds.delete(requestId)
+				this._composioPromises.delete(requestId)
+				return
+			}
+			this._composioPromises.delete(requestId)
 			// params will be stripped of all its functions over the IPC channel
 			this.channel.call('sendLLMMessage', {
 				...proxyParams,
@@ -147,6 +161,13 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 				composioTools,
 			} satisfies MainSendLLMMessageParams);
 		}).catch(err => {
+			// Check if the request was already aborted while we were fetching tools
+			if (this._abortedRequestIds.has(requestId)) {
+				this._abortedRequestIds.delete(requestId)
+				this._composioPromises.delete(requestId)
+				return
+			}
+			this._composioPromises.delete(requestId)
 			// If Composio tools fail, proceed without them
 			console.error('Failed to get Composio tools:', err);
 			this.channel.call('sendLLMMessage', {
@@ -235,8 +256,16 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 	}
 
 	abort(requestId: string) {
+		// Mark this request as aborted so any inflight Composio tool fetch is dropped
+		this._abortedRequestIds.add(requestId)
+		// Cancel the Composio promise tracking
+		this._composioPromises.delete(requestId)
+		// Fire the local abort hook
 		this.llmMessageHooks.onAbort[requestId]?.() // calling the abort hook here is instant (doesn't go over a channel)
-		this.channel.call('abort', { requestId } satisfies MainLLMMessageAbortParams);
+		// Send abort to the main process
+		this.channel.call('abort', { requestId } satisfies MainLLMMessageAbortParams).catch(() => {
+			// Ignore abort channel errors — the request may already be done
+		});
 		this._clearChannelHooks(requestId)
 	}
 

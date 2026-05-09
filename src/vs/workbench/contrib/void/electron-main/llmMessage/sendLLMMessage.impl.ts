@@ -301,22 +301,20 @@ const _sendOpenAICompatibleFIM = async ({ messages: { prefix, suffix, stopTokens
 	}
 
 	const openai = await newOpenAICompatibleSDK({ providerName, settingsOfProvider, includeInPayload: additionalOpenAIPayload })
-	openai.completions
-		.create({
+	try {
+		const response = await openai.completions.create({
 			model: modelName,
 			prompt: prefix,
 			suffix: suffix,
 			stop: stopTokens,
 			max_tokens: 300,
 		})
-		.then(async response => {
-			const fullText = response.choices[0]?.text
-			onFinalMessage({ fullText, fullReasoning: '', anthropicReasoning: null });
-		})
-		.catch(error => {
-			if (error instanceof OpenAI.APIError && error.status === 401) { onError({ message: invalidApiKeyMessage(providerName), fullError: error }); }
-			else { onError({ message: error + '', fullError: error }); }
-		})
+		const fullText = response.choices[0]?.text
+		onFinalMessage({ fullText, fullReasoning: '', anthropicReasoning: null })
+	} catch (error) {
+		if (error instanceof OpenAI.APIError && error.status === 401) { onError({ message: invalidApiKeyMessage(providerName), fullError: error }); }
+		else { onError({ message: error + '', fullError: error }); }
+	}
 }
 
 
@@ -675,6 +673,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 				}
 				if (choice.finish_reason === 'tool_calls') {
 					for (let i = 0; i < toolCalls.length; i++) {
+						if (!toolCalls[i]) continue // Guard against sparse array from non-contiguous tool indices
 						applyToolCall({ function: { name: toolCalls[i].name, arguments: toolCalls[i].paramsStr }, id: toolCalls[i].id, index: i }, { isFinal: true })
 					}
 				}
@@ -807,6 +806,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 						fullTextSoFar = ''
 						fullReasoningSoFar = ''
 						toolCalls = []
+						lastFullTextLength = 0
 
 						const { stripXMLBlocks } = await import('../../common/helpers/extractXMLTools.js')
 
@@ -834,6 +834,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 							}
 							if (choice.finish_reason === 'tool_calls') {
 								for (let i = 0; i < toolCalls.length; i++) {
+									if (!toolCalls[i]) continue // Guard against sparse array from non-contiguous tool indices
 									applyToolCall({ function: { name: toolCalls[i].name, arguments: toolCalls[i].paramsStr }, id: toolCalls[i].id, index: i }, { isFinal: true })
 								}
 							}
@@ -912,7 +913,11 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 					})
 					.catch(retryError => {
 						console.log(`[sendLLMMessage] \u{274C} Retry also failed:`, retryError?.message)
-						onError({ message: retryError + '', fullError: retryError })
+						try {
+							onError({ message: retryError + '', fullError: retryError })
+						} catch (e) {
+							console.error('[sendLLMMessage] onError threw in retry handler:', e)
+						}
 					})
 				return
 			}
@@ -1452,18 +1457,18 @@ const sendGeminiChat = async ({
 				const newText = chunk.text ?? ''
 				fullTextSoFar += newText
 
-				// reasoning and thought signature
-				const candidates = (chunk as any).candidates
-				if (candidates && candidates[0] && candidates[0].finishReason) {
-					lastGeminiFinishReason = candidates[0].finishReason
-				}
-				if (candidates && candidates[0] && candidates[0].content && candidates[0].content.parts) {
-					for (const part of candidates[0].content.parts) {
-						if (part.thought) {
-							fullReasoningSoFar += part.text ?? ''
-						}
+			// reasoning and thought signature
+			const candidates = (chunk as any).candidates
+			if (candidates?.[0]?.finishReason) {
+				lastGeminiFinishReason = candidates[0].finishReason
+			}
+			if (candidates?.[0]?.content?.parts?.forEach) {
+				for (const part of candidates[0].content.parts) {
+					if (part?.thought) {
+						fullReasoningSoFar += part.text ?? ''
 					}
 				}
+			}
 
 				// tool call
 				const functionCalls = chunk.functionCalls

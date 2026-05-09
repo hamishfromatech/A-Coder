@@ -59,6 +59,8 @@ import { ISoundService } from '../../../soundService.js'
 import { OPT_OUT_KEY } from '../../../../common/storageKeys.js'
 import { IAgentManagerService } from '../../../agentManager.contribution.js'
 import { ILearningProgressService } from '../../../../common/learningProgressService.js'
+import { IStandaloneSessionService } from '../../../standaloneSessionService.js'
+import { StandaloneSession } from '../../../../common/chatThreadServiceTypes.js'
 import { WorkspaceConnection, WorkspaceThreadSummary } from '../../../../common/workspaceRegistryTypes.js'
 import { IComposioService } from '../../../../common/composioService.js'
 // import { IACoderOAuthService, ACoderAuthState, ACoderModelInfo } from '../../../../common/aCoderOAuthService.js'
@@ -182,10 +184,11 @@ export const _registerServices = (accessor: ServicesAccessor) => {
 		voidCommandBarService: accessor.get(IVoidCommandBarService),
 		modelService: accessor.get(IModelService),
 		mcpService: accessor.get(IMCPService),
+		standaloneSessionService: accessor.get(IStandaloneSessionService),
 		// aCoderOAuthService: accessor.get(IACoderOAuthService),
 	}
 
-	const { settingsStateService, chatThreadsStateService, refreshModelService, themeService, editCodeService, voidCommandBarService, modelService, mcpService } = stateServices
+	const { settingsStateService, chatThreadsStateService, refreshModelService, themeService, editCodeService, voidCommandBarService, modelService, mcpService, standaloneSessionService } = stateServices
 	// const { aCoderOAuthService } = stateServices
 
 
@@ -270,6 +273,23 @@ export const _registerServices = (accessor: ServicesAccessor) => {
 		})
 	)
 
+	// Standalone session state
+	standaloneSessionsState = standaloneSessionService.getSessions()
+	const activeSession = standaloneSessionService.getActiveSession()
+	activeStandaloneSessionIdState = activeSession?.id || null
+	disposables.push(
+		standaloneSessionService.onDidChangeSessions(sessions => {
+			standaloneSessionsState = sessions
+			standaloneSessionsListeners.forEach(l => l(sessions))
+		})
+	)
+	disposables.push(
+		standaloneSessionService.onDidChangeActiveSession(id => {
+			activeStandaloneSessionIdState = id
+			activeStandaloneSessionListeners.forEach(l => l(id))
+		})
+	)
+
 	// A-Coder OAuth state listeners (disabled for now)
 	// aCoderAuthState = aCoderOAuthService.authState
 	// disposables.push(
@@ -346,6 +366,7 @@ const getReactAccessor = (accessor: ServicesAccessor) => {
 		ILearningProgressService: accessor.get(ILearningProgressService),
 		IStorageService: accessor.get(IStorageService),
 		ISoundService: accessor.get(ISoundService),
+		IStandaloneSessionService: accessor.get(IStandaloneSessionService),
 		// IACoderOAuthService: accessor.get(IACoderOAuthService),
 
 	} as const
@@ -774,15 +795,67 @@ export const useMultiWorkspaceSearch = (query: string) => {
 // 	return s
 // }
 
+// Standalone session state
+let standaloneSessionsState: StandaloneSession[] = []
+const standaloneSessionsListeners: Set<(sessions: StandaloneSession[]) => void> = new Set()
+
+let activeStandaloneSessionIdState: string | null = null
+const activeStandaloneSessionListeners: Set<(id: string | null) => void> = new Set()
+
+export const updateStandaloneSessionsState = (sessions: StandaloneSession[]) => {
+	standaloneSessionsState = sessions
+	standaloneSessionsListeners.forEach(l => l(sessions))
+}
+
+export const updateActiveStandaloneSessionId = (id: string | null) => {
+	activeStandaloneSessionIdState = id
+	activeStandaloneSessionListeners.forEach(l => l(id))
+}
+
 /**
- * Hook to get A-Coder models (disabled for now)
+ * Hook to get all standalone sessions
  */
-// export const useACoderModels = () => {
-// 	const [models, setModels] = useState<ACoderModelInfo[]>(aCoderModels)
-// 	useEffect(() => {
-// 		setModels(aCoderModels)
-// 		aCoderModelsListeners.add(setModels)
-// 		return () => { aCoderModelsListeners.delete(setModels) }
-// 	}, [])
-// 	return models
-// }
+export const useStandaloneSessions = () => {
+	const [sessions, setSessions] = useState<StandaloneSession[]>(standaloneSessionsState)
+
+	useEffect(() => {
+		setSessions(standaloneSessionsState)
+		standaloneSessionsListeners.add(setSessions)
+		return () => { standaloneSessionsListeners.delete(setSessions) }
+	}, [])
+
+	return sessions
+}
+
+/**
+ * Hook to get/set the active standalone session
+ */
+export const useActiveStandaloneSession = () => {
+	const [activeId, setActiveId] = useState<string | null>(activeStandaloneSessionIdState)
+
+	useEffect(() => {
+		setActiveId(activeStandaloneSessionIdState)
+		activeStandaloneSessionListeners.add(setActiveId)
+		return () => { activeStandaloneSessionListeners.delete(setActiveId) }
+	}, [])
+
+	const activeSession = useMemo(() => {
+		return standaloneSessionsState.find(s => s.id === activeId) || null
+	}, [activeId])
+
+	return { activeId, activeSession, setActiveId: updateActiveStandaloneSessionId }
+}
+
+/**
+ * Hook to get the workspace connection for a given session
+ */
+export const useSessionWorkspace = (sessionId: string | null) => {
+	const workspaces = useAllWorkspaces()
+	
+	return useMemo(() => {
+		if (!sessionId) return null
+		const session = standaloneSessionsState.find(s => s.id === sessionId)
+		if (!session?.workspaceId) return null
+		return workspaces.find(w => w.id === session.workspaceId) || null
+	}, [sessionId, workspaces])
+}

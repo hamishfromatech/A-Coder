@@ -1602,8 +1602,12 @@ export class ToolsService implements IToolsService {
 				});
 
 				try {
-					// Execute code in sandbox
-					const result = await channel.call('executeCode', { code, options: { timeout } });
+					// Execute code in sandbox with a safety timeout to prevent hanging
+					const SAFETY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes hard cap
+					const result = await Promise.race([
+						channel.call('executeCode', { code, options: { timeout } }),
+						new Promise((_, reject) => setTimeout(() => reject(new Error('Code execution safety timeout exceeded')), SAFETY_TIMEOUT_MS))
+					]);
 					return { result };
 				} finally {
 					disposable.dispose();

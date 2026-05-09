@@ -1773,7 +1773,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 			// Safety check: prevent infinite loops in agent mode
 			const maxAgentIterations = this._settingsService.state.globalSettings.maxAgentIterations || 50
-			if (chatMode === 'code' && nMessagesSent > maxAgentIterations) {
+			if (nMessagesSent > maxAgentIterations) {
 				console.warn(`[chatThreadService] Agent mode exceeded maximum iterations (${maxAgentIterations}), stopping loop`)
 				this._setStreamState(threadId, {
 					isRunning: undefined,
@@ -2881,7 +2881,8 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 			if (threadId !== this.state.currentThreadId) notify({ error: null })
 		}).catch((e) => {
 			if (threadId !== this.state.currentThreadId) notify({ error: getErrorMessage(e) })
-			throw e
+			// Log but do not re-throw to avoid unhandled promise rejection
+			console.error('[chatThreadService] _wrapRunAgentToNotify caught error:', e)
 		})
 	}
 
@@ -3198,10 +3199,9 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		// Abort current LLM if running — wait for the interrupt promise to resolve
 		const streamState = this.streamState[threadId];
 		if (streamState?.isRunning && streamState.interrupt !== 'not_needed') {
-			const interruptFn = await streamState.interrupt;
-			if (typeof interruptFn === 'function') {
-				interruptFn();
-				interruptFn();
+				const interruptFn = await streamState.interrupt;
+				if (typeof interruptFn === 'function') {
+					interruptFn();
 				}
 				// Grace period for stream state cleanup after abort
 		}
@@ -3589,6 +3589,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		delete this.toolCallHistory[threadId];
 		delete this.messageQueue[threadId];
 		delete this.taskPlans[threadId];
+		delete this.streamState[threadId];
 
 		// store the updated threads
 		this._storeAllThreads(newThreads);

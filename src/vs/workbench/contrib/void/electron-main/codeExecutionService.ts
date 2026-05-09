@@ -108,6 +108,8 @@ export class CodeExecutionService {
 			`);
 			if (consoleResult.error) {
 				consoleResult.error.dispose();
+			} else if (consoleResult.value) {
+				consoleResult.value.dispose();
 			}
 
 			// Create tools object if callback provided

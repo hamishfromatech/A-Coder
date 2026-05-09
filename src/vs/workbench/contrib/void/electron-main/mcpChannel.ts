@@ -27,56 +27,6 @@ const getClientConfig = (serverName: string) => {
 	}
 }
 
-/**
- * On macOS and Linux, commands need to be resolved through the shell to work with PATH.
- * This function wraps the command in a shell invocation when necessary.
- * In production builds, it ensures npx commands use the bundled Node.js.
- */
-const getShellCommand = (command: string, args: string[] | undefined): { command: string; args: string[] } => {
-	const currentPlatform = platform();
-	
-	// Get the bundled Node.js path for production builds
-	// In production, Node.js is bundled at: A-Coder.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/
-	// But we can use process.execPath which points to the Electron binary, and derive paths from there
-	const isProduction = process.env.NODE_ENV === 'production' || !process.env.VSCODE_DEV;
-	let enhancedPath = process.env.PATH || '';
-	
-	if (isProduction && currentPlatform === 'darwin') {
-		// In production on macOS, add common npm global bin paths and user's PATH
-		const homeDir = process.env.HOME || '';
-		const additionalPaths = [
-			'/usr/local/bin',
-			'/opt/homebrew/bin',
-			`${homeDir}/.npm-global/bin`,
-			`${homeDir}/.nvm/versions/node/*/bin`,
-			'/usr/bin',
-			'/bin'
-		];
-		enhancedPath = `${additionalPaths.join(':')}:${enhancedPath}`;
-		console.log(`[MCP] Production mode - enhanced PATH for npx: ${enhancedPath.substring(0, 200)}...`);
-	}
-	
-	// On macOS and Linux, wrap in shell to resolve PATH
-	if (currentPlatform === 'darwin' || currentPlatform === 'linux') {
-		const fullCommand = args ? `${command} ${args.join(' ')}` : command;
-		return {
-			command: '/bin/sh',
-			args: ['-c', `PATH="${enhancedPath}" ${fullCommand}`]
-		};
-	}
-	
-	// On Windows, use cmd.exe
-	if (currentPlatform === 'win32') {
-		const fullCommand = args ? `${command} ${args.join(' ')}` : command;
-		return {
-			command: 'cmd.exe',
-			args: ['/c', fullCommand]
-		};
-	}
-	
-	// Fallback: return as-is
-	return { command, args: args || [] };
-}
 
 type MCPServerNonError = MCPServer & { status: Omit<MCPServer['status'], 'error'> }
 type MCPServerError = MCPServer & { status: 'error' }
@@ -158,7 +108,18 @@ export class MCPChannel implements IServerChannel {
 		}
 		catch (e) {
 			console.error('mcp channel: Call Error:', e)
+			throw e // Re-throw so the caller knows there was an error
 		}
+	}
+
+	/**
+	 * Dispose the channel and clean up all resources
+	 */
+	dispose() {
+		this._closeAllMCPServers().catch(err => console.error('[MCP] Error during dispose:', err));
+		this.mcpEmitters.serverEvent.onAdd.dispose();
+		this.mcpEmitters.serverEvent.onUpdate.dispose();
+		this.mcpEmitters.serverEvent.onDelete.dispose();
 	}
 
 	// server functions
@@ -201,7 +162,11 @@ export class MCPChannel implements IServerChannel {
 
 					// create a new client
 					if (type === 'added' || type === 'updated') {
-						const clientInfo = await this._createClient(mcpServersJSON[serverName], serverName, userStateOfName[serverName]?.isOn)
+						const serverConfig = mcpServersJSON[serverName]
+						if (!serverConfig) {
+							throw new Error(`Missing config for server ${serverName}`)
+						}
+						const clientInfo = await this._createClient(serverConfig, serverName, userStateOfName[serverName]?.isOn)
 						this.infoOfClientId[serverName] = clientInfo
 						this.mcpEmitters.serverEvent.onAdd.fire({ response: { newServer: clientInfo.mcpServer, name: serverName, } })
 					}
@@ -217,7 +182,7 @@ export class MCPChannel implements IServerChannel {
 
 		const clientConfig = getClientConfig(serverName)
 		const client = new Client(clientConfig)
-		let transport: Transport;
+		let transport: Transport | undefined;
 		let info: MCPServerNonError;
 
 		if (server.url) {
@@ -236,12 +201,19 @@ export class MCPChannel implements IServerChannel {
 					command: server.url.toString(),
 				}
 			} catch (httpErr) {
+				// Clean up failed transport and client before retry
+				try { await client.close(); } catch { /* ignore */ }
+				try { transport?.close?.(); } catch { /* ignore */ }
+
 				console.warn(`[MCP] HTTP failed for ${serverName}, trying SSE…`, httpErr);
+				// Create a fresh client for SSE to avoid re-using a used client
+				const sseClient = new Client(clientConfig);
+				let sseTransport: Transport | undefined;
 				try {
-					transport = new SSEClientTransport(server.url);
-					await client.connect(transport);
+					sseTransport = new SSEClientTransport(server.url);
+					await sseClient.connect(sseTransport);
 					console.log(`[MCP] Connected via SSE to ${serverName}`);
-					const { tools } = await client.listTools()
+					const { tools } = await sseClient.listTools()
 					const toolsWithUniqueName = tools.map(({ name, ...rest }: { name: string, [key: string]: any }) => ({ name: this._addUniquePrefix(name, serverName), mcpServerName: serverName, ...rest }))
 					console.log(`\u{2705} Loaded ${toolsWithUniqueName.length} tools from ${serverName} via SSE`);
 					info = {
@@ -249,7 +221,11 @@ export class MCPChannel implements IServerChannel {
 						tools: toolsWithUniqueName,
 						command: server.url.toString(),
 					}
+					// Return with the SSE client as the active client
+					return { _client: sseClient, mcpServerEntryJSON: server, mcpServer: info }
 				} catch (sseErr) {
+					try { await sseClient.close(); } catch { /* ignore */ }
+					try { sseTransport?.close?.(); } catch { /* ignore */ }
 					console.error(`[MCP] \u{274C} Both HTTP and SSE failed for ${serverName}:`, {
 						httpError: httpErr,
 						sseError: sseErr,
@@ -259,16 +235,53 @@ export class MCPChannel implements IServerChannel {
 				}
 			}
 		} else if (server.command) {
-			// On macOS/Linux, wrap command in shell to resolve PATH; on Windows use cmd.exe
-			const { command: resolvedCommand, args: resolvedArgs } = getShellCommand(server.command, server.args);
-		
+			// SECURITY: Avoid shell command injection by using StdioClientTransport directly
+			// with an enhanced PATH in the environment, rather than constructing shell strings.
+			const isProduction = process.env.NODE_ENV === 'production' || !process.env.VSCODE_DEV;
+			let enhancedPath = process.env.PATH || '';
+
+			if (isProduction && platform() === 'darwin') {
+				// In production on macOS, add common npm global bin paths
+				const homeDir = process.env.HOME || '';
+				const additionalPaths = [
+					'/usr/local/bin',
+					'/opt/homebrew/bin',
+					`${homeDir}/.npm-global/bin`,
+					'/usr/bin',
+					'/bin'
+				];
+				// Try to expand NVM paths manually
+				const fs = require('fs');
+				const nvmBase = `${homeDir}/.nvm/versions/node`;
+				try {
+					if (fs.existsSync(nvmBase)) {
+						const versions = fs.readdirSync(nvmBase);
+						for (const version of versions) {
+							const binPath = `${nvmBase}/${version}/bin`;
+							if (fs.existsSync(binPath)) {
+								additionalPaths.push(binPath);
+							}
+						}
+					}
+				} catch {
+					// Ignore fs errors
+				}
+				enhancedPath = `${additionalPaths.join(':')}:${enhancedPath}`;
+				console.log(`[MCP] Production mode - enhanced PATH for npx: ${enhancedPath.substring(0, 200)}...`);
+			}
+
+			const env: Record<string, string> = {};
+			for (const [key, value] of Object.entries({ ...server.env, ...process.env })) {
+				if (value !== undefined) {
+					env[key] = String(value);
+				}
+			}
+			env['PATH'] = enhancedPath;
+
 			transport = new StdioClientTransport({
-				command: resolvedCommand,
-				args: resolvedArgs,
-				env: {
-					...server.env,
-					...process.env
-				} as Record<string, string>,
+				command: server.command,
+				args: server.args || [],
+				env,
 			});
 
 			await client.connect(transport)
@@ -290,7 +303,6 @@ export class MCPChannel implements IServerChannel {
 		} else {
 			throw new Error(`No url or command for server ${serverName}`);
 		}
-
 
 		return { _client: client, mcpServerEntryJSON: server, mcpServer: info }
 	}
@@ -314,10 +326,15 @@ export class MCPChannel implements IServerChannel {
 	}
 
 	private async _closeAllMCPServers() {
-		for (const serverName in this.infoOfClientId) {
-			await this._closeClient(serverName)
+		const closePromises = Object.keys(this.infoOfClientId).map(async (serverName) => {
+			try {
+				await this._closeClient(serverName)
+			} catch (err) {
+				console.error(`[MCP] Error closing server ${serverName}:`, err)
+			}
 			delete this.infoOfClientId[serverName]
-		}
+		})
+		await Promise.all(closePromises)
 		console.log('Closed all MCP servers');
 	}
 
@@ -326,18 +343,33 @@ export class MCPChannel implements IServerChannel {
 		if (!info) return
 		const { _client: client } = info
 		if (client) {
-			await client.close()
+			try {
+				await client.close()
+			} catch (err) {
+				console.error(`[MCP] Error closing client for ${serverName}:`, err)
+			}
 		}
 		console.log(`Closed MCP server ${serverName}`);
 	}
 
 
 	private async _toggleMCPServer(serverName: string, isOn: boolean) {
-		const prevServer = this.infoOfClientId[serverName]?.mcpServer
+		// Guard against concurrent refresh
+		if (this._refreshingServerNames.has(serverName)) {
+			console.warn(`[MCP] Cannot toggle server ${serverName}: refresh already in progress`);
+			throw new Error(`Server ${serverName} is currently being refreshed`);
+		}
+
+		const existing = this.infoOfClientId[serverName];
+		if (!existing) {
+			throw new Error(`Server ${serverName} not found, cannot toggle`);
+		}
+
+		const prevServer = existing.mcpServer
 		// Handle turning on the server
 		if (isOn) {
 			// this.mcpEmitters.serverEvent.onChangeLoading.fire(getLoadingServerObject(serverName, isOn))
-			const clientInfo = await this._createClientUnsafe(this.infoOfClientId[serverName].mcpServerEntryJSON, serverName, isOn)
+			const clientInfo = await this._createClientUnsafe(existing.mcpServerEntryJSON, serverName, isOn)
 			// IMPORTANT: Store the new client info in the map
 			this.infoOfClientId[serverName] = clientInfo
 			this.mcpEmitters.serverEvent.onUpdate.fire({
@@ -398,7 +430,17 @@ export class MCPChannel implements IServerChannel {
 			arguments: params
 		})
 		const { content } = response as CallToolResult
+		
+		// Guard against empty content array
+		if (!content || content.length === 0) {
+			throw new Error(`Tool "${toolName}" on server "${serverName}" returned empty content`)
+		}
+		
 		const returnValue = content[0]
+		
+		if (!returnValue || !returnValue.type) {
+			throw new Error(`Tool "${toolName}" on server "${serverName}" returned invalid content: missing type`)
+		}
 
 		if (returnValue.type === 'text') {
 			// handle text response

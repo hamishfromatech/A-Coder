@@ -7,6 +7,8 @@ import * as http from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { Emitter } from '../../../../base/common/event.js';
 
+const MAX_WS_MESSAGE_SIZE = 10 * 1024 * 1024; // 10MB
+
 /**
  * Mobile API Server
  * Provides REST and WebSocket endpoints for mobile companion app
@@ -38,20 +40,29 @@ export class ApiServer {
 				this.handleRequest(req, res);
 			});
 
+			// Handle errors BEFORE listen to catch bind failures
+			this.server.once('error', (err) => {
+				console.error('[API Server] Error:', err);
+				reject(err);
+			});
+
 			// Create WebSocket server
 			this.wss = new WebSocketServer({ server: this.server });
-			this.wss.on('connection', (ws: WebSocket, req: any) => {
+
+			// Handle WSS errors to prevent process crash
+			this.wss.on('error', (err) => {
+				console.error('[API Server] WSS error:', err);
+			});
+
+			this.wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
 				this.handleWebSocketConnection(ws, req);
 			});
 
 			// Start listening
 			this.server.listen(this.port, '127.0.0.1', () => {
+				// Remove error listener once successfully listening
+				this.server?.off('error', reject);
 				resolve();
-			});
-
-			this.server.on('error', (err) => {
-				console.error('[API Server] Error:', err);
-				reject(err);
 			});
 		});
 	}
@@ -143,35 +154,85 @@ export class ApiServer {
 	 * Handle WebSocket connection
 	 */
 	private handleWebSocketConnection(ws: WebSocket, req: http.IncomingMessage): void {
-		// Validate authentication from query string or headers
-		const url = new URL(req.url!, `http://${req.headers.host}`);
-		const token = url.searchParams.get('token') || req.headers.authorization?.substring(7);
-
-		if (!token || !this.validateToken(token)) {
-			ws.close(1008, 'Unauthorized');
-			return;
-		}
-
-		// Add to clients
-		this.clients.add(ws);
-
-		// Handle messages
-		ws.on('message', (data: any) => {
-			try {
-				const message = JSON.parse(data.toString());
-				this.handleWebSocketMessage(ws, message);
-			} catch (err) {
-				console.error('[API Server] WebSocket message error:', err);
+		try {
+			// Validate authentication from query string or headers
+			const rawUrl = req.url;
+			if (!rawUrl) {
+				ws.close(1008, 'Unauthorized: missing URL');
+				return;
 			}
-		});
 
-		// Handle close
-		ws.on('close', () => {
-			this.clients.delete(ws);
-		});
+			const url = new URL(rawUrl, `http://${req.headers.host || 'localhost'}`);
+			const token = url.searchParams.get('token') || this.extractBearerToken(req.headers.authorization);
 
-		// Send welcome message
-		ws.send(JSON.stringify({ type: 'connected', message: 'Connected to A-Coder API' }));
+			if (!token || !this.validateToken(token)) {
+				ws.close(1008, 'Unauthorized');
+				return;
+			}
+
+			// Add to clients
+			this.clients.add(ws);
+
+			// Handle messages with size limit
+			ws.on('message', (data: Buffer | ArrayBuffer | Buffer[]) => {
+				try {
+					// Validate and extract string data
+					let dataStr: string;
+					if (Buffer.isBuffer(data)) {
+						if (data.length > MAX_WS_MESSAGE_SIZE) {
+							ws.send(JSON.stringify({ error: 'Message too large' }));
+							return;
+						}
+						dataStr = data.toString('utf8');
+					} else if (data instanceof ArrayBuffer) {
+						if (data.byteLength > MAX_WS_MESSAGE_SIZE) {
+							ws.send(JSON.stringify({ error: 'Message too large' }));
+							return;
+						}
+						dataStr = Buffer.from(data).toString('utf8');
+					} else if (Array.isArray(data)) {
+						const totalSize = data.reduce((sum, b) => sum + b.length, 0);
+						if (totalSize > MAX_WS_MESSAGE_SIZE) {
+							ws.send(JSON.stringify({ error: 'Message too large' }));
+							return;
+						}
+						dataStr = Buffer.concat(data).toString('utf8');
+					} else {
+						dataStr = String(data);
+					}
+
+					const message = JSON.parse(dataStr);
+					this.handleWebSocketMessage(ws, message);
+				} catch (err) {
+					console.error('[API Server] WebSocket message error:', err);
+					ws.send(JSON.stringify({ error: 'Invalid message format' }));
+				}
+			});
+
+			// Handle close
+			ws.on('close', () => {
+				this.clients.delete(ws);
+			});
+
+			// Handle errors to prevent uncaught exceptions
+			ws.on('error', (err) => {
+				console.error('[API Server] WebSocket error:', err);
+				this.clients.delete(ws);
+			});
+
+			// Send welcome message
+			ws.send(JSON.stringify({ type: 'connected', message: 'Connected to A-Coder API' }));
+		} catch (err) {
+			console.error('[API Server] WebSocket connection handler error:', err);
+			ws.close(1011, 'Internal server error');
+		}
+	}
+
+	private extractBearerToken(authHeader: string | undefined): string | undefined {
+		if (!authHeader || !authHeader.startsWith('Bearer ')) {
+			return undefined;
+		}
+		return authHeader.substring(7);
 	}
 
 	/**

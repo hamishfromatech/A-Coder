@@ -15,6 +15,7 @@ interface PendingRequest {
 	reject: (error: any) => void;
 	responses?: any[];
 	aggregate?: (responses: any[]) => any;
+	timer: ReturnType<typeof setTimeout>;
 }
 
 /**
@@ -99,6 +100,12 @@ export class ApiChannel implements IServerChannel {
 			return { success: true };
 		}
 
+		// Handle renderer unregistration - fix memory leak where rendererCount never decrements
+		if (command === 'unregisterRenderer') {
+			this.rendererCount = Math.max(0, this.rendererCount - 1);
+			return { success: true };
+		}
+
 		// Handle API response from renderer
 		if (command === 'apiResponse') {
 			const { requestId, result, error } = params;
@@ -106,15 +113,24 @@ export class ApiChannel implements IServerChannel {
 			if (pending) {
 				// Check if this is an aggregated request waiting for multiple responses
 				if (pending.aggregate && pending.responses) {
+					// If any renderer reports an error, fail fast
+					if (error) {
+						this.pendingRequests.delete(requestId);
+						if (pending.timer) clearTimeout(pending.timer);
+						pending.reject(new Error(error));
+						return;
+					}
 					pending.responses.push(result);
 					if (pending.responses.length >= this.rendererCount) {
 						// All renderers have responded, resolve with aggregated result
 						this.pendingRequests.delete(requestId);
+						if (pending.timer) clearTimeout(pending.timer);
 						pending.resolve(pending.aggregate(pending.responses));
 					}
 				} else {
 					// Single response mode - first response wins
 					this.pendingRequests.delete(requestId);
+					if (pending.timer) clearTimeout(pending.timer);
 					if (error) {
 						pending.reject(new Error(error));
 					} else {
@@ -133,6 +149,19 @@ export class ApiChannel implements IServerChannel {
 
 		return new Promise((resolve, reject) => {
 			// Store the promise handlers
+			const timer = setTimeout(() => {
+				const pending = this.pendingRequests.get(requestId);
+				if (pending) {
+					this.pendingRequests.delete(requestId);
+					// If aggregating and we have at least one response, use that
+					if (pending.aggregate && pending.responses && pending.responses.length > 0) {
+						resolve(pending.aggregate(pending.responses));
+					} else {
+						reject(new Error(`Timeout waiting for renderer response to ${command}`));
+					}
+				}
+			}, 30000); // 30 second timeout
+
 			this.pendingRequests.set(requestId, {
 				resolve,
 				reject,
@@ -165,7 +194,8 @@ export class ApiChannel implements IServerChannel {
 							activeFile,
 						}
 					};
-				} : undefined
+				} : undefined,
+				timer
 			});
 
 			// Fire the event to all renderers
@@ -174,20 +204,6 @@ export class ApiChannel implements IServerChannel {
 				params,
 				requestId
 			});
-
-			// Set a timeout in case the renderer(s) don't respond
-			setTimeout(() => {
-				const pending = this.pendingRequests.get(requestId);
-				if (pending) {
-					this.pendingRequests.delete(requestId);
-					// If aggregating and we have at least one response, use that
-					if (pending.aggregate && pending.responses && pending.responses.length > 0) {
-						resolve(pending.aggregate(pending.responses));
-					} else {
-						reject(new Error(`Timeout waiting for renderer response to ${command}`));
-					}
-				}
-			}, 30000); // 30 second timeout
 		});
 	}
 }

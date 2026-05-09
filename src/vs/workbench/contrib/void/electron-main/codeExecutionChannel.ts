@@ -46,6 +46,7 @@ export class CodeExecutionChannel implements IServerChannel {
 	private pendingToolCalls = new Map<string, {
 		resolve: (result: any) => void;
 		reject: (error: Error) => void;
+		timer?: ReturnType<typeof setTimeout>;
 	}>();
 
 	constructor() {
@@ -65,16 +66,16 @@ export class CodeExecutionChannel implements IServerChannel {
 					const requestId = `tool_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 					
 					// Create promise that will be resolved when browser sends response
+					let timer: ReturnType<typeof setTimeout> | undefined;
 					const resultPromise = new Promise<any>((resolve, reject) => {
-						this.pendingToolCalls.set(requestId, { resolve, reject });
-						
 						// Timeout after 60 seconds
-						setTimeout(() => {
+						timer = setTimeout(() => {
 							if (this.pendingToolCalls.has(requestId)) {
 								this.pendingToolCalls.delete(requestId);
 								reject(new Error(`Tool call timeout: ${toolName}`));
 							}
 						}, 60000);
+						this.pendingToolCalls.set(requestId, { resolve, reject, timer });
 					});
 					
 					// Emit event to browser
@@ -93,6 +94,11 @@ export class CodeExecutionChannel implements IServerChannel {
 				const pending = this.pendingToolCalls.get(requestId);
 				if (!pending) {
 					throw new Error(`No pending tool call found for requestId: ${requestId}`);
+				}
+				
+				// Clear the timeout timer before resolving/rejecting
+				if (pending.timer) {
+					clearTimeout(pending.timer);
 				}
 				
 				this.pendingToolCalls.delete(requestId);

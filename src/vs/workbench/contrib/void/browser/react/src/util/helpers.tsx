@@ -25,7 +25,11 @@ export const useRefState = <T,>(initVal: T): ReturnType<T> => {
 export const usePromise = <T,>(promise: Promise<T>): T | undefined => {
 	const [val, setVal] = useState<T | undefined>(undefined)
 	useEffect(() => {
-		promise.then((v) => setVal(v))
+		let cancelled = false
+		promise
+			.then((v) => { if (!cancelled) setVal(v) })
+			.catch((e) => { if (!cancelled) console.error('usePromise rejected:', e) })
+		return () => { cancelled = true }
 	}, [promise])
 	return val
 }

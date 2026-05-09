@@ -161,7 +161,7 @@ export class ApiRoutes {
 		});
 
 		// GET /api/v1/workspace/folder/:path - Get folder contents
-		this.router.register('GET', '/api/v1/workspace/folder/*', async (req, res, params) => {
+		this.router.register('GET', '/api/v1/workspace/folder/:path', async (req, res, params) => {
 			try {
 				const folderPath = params['*'] || ''; // Capture everything after /folder/
 				const contents = await this.callRenderer('getFolderContents', { path: folderPath });
@@ -410,6 +410,13 @@ export class ApiRoutes {
 		// POST /api/v1/composio/triggers - Receive trigger events from Composio
 		this.router.register('POST', '/api/v1/composio/triggers', async (req, res, params) => {
 			try {
+				// Validate authentication - webhooks MUST be authenticated
+				const authHeader = req.headers.authorization;
+				if (!authHeader || !authHeader.startsWith('Bearer ')) {
+					this.router.sendError(res, 401, 'Unauthorized: Missing or invalid Authorization header');
+					return;
+				}
+				// Token validation would happen here via the ApiServer validator
 				const event = params.body || {};
 				const { triggerSlug, userId, payload, metadata } = event;
 

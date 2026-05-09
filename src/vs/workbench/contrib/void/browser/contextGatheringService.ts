@@ -293,7 +293,7 @@ class ContextGatheringService extends Disposable implements IContextGatheringSer
 			a.endLineNumber < b.startLineNumber ||
 			a.startLineNumber > b.endLineNumber ||
 			(a.endLineNumber === b.startLineNumber && a.endColumn < b.startColumn) ||
-			(a.startLineNumber === b.endLineNumber && a.endColumn > b.endColumn)
+			(a.startLineNumber === b.endLineNumber && a.startColumn > b.endColumn)
 		);
 	}
 

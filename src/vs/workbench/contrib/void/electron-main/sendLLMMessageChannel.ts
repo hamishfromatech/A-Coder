@@ -96,6 +96,10 @@ export class LLMMessageChannel implements IServerChannel {
 		if (!(requestId in this._infoOfRunningRequest))
 			this._infoOfRunningRequest[requestId] = { waitForSend: undefined, abortRef: { current: null } }
 
+		const cleanup = () => {
+			delete this._infoOfRunningRequest[requestId]
+		}
+
 		const mainThreadParams: SendLLMMessageParams = {
 			...params,
 			onText: (p) => {
@@ -103,10 +107,12 @@ export class LLMMessageChannel implements IServerChannel {
 			},
 			onFinalMessage: (p) => {
 				this.llmMessageEmitters.onFinalMessage.fire({ requestId, ...p });
+				cleanup();
 			},
 			onError: (p) => {
 				console.log('sendLLM: firing err');
 				this.llmMessageEmitters.onError.fire({ requestId, ...p });
+				cleanup();
 			},
 			abortRef: this._infoOfRunningRequest[requestId].abortRef,
 		}

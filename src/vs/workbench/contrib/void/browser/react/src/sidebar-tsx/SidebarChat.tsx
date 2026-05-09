@@ -2039,7 +2039,7 @@ type ChatBubbleProps = {
 	_scrollToBottom: (() => void) | null,
 }
 
-const ChatBubble = React.memo((props: ChatBubbleProps) => {
+export const ChatBubble = React.memo((props: ChatBubbleProps) => {
 	return <ErrorBoundary>
 		<_ChatBubble {...props} />
 	</ErrorBoundary>
@@ -2460,9 +2460,9 @@ const CommandBarInChat = () => {
 
 const EditToolSoFar = ({ toolCallSoFar, }: { toolCallSoFar: RawToolCallObj }) => {
 
-	if (!isABuiltinToolName(toolCallSoFar.name)) return null
-
 	const accessor = useAccessor()
+
+	if (!isABuiltinToolName(toolCallSoFar.name)) return null
 
 	const uri = toolCallSoFar.rawParams.uri ? URI.file(toolCallSoFar.rawParams.uri) : undefined
 
@@ -2789,7 +2789,6 @@ export const SidebarChat = () => {
 				// Play notification sound via SoundService
 				;(async () => {
 					try {
-						const accessor = useAccessor()
 						const soundService = accessor.get('ISoundService')
 						const dataUrl = await soundService.playSound(soundSetting)
 						if (dataUrl) {
@@ -3302,7 +3301,11 @@ export const SidebarChat = () => {
 	const handleDragLeave = useCallback((e: React.DragEvent) => {
 		e.preventDefault();
 		e.stopPropagation();
-		setIsDraggingOver(false);
+		// Only clear drag state if we're actually leaving the container, not just a child element
+		const relatedTarget = e.relatedTarget as Node | null;
+		if (!relatedTarget || !(e.currentTarget as Node).contains(relatedTarget)) {
+			setIsDraggingOver(false);
+		}
 	}, []);
 
 	const handleDrop = useCallback(async (e: React.DragEvent) => {
@@ -3693,7 +3696,7 @@ export const SidebarChat = () => {
 	const handleCloseQuizMe = useCallback(() => setShowQuizMe(false), [])
 	const handleSelectQuizTopic = useCallback((topic: string) => {
 		setInstructionsAreEmpty(false);
-		setInputValue(topic);
+		textAreaFnsRef.current?.setValue(topic);
 		textAreaRef.current?.focus();
 	}, [])
 

@@ -3,7 +3,7 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import React, { JSX, useMemo, useState } from 'react'
+import React, { JSX, useEffect, useMemo, useState } from 'react'
 import { marked, MarkedToken, Token } from 'marked'
 
 import { convertToVscodeLang, detectLanguage } from '../../../../common/helpers/languageHelpers.js'
@@ -71,36 +71,40 @@ const CodespanWithLink = ({ text, rawText, chatMessageLocation }: { text: string
 
 	const { messageIdx, threadId } = chatMessageLocation
 
-	const [didComputeCodespanLink, setDidComputeCodespanLink] = useState<boolean>(false)
+	const [link, setLink] = useState<CodespanLocationLink | undefined>(undefined)
 
-	let link: CodespanLocationLink | undefined = undefined
+	// Fetch link asynchronously via useEffect to avoid side effects during render
+	useEffect(() => {
+		if (!rawText.endsWith('`')) return
+		const existing = chatThreadService.getCodespanLink({ codespanStr: text, messageIdx, threadId })
+		if (existing !== undefined) {
+			setLink(existing)
+			return
+		}
+		let cancelled = false
+		chatThreadService.generateCodespanLink({ codespanStr: text, threadId })
+			.then(newLink => {
+				if (cancelled) return
+				chatThreadService.addCodespanLink({ newLinkText: text, newLinkLocation: newLink, messageIdx, threadId })
+				setLink(newLink)
+			})
+			.catch(() => {
+				// Silently fail — link is optional UX enhancement
+			})
+		return () => { cancelled = true }
+	}, [text, rawText, messageIdx, threadId, chatThreadService])
+
 	let tooltip: string | undefined = undefined
 	let displayText = text
 
-
-	if (rawText.endsWith('`')) {
-		// get link from cache
-		link = chatThreadService.getCodespanLink({ codespanStr: text, messageIdx, threadId })
-
-		if (link === undefined) {
-			// if no link, generate link and add to cache
-			chatThreadService.generateCodespanLink({ codespanStr: text, threadId })
-				.then(link => {
-					chatThreadService.addCodespanLink({ newLinkText: text, newLinkLocation: link, messageIdx, threadId })
-					setDidComputeCodespanLink(true) // rerender
-				})
-		}
-
-		if (link?.displayText) {
-			displayText = link.displayText
-		}
-
-		if (isValidUri(displayText)) {
-			tooltip = getRelative(URI.file(displayText), accessor)  // Full path as tooltip
-			displayText = getBasename(displayText)
-		}
+	if (link?.displayText) {
+		displayText = link.displayText
 	}
 
+	if (isValidUri(displayText)) {
+		tooltip = getRelative(URI.file(displayText), accessor)  // Full path as tooltip
+		displayText = getBasename(displayText)
+	}
 
 	const onClick = () => {
 		if (!link) return;
@@ -778,13 +782,13 @@ const StreamingMarkdownRender = ({ string, inPTag, chatMessageLocation, ...optio
 
 	return (
 		<>
-			{segments.map((segment) => {
+			{segments.map((segment, segIdx) => {
 				if (segment.type === 'code') {
 					// Code blocks are rendered properly even during streaming
 					const language = segment.language || 'plaintext';
 					return (
 						<BlockCode
-							key={segment.key}
+							key={`seg-${segIdx}`}
 							initValue={segment.content}
 							language={language}
 						/>
@@ -792,7 +796,7 @@ const StreamingMarkdownRender = ({ string, inPTag, chatMessageLocation, ...optio
 				} else if (segment.type === 'inline-code') {
 					// Inline code
 					return (
-						<code key={segment.key} className="font-mono font-medium rounded-sm bg-void-bg-1 px-1">
+						<code key={`seg-${segIdx}`} className="font-mono font-medium rounded-sm bg-void-bg-1 px-1">
 							{segment.content}
 						</code>
 					);
@@ -800,9 +804,9 @@ const StreamingMarkdownRender = ({ string, inPTag, chatMessageLocation, ...optio
 					// Regular text - render with proper line breaks
 					// Still allow some inline formatting but don't restructure
 					return (
-						<span key={segment.key} className="whitespace-pre-wrap">
+						<span key={`seg-${segIdx}`} className="whitespace-pre-wrap">
 							{segment.content.split('\n').map((line, lineIndex, lines) => (
-								<React.Fragment key={`${segment.key}-line-${lineIndex}`}>
+								<React.Fragment key={`line-${segIdx}-${lineIndex}`}>
 									{renderInlineFormatting(line, chatMessageLocation, options)}
 									{lineIndex < lines.length - 1 && <br />}
 								</React.Fragment>

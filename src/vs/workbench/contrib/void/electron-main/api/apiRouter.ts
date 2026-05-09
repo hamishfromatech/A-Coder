@@ -115,12 +115,20 @@ export class ApiRouter {
 	}
 
 	/**
-	 * Parse request body
+	 * Parse request body with size limit
 	 */
 	private parseBody(req: http.IncomingMessage): Promise<any> {
 		return new Promise((resolve, reject) => {
 			let body = '';
+			let bodyLength = 0;
+			const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
+
 			req.on('data', chunk => {
+				bodyLength += chunk.length;
+				if (bodyLength > MAX_BODY_SIZE) {
+					reject(new Error('Request body too large'));
+					return;
+				}
 				body += chunk.toString();
 			});
 			req.on('end', () => {
@@ -176,11 +184,42 @@ export class ApiRouter {
 		const range = req.headers.range;
 		const total = data.length;
 
+		const sanitizeFilename = (name: string): string => {
+			// Remove control chars, backslashes, and quotes to prevent header injection
+			return name.replace(/[\x00-\x1f\x7f\\"]/g, '_');
+		};
+
 		if (range) {
 			// Parse range header: "bytes=start-end"
-			const parts = range.replace(/bytes=/, '').split('-');
-			const start = parseInt(parts[0], 10);
-			const end = parts[1] ? parseInt(parts[1], 10) : total - 1;
+			const rangeMatch = range.replace(/bytes=/, '').match(/^(\d*)-(\d*)$/);
+			if (!rangeMatch) {
+				// Invalid range format - send full file
+				this.sendBinary(res, 200, data, contentType, filename ? sanitizeFilename(filename) : undefined);
+				return;
+			}
+
+			const startStr = rangeMatch[1];
+			const endStr = rangeMatch[2];
+
+			let start: number;
+			let end: number;
+
+			if (startStr === '' && endStr !== '') {
+				// Suffix range: bytes=-500 (last N bytes)
+				start = Math.max(0, total - parseInt(endStr, 10));
+				end = total - 1;
+			} else {
+				start = parseInt(startStr, 10);
+				end = endStr ? parseInt(endStr, 10) : total - 1;
+			}
+
+			// Validate range values
+			if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end >= total || start > end) {
+				res.writeHead(416, { 'Content-Range': `bytes */${total}` });
+				res.end();
+				return;
+			}
+
 			const chunkSize = (end - start) + 1;
 
 			const headers: Record<string, string> = {
@@ -190,14 +229,14 @@ export class ApiRouter {
 				'Content-Type': contentType,
 			};
 			if (filename) {
-				headers['Content-Disposition'] = `inline; filename="${filename}"`;
+				headers['Content-Disposition'] = `inline; filename="${sanitizeFilename(filename)}"`;
 			}
 
 			res.writeHead(206, headers);
 			res.end(data.slice(start, end + 1));
 		} else {
 			// No range requested, send full file
-			this.sendBinary(res, 200, data, contentType, filename);
+			this.sendBinary(res, 200, data, contentType, filename ? sanitizeFilename(filename) : undefined);
 		}
 	}
 }

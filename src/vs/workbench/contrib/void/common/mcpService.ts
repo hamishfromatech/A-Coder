@@ -129,7 +129,7 @@ class MCPService extends Disposable implements IMCPService {
 		}
 	}
 
-	private readonly _setMCPServerState = async (serverName: string, newServer: MCPServer | undefined) => {
+	private readonly _setMCPServerState = (serverName: string, newServer: MCPServer | undefined) => {
 		if (newServer === undefined) {
 			// Remove the server from the state
 			const { [serverName]: removed, ...remainingServers } = this.state.mcpServerOfName;
@@ -150,7 +150,7 @@ class MCPService extends Disposable implements IMCPService {
 		this._onDidChangeState.fire();
 	}
 
-	private readonly _setHasError = async (errMsg: string | undefined) => {
+	private readonly _setHasError = (errMsg: string | undefined) => {
 		this.state = {
 			...this.state,
 			error: errMsg,
@@ -221,8 +221,8 @@ class MCPService extends Disposable implements IMCPService {
 		Object.keys(inputSchema.properties).forEach(paramName => {
 			const propertyValues = inputSchema.properties[paramName];
 
-			// Check if propertyValues is not an object
-			if (typeof propertyValues !== 'object') {
+			// Check if propertyValues is not an object (guard against null too)
+			if (!propertyValues || typeof propertyValues !== 'object') {
 				console.warn(`Invalid property value for ${paramName}: expected object, got ${typeof propertyValues}`);
 				return; // in forEach the return is equivalent to continue
 			}
@@ -300,13 +300,17 @@ class MCPService extends Disposable implements IMCPService {
 		}
 		const updatedServerNames = Object.keys(newConfigFileJSON.mcpServers).filter(serverName => !addedServerNames.includes(serverName) && !removedServerNames.includes(serverName))
 
-		this.channel.call('refreshMCPServers', {
-			mcpConfigFileJSON: newConfigFileJSON,
-			addedServerNames,
-			removedServerNames,
-			updatedServerNames,
-			userStateOfName: this.voidSettingsService.state.mcpUserStateOfName,
-		})
+		try {
+			await this.channel.call('refreshMCPServers', {
+				mcpConfigFileJSON: newConfigFileJSON,
+				addedServerNames,
+				removedServerNames,
+				updatedServerNames,
+				userStateOfName: this.voidSettingsService.state.mcpUserStateOfName,
+			})
+		} catch (err) {
+			this._setHasError(String(err))
+		}
 	}
 
 	stringifyResult(result: RawMCPToolCall): string {

@@ -353,6 +353,9 @@ class EditCodeService extends Disposable implements IEditCodeService {
 
 		const timer = setTimeout(async () => {
 			this._debouncedRefreshTimers.delete(uriKey);
+			// Guard against accessing a disposed model
+			const currentModel = this._modelService.getModel(uri)
+			if (!currentModel || currentModel.isDisposed()) return
 			await this._refreshStylesAndDiffsInURI(uri);
 
 			// if diffarea has no diffs after a user edit, delete it
@@ -3157,6 +3160,17 @@ ${problematicCode}
 
 		onFinishEdit()
 
+	}
+
+	public override dispose(): void {
+		// Clear all debounced refresh timers to prevent leaks
+		for (const [, timer] of this._debouncedRefreshTimers) {
+			clearTimeout(timer)
+		}
+		this._debouncedRefreshTimers.clear()
+		// Dispose the diff worker
+		this._diffWorkerClient.dispose()
+		super.dispose()
 	}
 
 }

@@ -467,11 +467,15 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 
 	private _onUpdate_syncApplyToChat() {
 		// if sync is turned on, sync (call this whenever Chat model or !!sync changes)
-		this.setModelSelectionOfFeature('Apply', deepClone(this.state.modelSelectionOfFeature['Chat']))
+		this.setModelSelectionOfFeature('Apply', deepClone(this.state.modelSelectionOfFeature['Chat'])).catch(err => {
+			console.error('[VoidSettings] syncApplyToChat failed:', err);
+		});
 	}
 
 	private _onUpdate_syncSCMToChat() {
-		this.setModelSelectionOfFeature('SCM', deepClone(this.state.modelSelectionOfFeature['Chat']))
+		this.setModelSelectionOfFeature('SCM', deepClone(this.state.modelSelectionOfFeature['Chat'])).catch(err => {
+			console.error('[VoidSettings] syncSCMToChat failed:', err);
+		});
 	}
 
 	setGlobalSetting: SetGlobalSettingFn = async (settingName, newVal) => {
@@ -570,7 +574,9 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 		const oldModelNames = models.map(m => m.modelName)
 
 		const newModels = _modelsWithSwappedInNewModels({ existingModels: models, models: autodetectedModelNames, type: 'autodetected' })
-		this.setSettingOfProvider(providerName, 'models', newModels)
+		this.setSettingOfProvider(providerName, 'models', newModels).catch(err => {
+			console.error('[VoidSettings] setAutodetectedModels failed:', err);
+		})
 
 		// if the models changed, log it
 		const new_names = newModels.map(m => m.modelName)
@@ -592,7 +598,9 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 			{ ...models[modelIdx], isHidden: newIsHidden },
 			...models.slice(modelIdx + 1, Infinity)
 		]
-		this.setSettingOfProvider(providerName, 'models', newModels)
+		this.setSettingOfProvider(providerName, 'models', newModels).catch(err => {
+			console.error('[VoidSettings] toggleModelHidden failed:', err);
+		})
 
 		this._metricsService.capture('Toggle Model Hidden', { providerName, modelName, newIsHidden })
 
@@ -605,7 +613,9 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 			...models,
 			{ modelName, type: 'custom', isHidden: false } as const
 		]
-		this.setSettingOfProvider(providerName, 'models', newModels)
+		this.setSettingOfProvider(providerName, 'models', newModels).catch(err => {
+			console.error('[VoidSettings] addModel failed:', err);
+		})
 
 		this._metricsService.capture('Add Model', { providerName, modelName })
 
@@ -618,7 +628,9 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 			...models.slice(0, delIdx), // delete the idx
 			...models.slice(delIdx + 1, Infinity)
 		]
-		this.setSettingOfProvider(providerName, 'models', newModels)
+		this.setSettingOfProvider(providerName, 'models', newModels).catch(err => {
+			console.error('[VoidSettings] deleteModel failed:', err);
+		})
 
 		this._metricsService.capture('Delete Model', { providerName, modelName })
 

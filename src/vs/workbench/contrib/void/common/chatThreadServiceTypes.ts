@@ -58,7 +58,7 @@ export type CheckpointEntry = {
 // Image attachment for vision-capable models
 export type ImageAttachment = {
 	base64: string; // base64 encoded image data (without data:image/... prefix)
-	mimeType: string; // e.g., 'image/png', 'image/jpeg'
+	mimeType: string; // e.g. 'image/png', 'image/jpeg'
 	name?: string; // optional filename
 }
 
@@ -170,3 +170,13 @@ export interface ActiveWorkflow {
 }
 
 export type QueueBehavior = 'immediate' | 'wait_for_workflow' | 'hold';
+
+// Standalone session for workspace isolation in agent manager
+export type StandaloneSession = {
+	id: string;
+	name: string;
+	createdAt: number;
+	workspaceId: string | null; // null = global session not tied to a workspace
+	workspaceName: string | null;
+	workspacePath: string | null;
+}

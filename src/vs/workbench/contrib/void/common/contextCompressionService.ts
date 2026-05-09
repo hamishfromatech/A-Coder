@@ -97,8 +97,13 @@ export class ContextCompressionService {
 		try {
 			originalTokens = await this.tokenCountingService.countMessagesTokensAsync(messages, modelName);
 		} catch (error) {
-			// Fallback to character estimation
-			originalTokens = this.estimateTokens(JSON.stringify(messages));
+			// Fallback to character estimation — avoid JSON.stringify due to circular ref risk
+			const safeStr = messages.map(m => {
+				if ('content' in m && typeof m.content === 'string') return m.content
+				if ('parts' in m && Array.isArray(m.parts)) return m.parts.map((p: any) => p.text || '').join(' ')
+				return ''
+			}).join(' ')
+			originalTokens = this.estimateTokens(safeStr);
 		}
 
 		const stats: CompressionStats = {
@@ -309,10 +314,30 @@ export class ContextCompressionService {
 				break;
 			}
 
+			// Early break if we've already reduced to minimum
+			if (currentMessages.length <= minKeepMessages) {
+				break;
+			}
+
+			// Recompute critical indices based on the CURRENT array state
+			const currentCriticalIndices = new Set<number>();
+			const currentFirstMsg = currentMessages[0];
+			if ('role' in currentFirstMsg && (currentFirstMsg.role === 'system' || currentFirstMsg.role === 'developer')) {
+				currentCriticalIndices.add(0);
+			}
+			for (let i = currentMessages.length - 1; i >= 0; i--) {
+				const msg = currentMessages[i];
+				const role = ('role' in msg) ? msg.role : undefined;
+				if (role === 'user') {
+					currentCriticalIndices.add(i);
+					break;
+				}
+			}
+
 			// Remove oldest non-critical messages first
 			let keepStartIndex = 0;
 			for (let i = 0; i < currentMessages.length; i++) {
-				if (!criticalIndices.has(i)) {
+				if (!currentCriticalIndices.has(i)) {
 					keepStartIndex = i + 1;
 					break;
 				}
@@ -329,13 +354,30 @@ export class ContextCompressionService {
 
 		if (iterations >= maxIterations) {
 			console.warn(`[ContextCompression] Emergency compression hit max iterations, preserving critical messages`);
+			// Recompute critical indices one final time from the current state
+			const finalCriticalIndices = new Set<number>();
+			const finalFirstMsg = currentMessages[0];
+			if ('role' in finalFirstMsg && (finalFirstMsg.role === 'system' || finalFirstMsg.role === 'developer')) {
+				finalCriticalIndices.add(0);
+			}
+			for (let i = currentMessages.length - 1; i >= 0; i--) {
+				const msg = currentMessages[i];
+				const role = ('role' in msg) ? msg.role : undefined;
+				if (role === 'user') {
+					finalCriticalIndices.add(i);
+					break;
+				}
+			}
+
 			// At minimum, return critical messages if available
-			const criticalMsgs = criticalIndices.size > 0
-				? criticalIndices.size === 1
-					? [messages[0]]
-					: messages.filter((_, i) => criticalIndices.has(i))
-				: messages.slice(-minKeepMessages);
-			return criticalMsgs;
+			if (finalCriticalIndices.size > 0) {
+				const firstCriticalIdx = finalCriticalIndices.values().next().value;
+				if (firstCriticalIdx !== undefined && finalCriticalIndices.size === 1) {
+					return [currentMessages[firstCriticalIdx]];
+				}
+				return currentMessages.filter((_, i) => finalCriticalIndices.has(i));
+			}
+			return currentMessages.slice(-minKeepMessages);
 		}
 
 		return currentMessages;
@@ -427,7 +469,7 @@ export class ContextCompressionService {
 			const truncateRecursive = (o: any) => {
 				if (!o || typeof o !== 'object') return;
 
-				for (const key in o) {
+				for (const key of Object.keys(o)) {
 					if (typeof o[key] === 'string' && o[key].length > maxLength) {
 						o[key] = o[key].substring(0, maxLength) + `\n... [truncated ${o[key].length - maxLength} chars]`;
 						modified = true;
@@ -499,7 +541,7 @@ export class ContextCompressionService {
 					if ('type' in part && part.type === 'tool_use' && 'input' in part) {
 						let modified = false;
 						const newInput = { ...part.input };
-						for (const key in newInput) {
+						for (const key of Object.keys(newInput)) {
 							if (typeof newInput[key] === 'string' && newInput[key].length > maxLength) {
 								newInput[key] = newInput[key].substring(0, maxLength) + `\n... [truncated]`;
 								modified = true;
@@ -536,7 +578,7 @@ export class ContextCompressionService {
 					if ('functionCall' in part) {
 						let modified = false;
 						const newArgs = { ...part.functionCall.args };
-						for (const key in newArgs) {
+						for (const key of Object.keys(newArgs)) {
 							if (typeof newArgs[key] === 'string' && (newArgs[key] as string).length > maxLength) {
 								newArgs[key] = (newArgs[key] as string).substring(0, maxLength) + `\n... [truncated]`;
 								modified = true;
