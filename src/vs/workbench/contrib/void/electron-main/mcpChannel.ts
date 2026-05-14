@@ -17,7 +17,8 @@ import { MCPConfigFileJSON, MCPConfigFileEntryJSON, MCPServer, RawMCPToolCall, M
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { MCPUserStateOfName } from '../common/voidSettingsTypes.js';
-import { platform } from 'os';
+import { platform } from 'os'
+import { existsSync, readdirSync } from 'fs';
 
 const getClientConfig = (serverName: string) => {
 	return {
@@ -251,14 +252,13 @@ export class MCPChannel implements IServerChannel {
 					'/bin'
 				];
 				// Try to expand NVM paths manually
-				const fs = require('fs');
 				const nvmBase = `${homeDir}/.nvm/versions/node`;
 				try {
-					if (fs.existsSync(nvmBase)) {
-						const versions = fs.readdirSync(nvmBase);
+					if (existsSync(nvmBase)) {
+						const versions = readdirSync(nvmBase);
 						for (const version of versions) {
 							const binPath = `${nvmBase}/${version}/bin`;
-							if (fs.existsSync(binPath)) {
+							if (existsSync(binPath)) {
 								additionalPaths.push(binPath);
 							}
 						}
