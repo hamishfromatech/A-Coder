@@ -116,6 +116,21 @@ export class VoidCommandBarService extends Disposable implements IVoidCommandBar
 		this._modelService.getModels().forEach(model => { initializeModel(model) })
 		this._register(this._modelService.onModelAdded(model => { initializeModel(model) }));
 
+		// MEMORY FIX: Clean up when models are removed to prevent leaks
+		this._register(this._modelService.onModelRemoved(model => {
+			const fsPath = model.uri.fsPath;
+			registeredModelURIs.delete(fsPath);
+			// Remove from _listenToTheseURIs
+			for (const uri of this._listenToTheseURIs) {
+				if (uri.fsPath === fsPath) {
+					this._listenToTheseURIs.delete(uri);
+					break;
+				}
+			}
+			// Clean up state for this URI
+			this._deleteURIEntryFromState(model.uri);
+		}));
+
 
 
 

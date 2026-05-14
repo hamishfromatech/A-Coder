@@ -83,24 +83,33 @@ export const CommandToolResultWrapper: ResultWrapper<'run_command' | 'run_persis
 	const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError: false, icon: null, isRejected }
 
 	useEffect(() => {
+		let disposed = false;
+		let resizeObserver: ResizeObserver | null = null;
 		const attachTerminal = async () => {
 			if (streamState?.isRunning !== 'tool' || toolMessage.name !== 'run_command' || toolMessage.type !== 'running_now') return;
 			await streamState?.interrupt;
+			if (disposed) return;
 			const container = divRef.current;
 			if (!container) return;
 			const terminal = terminalToolsService.getTemporaryTerminal((toolMessage.params as any).terminalId);
 			if (!terminal) return;
 			terminal.attachToElement(container);
 			terminal.setVisible(true);
-			const resizeObserver = new ResizeObserver((entries) => {
+			resizeObserver = new ResizeObserver((entries) => {
 				const height = entries[0].borderBoxSize[0].blockSize;
 				const width = entries[0].borderBoxSize[0].inlineSize;
 				if (typeof terminal.layout === 'function') terminal.layout({ width, height });
 			});
 			resizeObserver.observe(container);
-			return () => { terminal.detachFromElement(); resizeObserver.disconnect(); }
 		}
 		attachTerminal()
+		return () => {
+			disposed = true;
+			if (resizeObserver) {
+				resizeObserver.disconnect();
+				resizeObserver = null;
+			}
+		}
 	}, [terminalToolsService, toolMessage, streamState]);
 
 	if (toolMessage.type === 'success') {

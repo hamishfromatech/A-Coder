@@ -15,6 +15,7 @@ export type ToolMessage<T extends ToolName> = {
 	rawParams: RawToolParamsObj;
 	mcpServerName: string | undefined; // the server name at the time of the call
 	thought_signature?: string;
+	parallelBatchId?: string; // groups parallel tool calls together in UI
 } & (
 		// in order of events:
 		| { type: 'invalid_params', result: null, name: T, }

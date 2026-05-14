@@ -1644,9 +1644,10 @@ export const BlockCode = ({ initValue, language, maxHeight, showScrollbars }: Bl
 
 	initValue = normalizeIndentation(initValue)
 
-	// default settings
-	const MAX_HEIGHT = maxHeight ?? Infinity;
-	const SHOW_SCROLLBARS = showScrollbars ?? false;
+	// MEMORY FIX: Default to 300px height with scrollbars to prevent unbounded DOM growth
+	// Read-only code blocks in chat don't need to render 10k lines in the DOM
+	const MAX_HEIGHT = maxHeight ?? 300;
+	const SHOW_SCROLLBARS = showScrollbars ?? true;
 
 	const divRef = useRef<HTMLDivElement | null>(null)
 

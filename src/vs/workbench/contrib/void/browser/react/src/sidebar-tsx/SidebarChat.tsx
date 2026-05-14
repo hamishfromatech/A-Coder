@@ -71,6 +71,8 @@ import WalkthroughResultWrapper from './WalkthroughResultWrapper.js';
 import { TeachingResultWrapper } from './TeachingResultWrapper.js';
 import { LearningDashboard } from './LearningDashboard.js';
 import { QuizMe } from './QuizMe.js';
+import { NestedToolGroup } from './NestedToolGroup.js';
+import { PersistentTaskPlan } from './PersistentTaskPlan.js';
 
 
 // Lazy-loaded components - MUST be at module level to avoid re-creating on every render
@@ -3024,28 +3026,87 @@ export const SidebarChat = () => {
 			});
 	}, [previousMessages]);
 
-	const previousMessagesHTML = useMemo(() => {
-		const elements: React.ReactNode[] = [];
+					const previousMessagesHTML = useMemo(() => {
+						const elements: React.ReactNode[] = [];
 
-		// Render all filtered messages
-		filteredMessages.forEach(({ message, originalIdx }) => {
-			elements.push(
-				<div key={originalIdx} className="mb-4 flex flex-col" data-message-idx={originalIdx}>
-					<ChatBubble
-						currCheckpointIdx={currCheckpointIdx}
-						chatMessage={message}
-						messageIdx={originalIdx}
-						isCommitted={true}
-						chatIsRunning={isRunning}
-						threadId={threadId}
-						_scrollToBottom={() => scrollToBottom(scrollContainerRef)}
-					/>
-				</div>
-			);
-		});
+						let i = 0;
+						while (i < filteredMessages.length) {
+							const { message, originalIdx } = filteredMessages[i];
 
-		return elements;
-	}, [filteredMessages, currCheckpointIdx, isRunning, threadId, scrollContainerRef])
+							if (message.role === 'tool' && (message as any).parallelBatchId) {
+								const batchId = (message as any).parallelBatchId;
+								const batchMessages: (ChatMessage & { role: 'tool' })[] = [];
+								const batchIndices: number[] = [];
+
+								while (
+									i < filteredMessages.length &&
+									filteredMessages[i].message.role === 'tool' &&
+									(filteredMessages[i].message as any).parallelBatchId === batchId
+								) {
+									batchMessages.push(filteredMessages[i].message as any);
+									batchIndices.push(filteredMessages[i].originalIdx);
+									i++;
+								}
+
+								if (batchMessages.length > 1) {
+									elements.push(
+										<NestedToolGroup
+											key={`batch-${batchId}`}
+											toolMessages={batchMessages}
+											indices={batchIndices}
+											currCheckpointIdx={currCheckpointIdx}
+											chatIsRunning={isRunning}
+											threadId={threadId}
+											_scrollToBottom={() => scrollToBottom(scrollContainerRef)}
+										/>
+									);
+								} else {
+									// Single message in batch, render normally
+									elements.push(
+										<div
+											key={originalIdx}
+											className="mb-4 flex flex-col"
+											data-message-idx={originalIdx}
+											style={{ contentVisibility: 'auto', containIntrinsicSize: '0 200px' }}
+										>
+											<ChatBubble
+												currCheckpointIdx={currCheckpointIdx}
+												chatMessage={message}
+												messageIdx={originalIdx}
+												isCommitted={true}
+												chatIsRunning={isRunning}
+												threadId={threadId}
+												_scrollToBottom={() => scrollToBottom(scrollContainerRef)}
+											/>
+										</div>
+									);
+								}
+							} else {
+								// Normal message
+								elements.push(
+									<div
+										key={originalIdx}
+										className="mb-4 flex flex-col"
+										data-message-idx={originalIdx}
+										style={{ contentVisibility: 'auto', containIntrinsicSize: '0 200px' }}
+									>
+										<ChatBubble
+											currCheckpointIdx={currCheckpointIdx}
+											chatMessage={message}
+											messageIdx={originalIdx}
+											isCommitted={true}
+											chatIsRunning={isRunning}
+											threadId={threadId}
+											_scrollToBottom={() => scrollToBottom(scrollContainerRef)}
+										/>
+									</div>
+								);
+								i++;
+							}
+						}
+
+						return elements;
+					}, [filteredMessages, currCheckpointIdx, isRunning, threadId, scrollContainerRef])
 
 	// Reset logic when thread changes
 	useEffect(() => {
@@ -3662,6 +3723,7 @@ export const SidebarChat = () => {
 				</div>
 			</ErrorBoundary>
 		)}
+		<PersistentTaskPlan />
 		<ErrorBoundary>
 			<div className='flex-1 overflow-hidden relative'>
 				{/* Checkpoint Timeline on the left */}

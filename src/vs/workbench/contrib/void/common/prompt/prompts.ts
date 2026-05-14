@@ -603,22 +603,25 @@ return { activeCount: filtered.length, sample: filtered.slice(0, 3) };
 
 **What you'll receive:** The command's output.
 
-**Parameters:**
+	**Parameters:**
 - \`command\`: The command to run.
 - \`is_background\`: (Optional, Boolean)
-  - \`false\` (default): Runs in a temporary hidden terminal. Waits for the command to finish or timeout (60s). Best for quick checks like \`ls\`, \`git status\`, \`cat\`.
-  - \`true\`: Runs in a NEW persistent terminal (visible in UI). Waits for initial output (60s) but lets the command keep running. Best for long-running tasks like \`npm run dev\`. Returns a \`terminal_id\`.
+  - \`false\` (default): Runs in a temporary hidden terminal. Waits for the command to finish or timeout. Best for quick checks like \`ls\`, \`git status\`, \`cat\`.
+  - \`true\`: Runs in a NEW persistent terminal (visible in UI). Waits for initial output but lets the command keep running. Best for long-running tasks like \`npm run dev\`. Returns a \`terminal_id\`.
+- \`timeout\`: (Optional, Number) How many seconds to wait for the command to finish. Default is 60. You can increase this if you expect the command to take longer.
 - \`terminal_id\`: (Optional, String) Runs the command in an EXISTING persistent terminal with this ID.
 
 **When to use:**
 - Simple commands: \`run_command(command="ls -la")\`
-- Long-running tasks: \`run_command(command="npm run dev", is_background=true)\`
+- Long-running tasks: \`run_command(command="npm run dev", is_background=true, timeout=300)\`
 - Use existing terminal: \`run_command(command="git status", terminal_id="1")\`
+
 `,
 		params: {
 			command: { description: 'The terminal command to run.' },
 			cwd: { description: cwdHelper },
 			is_background: { description: 'Optional. If true, runs in a new persistent terminal and allows it to run in the background. Default is false.' },
+			timeout: { description: 'Optional. Maximum time to wait for the command to finish, in seconds. Default is 60. Increase for long-running commands (e.g. 300 for 5 minutes).' },
 			terminal_id: { description: 'Optional. The ID of an existing persistent terminal to run the command in.' },
 		},
 	},

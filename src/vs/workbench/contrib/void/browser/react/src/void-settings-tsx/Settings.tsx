@@ -3928,53 +3928,106 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 						<ErrorBoundary>
 							<SettingCard
 								isDark={isDark}
-								title="About A-Coder"
-								className="text-center"
+								title="About"
 							>
-								<div className="py-4">
-									<div className="@@void-void-icon w-24 h-24 rounded-full mx-auto mb-6 opacity-90 shadow-lg" />
-									<h2 className="text-2xl font-bold text-void-fg-1 mb-2">A-Coder</h2>
-									<p className="text-xs text-void-fg-3 mb-4 font-mono">
-										Version: {productService.voidVersion || productService.version} ({productService.voidRelease || '0000'})
-									</p>
-									<p className="text-sm text-void-fg-3 mb-4 max-w-lg mx-auto leading-relaxed">
-										The open-source, AI-powered code editor built for the next generation of software development.
-									</p>
+								<div className="max-w-lg mx-auto">
+									{/* Hero — Brand mark + title + tagline */}
+									<div className="flex flex-col items-center text-center space-y-6 py-6">
+										<div className="relative">
+											<div className="absolute inset-0 bg-accent/20 blur-2xl rounded-full" />
+											<div className="void-icon w-20 h-20 rounded-2xl relative shadow-lg" />
+										</div>
 
-									<div className="max-w-2xl mx-auto mb-6">
+										<div className="space-y-2">
+											<p className="text-sm font-semibold uppercase tracking-widest text-void-fg-3">The A-Tech Corporation</p>
+											<h2 className="text-3xl font-extrabold tracking-tight text-void-fg-1">
+												A-Coder
+											</h2>
+											<p className="text-sm text-void-fg-3 max-w-sm mx-auto leading-relaxed">
+												The open-source, AI-powered code editor built for the next generation of software development.
+											</p>
+										</div>
+
+										<p className="text-xs font-mono text-void-fg-4">
+											v{productService.voidVersion || productService.version}
+										</p>
+									</div>
+
+									{/* CTA — elevated and more prominent */}
+									<div className="mt-6">
 										<a
 											href="https://github.com/hamishfromatech/a-coder/releases"
 											target="_blank"
 											rel="noreferrer"
-											className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-void-accent hover:bg-void-accent/90 text-white font-medium rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98] shadow-md no-underline"
+											className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] no-underline"
+											style={{
+												background: 'var(--void-accent)',
+												color: 'var(--void-accent-contrast)',
+												boxShadow: '0 1px 4px rgba(0,0,0,0.15)'
+											}}
 										>
 											<Sparkles size={18} />
-											<span>What's New</span>
+											<span className="text-sm font-semibold">What&apos;s New</span>
 										</a>
 									</div>
 
-									<div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto">
-										<a href="https://discord.gg/wnh7BVRQGC" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 p-4 rounded-xl bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2 transition-all hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-void-accent">
-											<MessageCircle size={18} />
-											<span className="text-sm font-medium">Discord</span>
-										</a>
-										<a href="https://theatechcorporation.com" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 p-4 rounded-xl bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2 transition-all hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-void-accent">
-											<Globe size={18} />
-											<span className="text-sm font-medium">Website</span>
+									{/* Links */}
+									<div className="grid grid-cols-2 gap-3 mt-8">
+										<a
+											href="https://discord.gg/wnh7BVRQGC"
+											target="_blank"
+											rel="noreferrer"
+											className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2/60 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] no-underline"
+										>
+											<MessageCircle size={16} className="text-void-fg-3" />
+											<span className="text-sm font-medium text-void-fg-2">Discord</span>
 										</a>
 
-										<a href="https://theatechcorporation.com/book" target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 p-4 rounded-xl bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2 transition-all hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-void-accent">
-											<span className="text-sm font-medium">Buy Our Book</span>
+										<a
+											href="https://theatechcorporation.com"
+											target="_blank"
+											rel="noreferrer"
+											className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2/60 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] no-underline"
+										>
+											<Globe size={16} className="text-void-fg-3" />
+											<span className="text-sm font-medium text-void-fg-2">Website</span>
 										</a>
+									</div>
+
+									{/* Book CTA — Featured, full width, more prominent */}
+									<div className="mt-3">
+										<a
+											href="https://theatechcorporation.com/book"
+											target="_blank"
+											rel="noreferrer"
+											className="group flex items-center justify-between gap-4 px-6 py-4 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] no-underline"
+											style={{
+												background: 'var(--void-accent)',
+												color: 'var(--void-accent-contrast)',
+												boxShadow: '0 1px 4px rgba(0,0,0,0.15)'
+											}}
+										>
+											<div className="flex items-center gap-3">
+												<div className="w-10 h-10 rounded-lg bg-white/15 flex items-center justify-center">
+													<BookOpen size={20} />
+												</div>
+												<div className="text-left">
+													<p className="text-sm font-bold">Own Your AI</p>
+													<p className="text-xs opacity-80">Read the book on mastering AI</p>
+												</div>
+											</div>
+											<ChevronRight size={18} className="opacity-70 group-hover:translate-x-1 transition-transform" />
+										</a>
+									</div>
+
+									{/* Footer */}
+									<div className="mt-10 pt-6 border-t border-void-border-2/40 text-center space-y-2">
+										<p className="text-xs text-void-fg-3 font-medium">What Void Should&apos;ve Been.</p>
+										<p className="text-xs text-void-fg-4">
+											© {new Date().getFullYear()} The A-Tech Corporation. All rights reserved.
+										</p>
 									</div>
 								</div>
-
-								<SettingBox className="mt-8 text-center py-6">
-									<div className="text-xs text-void-fg-4 space-y-1">
-										<p className="font-medium text-void-fg-3">What Void Should've Been.</p>
-										<p>© 2026 The A-Tech Corporation. All rights reserved.</p>
-									</div>
-								</SettingBox>
 							</SettingCard>
 						</ErrorBoundary>
 					</div>

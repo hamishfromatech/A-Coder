@@ -8,6 +8,8 @@
  * Allows the AI to create structured plans, track task progress, and maintain state across conversations
  */
 
+import { Event, Emitter } from '../../../../base/common/event.js';
+
 export type TaskId = string;
 
 export type TaskStatus = 'pending' | 'in_progress' | 'complete' | 'failed' | 'skipped';
@@ -16,15 +18,15 @@ export interface Task {
 	id: TaskId;
 	description: string;
 	status: TaskStatus;
-	dependencies: TaskId[]; // Task IDs that must complete before this task can start
-	notes?: string; // Optional notes about the task (e.g., completion notes, error messages)
+	dependencies: TaskId[];
+	notes?: string;
 	createdAt: Date;
 	updatedAt: Date;
 }
 
 export interface Plan {
 	id: string;
-	goal: string; // Overall goal of the plan
+	goal: string;
 	tasks: Task[];
 	createdAt: Date;
 	updatedAt: Date;
@@ -37,6 +39,8 @@ export interface Plan {
  */
 export class PlanningService {
 	private currentPlan: Plan | null = null;
+	private readonly _onDidChangePlan = new Emitter<Plan | null>();
+	public readonly onDidChangePlan: Event<Plan | null> = this._onDidChangePlan.event;
 
 	/**
 	 * Creates a new plan, replacing any existing plan
@@ -59,6 +63,7 @@ export class PlanningService {
 			updatedAt: now,
 		};
 
+		this._onDidChangePlan.fire(this.currentPlan);
 		return this.currentPlan;
 	}
 
@@ -82,7 +87,7 @@ export class PlanningService {
 		}
 
 		this.currentPlan.updatedAt = new Date();
-
+		this._onDidChangePlan.fire(this.currentPlan);
 		return task;
 	}
 
@@ -106,6 +111,7 @@ export class PlanningService {
 
 		this.currentPlan.tasks.push(...newTasks);
 		this.currentPlan.updatedAt = now;
+		this._onDidChangePlan.fire(this.currentPlan);
 
 		return this.currentPlan;
 	}
@@ -122,6 +128,7 @@ export class PlanningService {
 	 */
 	clearPlan(): void {
 		this.currentPlan = null;
+		this._onDidChangePlan.fire(null);
 	}
 
 	/**
@@ -138,15 +145,13 @@ export class PlanningService {
 		const completedCount = plan.tasks.filter(t => t.status === 'complete').length;
 		const totalCount = plan.tasks.length;
 
-		let output = `## \u{1F4CB} ${plan.goal}\n`;
+		let output = `## 📋 ${plan.goal}\n`;
 		output += `**Progress:** ${completedCount}/${totalCount} tasks completed\n\n`;
 
-		// Format all tasks as a markdown checklist in order
 		for (const task of plan.tasks) {
 			const checkbox = this.getCheckboxForStatus(task.status);
 			output += `${checkbox} **${task.id}:** ${task.description}`;
 
-			// Add status indicator for non-standard states
 			if (task.status === 'in_progress') {
 				output += ` *(in progress)*`;
 			} else if (task.status === 'failed') {
@@ -157,12 +162,10 @@ export class PlanningService {
 
 			output += '\n';
 
-			// Add notes if present
 			if (task.notes) {
 				output += `  - ${task.notes}\n`;
 			}
 
-			// Add dependencies if present and task is pending
 			if (task.status === 'pending' && task.dependencies.length > 0) {
 				output += `  - *Depends on: ${task.dependencies.join(', ')}*\n`;
 			}
@@ -171,23 +174,14 @@ export class PlanningService {
 		return output.trim();
 	}
 
-	/**
-	 * Gets the markdown checkbox for a task status
-	 */
 	private getCheckboxForStatus(status: TaskStatus): string {
 		switch (status) {
-			case 'complete':
-				return '- [x]';
-			case 'in_progress':
-				return '- [~]'; // Tilde indicates in-progress
-			case 'failed':
-				return '- [!]'; // Exclamation indicates failed
-			case 'skipped':
-				return '- [-]'; // Dash indicates skipped
-			case 'pending':
-			default:
-				return '- [ ]';
+			case 'complete': return '- [x]';
+			case 'in_progress': return '- [~]';
+			case 'failed': return '- [!]';
+			case 'skipped': return '- [-]';
+			case 'pending': default: return '- [ ]';
 		}
 	}
-
 }
+

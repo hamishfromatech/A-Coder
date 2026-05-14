@@ -3,7 +3,7 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import { Disposable } from '../../../../base/common/lifecycle.js';
+import { Disposable, IDisposable } from '../../../../base/common/lifecycle.js';
 import { registerSingleton, InstantiationType } from '../../../../platform/instantiation/common/extensions.js';
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import { ICodeEditor, IOverlayWidget, IViewZone } from '../../../../editor/browser/editorBrowser.js';
@@ -295,6 +295,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 
 		// this function initializes data structures and listens for changes
 		const registeredModelURIs = new Set<string>()
+		const perModelDisposables = new Map<string, IDisposable[]>()
 		const initializeModel = async (model: ITextModel) => {
 
 			await this._voidModelService.initializeModel(model.uri)
@@ -307,8 +308,10 @@ class EditCodeService extends Disposable implements IEditCodeService {
 				this.diffAreasOfURI[model.uri.fsPath] = new Set();
 			}
 
+			const disposables: IDisposable[] = []
+
 			// when the user types, realign diff areas and re-render them
-			this._register(
+			disposables.push(
 				model.onDidChangeContent(e => {
 					// it's as if we just called _write, now all we need to do is realign and refresh
 					if (this.weAreWriting) return
@@ -317,12 +320,39 @@ class EditCodeService extends Disposable implements IEditCodeService {
 				})
 			)
 
+			perModelDisposables.set(model.uri.fsPath, disposables)
+
 			// when the model first mounts, refresh any diffs that might be on it (happens if diffs were added in the BG)
 			this._refreshStylesAndDiffsInURI(model.uri)
 		}
 		// initialize all existing models + initialize when a new model mounts
 		for (let model of this._modelService.getModels()) { initializeModel(model) }
 		this._register(this._modelService.onModelAdded(model => { initializeModel(model) }));
+
+		// MEMORY FIX: Clean up when models are removed to prevent leaks
+		this._register(this._modelService.onModelRemoved(model => {
+			const fsPath = model.uri.fsPath;
+			registeredModelURIs.delete(fsPath);
+
+			// Dispose per-model listeners
+			const disposables = perModelDisposables.get(fsPath);
+			if (disposables) {
+				disposables.forEach(d => d.dispose());
+				perModelDisposables.delete(fsPath);
+			}
+
+			// Clean up diff areas for this URI
+			this._deleteAllDiffAreas(model.uri);
+			delete this.diffAreasOfURI[fsPath];
+
+			// Clean up debounced timers for this URI
+			const timer = this._debouncedRefreshTimers.get(fsPath);
+			if (timer) {
+				clearTimeout(timer);
+				this._debouncedRefreshTimers.delete(fsPath);
+			}
+			this._lastRefreshRequestId.delete(fsPath);
+		}));
 
 
 		// this function adds listeners to refresh styles when editor changes tab
@@ -956,12 +986,13 @@ class EditCodeService extends Disposable implements IEditCodeService {
 		const diffAreas = this.diffAreasOfURI[uri.fsPath]
 		diffAreas?.forEach(diffareaid => {
 			const diffArea = this.diffAreaOfId[diffareaid]
-			if (diffArea.type === 'DiffZone')
+			if (diffArea?.type === 'DiffZone')
 				this._deleteDiffZone(diffArea)
-			else if (diffArea.type === 'CtrlKZone')
+			else if (diffArea?.type === 'CtrlKZone')
 				this._deleteCtrlKZone(diffArea)
 		})
 		this.diffAreasOfURI[uri.fsPath]?.clear()
+		delete this.diffAreasOfURI[uri.fsPath]
 	}
 
 	private _addOrInitializeDiffAreaAtURI = (uri: URI, diffareaid: string | number) => {

@@ -101,7 +101,7 @@ export type BuiltinToolCallParams = {
 	// ---
 	'run_code': { code: string, timeout: number | null },
 	// ---
-	'run_command': { command: string; cwd: string | null, isBackground: boolean, terminalId?: string },
+	'run_command': { command: string; cwd: string | null, isBackground: boolean, timeout: number | null, terminalId?: string },
 	'open_persistent_terminal': { cwd: string | null },
 	'kill_persistent_terminal': { persistentTerminalId: string },
 	// ---

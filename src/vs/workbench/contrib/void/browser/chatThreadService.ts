@@ -994,7 +994,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		});
 
 		const prunedThreads: ChatThreads = {};
-		// Keep the 20 most recent threads
+		// Keep the most recent threads in storage
 		const threadIdsToKeep = sortedThreadIds.slice(0, this.MAX_THREADS_IN_STORAGE);
 		threadIdsToKeep.forEach(id => {
 			prunedThreads[id] = normalizedThreads[id];
@@ -1456,6 +1456,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		mcpServerName: string | undefined,
 		opts: { preapproved: true, unvalidatedToolParams: RawToolParamsObj, validatedParams: ToolCallParams<ToolName>, thought_signature?: string } | { preapproved: false, unvalidatedToolParams: RawToolParamsObj, thought_signature?: string },
 		parallelMode?: boolean,
+		parallelBatchId?: string,
 	): Promise<{ awaitingUserApproval?: boolean, interrupted?: boolean }> => {
 
 		// ... internal vars ...
@@ -1477,7 +1478,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 			}
 			catch (error) {
 				const errorMessage = getErrorMessage(error)
-				this._addMessageToThread(threadId, { role: 'tool', type: 'invalid_params', rawParams: opts.unvalidatedToolParams, result: null, name: toolName, content: errorMessage, id: toolId, mcpServerName, thought_signature: opts.thought_signature })
+				this._addMessageToThread(threadId, { role: 'tool', type: 'invalid_params', rawParams: opts.unvalidatedToolParams, result: null, name: toolName, content: errorMessage, id: toolId, mcpServerName, thought_signature: opts.thought_signature, parallelBatchId })
 				return {}
 			}
 
@@ -1502,7 +1503,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 			if (approvalType) {
 				const autoApprove = this._settingsService.state.globalSettings.autoApprove[approvalType]
 				const content = toolName === 'render_form' || toolName === 'create_quiz' ? 'Please complete the interactive content below.' : '(Awaiting user permission...)'
-				this._addMessageToThread(threadId, { role: 'tool', type: 'tool_request', content, result: null, name: toolName, params: toolParams, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature })
+				this._addMessageToThread(threadId, { role: 'tool', type: 'tool_request', content, result: null, name: toolName, params: toolParams, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature, parallelBatchId })
 
 				// Special case: render_form and create_quiz never execute - they stay in tool_request state so the UI can display the interactive content
 				if (toolName === 'render_form' || toolName === 'create_quiz') {
@@ -1520,7 +1521,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 		// Use predictive progress message
 		const progressMessage = this.getPredictiveProgressMessage(toolName, toolParams);
-		const runningTool = { role: 'tool', type: 'running_now', name: toolName, params: toolParams, content: progressMessage, result: null, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature } as const
+		const runningTool = { role: 'tool', type: 'running_now', name: toolName, params: toolParams, content: progressMessage, result: null, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature, parallelBatchId } as const
 		this._updateToolMessage(threadId, runningTool, !!parallelMode)
 
 		let interrupted = false
@@ -1603,7 +1604,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 			if (interrupted) { return { interrupted: true } } // the tool result is added where we interrupt, not here
 
 			const errorMessage = getErrorMessage(error)
-			this._updateToolMessage(threadId, { role: 'tool', type: 'tool_error', params: toolParams, result: errorMessage, name: toolName, content: errorMessage, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature }, !!parallelMode)
+			this._updateToolMessage(threadId, { role: 'tool', type: 'tool_error', params: toolParams, result: errorMessage, name: toolName, content: errorMessage, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature, parallelBatchId }, !!parallelMode)
 			return {}
 		}
 
@@ -1662,7 +1663,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		} catch (error) {
 			const errorMessage = this.toolErrMsgs.errWhenStringifying(error)
 			const fullErrorStr = `${errorMessage}\n\nNOTE: If you've tried this before, consider a different approach.`;
-			this._updateToolMessage(threadId, { role: 'tool', type: 'tool_error', params: toolParams, result: errorMessage, name: toolName, content: fullErrorStr, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature }, !!parallelMode)
+			this._updateToolMessage(threadId, { role: 'tool', type: 'tool_error', params: toolParams, result: errorMessage, name: toolName, content: fullErrorStr, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature, parallelBatchId }, !!parallelMode)
 
 			// Update history
 			if (!this.toolCallHistory[threadId]) this.toolCallHistory[threadId] = [];
@@ -1679,7 +1680,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		}
 
 		// 5. add to history and keep going
-		this._updateToolMessage(threadId, { role: 'tool', type: 'success', params: toolParams, result: toolResult, name: toolName, content: toolResultStr, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature }, !!parallelMode)
+		this._updateToolMessage(threadId, { role: 'tool', type: 'success', params: toolParams, result: toolResult, name: toolName, content: toolResultStr, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature, parallelBatchId }, !!parallelMode)
 
 		// SIDE EFFECT: if it's load_skill, update the thread's loadedSkills
 		if (toolName === 'load_skill' && (toolResult as any).success) {
@@ -2230,11 +2231,12 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 					// Uses parallelMode=true in _runToolCall which appends messages instead of
 					// replacing the last one, preventing concurrent tools from overwriting each other.
 					if (finalParallelSafe.length > 1) {
-						console.log(`[chatThreadService] Running ${finalParallelSafe.length} read-only tools in parallel: ${finalParallelSafe.map(t => t.name).join(', ')}`)
+						const parallelBatchId = generateUuid();
+						console.log(`[chatThreadService] Running ${finalParallelSafe.length} read-only tools in parallel: ${finalParallelSafe.map(t => t.name).join(', ')} (batch: ${parallelBatchId})`)
 						const parallelResults = await Promise.all(
 							finalParallelSafe.map(toolCall => {
 								const mcpServerName = this._computeMCPServerOfToolName(toolCall.name);
-								return this._runToolCall(threadId, toolCall.name, toolCall.id, mcpServerName, { preapproved: false, unvalidatedToolParams: toolCall.rawParams, thought_signature: toolCall.thought_signature }, true);
+								return this._runToolCall(threadId, toolCall.name, toolCall.id, mcpServerName, { preapproved: false, unvalidatedToolParams: toolCall.rawParams, thought_signature: toolCall.thought_signature }, true, parallelBatchId);
 							})
 						)
 						for (const result of parallelResults) {
@@ -2250,7 +2252,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 							}
 						}
 					} else if (finalParallelSafe.length === 1) {
-						// Single parallel-safe tool, run normally
+						// Single parallel-safe tool, run normally (no batch grouping needed)
 						const toolCall = finalParallelSafe[0]
 						console.log(`[chatThreadService] LLM calling tool: ${toolCall.name}`)
 						const mcpServerName = this._computeMCPServerOfToolName(toolCall.name);

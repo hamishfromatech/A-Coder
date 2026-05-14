@@ -604,12 +604,13 @@ export class ToolsService implements IToolsService {
 			// ---
 
 			run_command: (params: RawToolParamsObj) => {
-				const { command: commandUnknown, cwd: cwdUnknown, is_background: isBackgroundUnknown, terminal_id: terminalIdUnknown } = params
+				const { command: commandUnknown, cwd: cwdUnknown, is_background: isBackgroundUnknown, timeout: timeoutUnknown, terminal_id: terminalIdUnknown } = params
 				const command = validateStr('command', commandUnknown)
 				const cwd = validateOptionalStr('cwd', cwdUnknown)
 				const isBackground = validateBoolean(isBackgroundUnknown, { default: false })
+				const timeout = validateNumber(timeoutUnknown, { default: null })
 				const terminalId = terminalIdUnknown ? validateProposedTerminalId(terminalIdUnknown) : undefined
-				return { command, cwd, isBackground, terminalId }
+				return { command, cwd, isBackground, timeout, terminalId }
 			},
 			open_persistent_terminal: (params: RawToolParamsObj) => {
 				const { cwd: cwdUnknown } = params;
@@ -1503,7 +1504,7 @@ export class ToolsService implements IToolsService {
 					disposable.dispose();
 				}
 			},
-			run_command: async ({ command, cwd, isBackground, terminalId }, opts) => {
+			run_command: async ({ command, cwd, isBackground, timeout, terminalId }, opts) => {
 				// 1. Determine Target Mode (Persistent vs Temporary)
 				// If terminalId is provided OR isBackground is true -> Persistent Mode
 				if (terminalId || isBackground) {
@@ -1512,15 +1513,19 @@ export class ToolsService implements IToolsService {
 					if (!targetTerminalId) {
 						targetTerminalId = await this._terminalToolService.createPersistentTerminal({ cwd });
 					}
+					// Compute timeout: LLM-provided (seconds -> ms) or default MAX_TERMINAL_BG_COMMAND_TIME
+					const timeoutMs = typeof timeout === 'number' ? timeout * 1000 : MAX_TERMINAL_BG_COMMAND_TIME * 1000;
 					// Run as persistent command
-					const { resPromise, interrupt } = await this._terminalToolService.runCommand(command, { type: 'persistent', persistentTerminalId: targetTerminalId, onData: opts?.onData });
+					const { resPromise, interrupt } = await this._terminalToolService.runCommand(command, { type: 'persistent', persistentTerminalId: targetTerminalId, onData: opts?.onData, timeoutMs });
 					const result = await resPromise;
 					// Return the terminal ID so LLM knows where it ran
 					return { result: { ...result, terminalId: targetTerminalId }, interruptTool: interrupt };
 				} else {
 					// 2. Default Mode (Temporary / Foreground)
 					const tempId = generateUuid();
-					const { resPromise, interrupt } = await this._terminalToolService.runCommand(command, { type: 'temporary', cwd, terminalId: tempId, onData: opts?.onData });
+					// Compute timeout: LLM-provided (seconds -> ms) or default MAX_TERMINAL_INACTIVE_TIME
+					const timeoutMs = typeof timeout === 'number' ? timeout * 1000 : MAX_TERMINAL_INACTIVE_TIME * 1000;
+					const { resPromise, interrupt } = await this._terminalToolService.runCommand(command, { type: 'temporary', cwd, terminalId: tempId, onData: opts?.onData, timeoutMs });
 					const result = await resPromise;
 					return { result, interruptTool: interrupt };
 				}
@@ -3065,10 +3070,12 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 				if (resolveReason.type === 'timeout') {
 					if (terminalId) {
 						// Persistent/Background timeout
-						return `${prefix}${result_}\n(Terminal command is running in background. The given outputs are the results after ${MAX_TERMINAL_BG_COMMAND_TIME} seconds. Use check_terminal_status to check progress.)`
+						const timeoutSeconds = params.timeout ?? MAX_TERMINAL_BG_COMMAND_TIME;
+						return `${prefix}${result_}\n(Terminal command is running in background. The given outputs are the results after ${timeoutSeconds} seconds. Use check_terminal_status to check progress.)`
 					} else {
 						// Temporary timeout
-						return `${result_}\n(Terminal command ran, but was automatically killed by Void after ${MAX_TERMINAL_INACTIVE_TIME}s of inactivity and did not finish successfully. To run longer tasks, use run_command with is_background=true.)`
+						const timeoutSeconds = params.timeout ?? MAX_TERMINAL_INACTIVE_TIME;
+						return `${result_}\n(Terminal command ran, but was automatically killed by Void after ${timeoutSeconds}s of inactivity and did not finish successfully. To run longer tasks, use run_command with is_background=true.)`
 					}
 				}
 				throw new Error(`Unexpected internal error: Terminal command did not resolve with a valid reason.`)
