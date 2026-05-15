@@ -3,7 +3,7 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import React, { useMemo, useRef, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import katex from 'katex';
 
 // Import KaTeX CSS
@@ -25,8 +25,6 @@ export const LatexRender: React.FC<LatexRenderProps> = ({
 	className = '',
 	throwOnError = false,
 }) => {
-	const containerRef = useRef<HTMLSpanElement>(null);
-
 	// Render LaTeX to HTML
 	const html = useMemo(() => {
 		try {
@@ -66,18 +64,11 @@ export const LatexRender: React.FC<LatexRenderProps> = ({
 		}
 	}, [latex, displayMode, throwOnError]);
 
-	// Render to DOM
-	useEffect(() => {
-		if (containerRef.current && html) {
-			containerRef.current.innerHTML = html;
-		}
-	}, [html]);
-
 	return (
 		<span
-			ref={containerRef}
 			className={`katex-container ${displayMode ? 'block my-2 text-center' : 'inline'} ${className}`}
 			style={displayMode ? { display: 'block', overflowX: 'auto', padding: '0.5em 0' } : {}}
+			dangerouslySetInnerHTML={{ __html: html }}
 		/>
 	);
 };
