@@ -22,7 +22,7 @@ import { ChatMode, displayInfoOfProviderName, FeatureName, isFeatureNameDisabled
 import { ICommandService } from '../../../../../../../platform/commands/common/commands.js';
 import { WarningBox } from '../void-settings-tsx/WarningBox.js';
 import { getModelCapabilities, getIsReasoningEnabledState } from '../../../../common/modelCapabilities.js';
-import { AlertTriangle, ChevronRight, ChevronDown, X, Copy as CopyIcon, CircleEllipsis, Play, Settings, ArrowUp, Trash2, Send, Circle, Loader2, Brain, Check, Pencil, CirclePlus, File as FileIcon, Folder as FolderIcon, Text as TextIcon, SkipForward } from 'lucide-react';
+import { AlertTriangle, ChevronRight, ChevronDown, X, Copy as CopyIcon, CircleEllipsis, Play, Settings, ArrowUp, ArrowDown, Trash2, Send, Circle, Loader2, Brain, Check, Pencil, CirclePlus, File as FileIcon, Folder as FolderIcon, Text as TextIcon, SkipForward, MessageCircle, RotateCw } from 'lucide-react';
 import { ChatMessage, CheckpointEntry, StagingSelectionItem, ToolMessage, ImageAttachment } from '../../../../common/chatThreadServiceTypes.js';
 import { BuiltinToolName, ToolName, IsRunningType, approvalTypeOfBuiltinToolName } from '../../../../common/toolsServiceTypes.js';
 import { CopyButton, EditToolAcceptRejectButtonsHTML, IconShell1, StatusIndicator, useEditToolStreamState } from '../markdown/ApplyBlockHoverButtons.js';
@@ -113,6 +113,78 @@ const ImagePreview = ({ images, onRemove }: { images: ImageAttachment[], onRemov
 					)}
 				</div>
 			))}
+		</div>
+	);
+};
+
+// Time ago helper
+const formatTimeAgo = (timestamp: number | undefined): string => {
+	if (!timestamp) return '';
+	const now = Date.now();
+	const diff = now - timestamp;
+	const minutes = Math.floor(diff / 60000);
+	const hours = Math.floor(diff / 3600000);
+	const days = Math.floor(diff / 86400000);
+
+	if (minutes < 1) return 'now';
+	if (minutes < 60) return `${minutes}m`;
+	if (hours < 24) return `${hours}h`;
+	return `${days}d`;
+};
+
+// Message context menu component
+const MessageContextMenu = ({
+	x, y, onClose, onCopy, onDelete, onRetry, canRetry, canDelete
+}: {
+	x: number;
+	y: number;
+	onClose: () => void;
+	onCopy: () => void;
+	onDelete: () => void;
+	onRetry: () => void;
+	canRetry: boolean;
+	canDelete: boolean;
+}) => {
+	const menuRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		const handleClickOutside = () => onClose();
+		window.addEventListener('click', handleClickOutside, { once: true });
+		return () => window.removeEventListener('click', handleClickOutside);
+	}, [onClose]);
+
+	return (
+		<div
+			ref={menuRef}
+			className="fixed z-50 min-w-[140px] py-1 bg-void-bg-2 border border-void-border-1 rounded-lg shadow-xl text-sm"
+			style={{ left: x, top: y }}
+			onClick={(e) => e.stopPropagation()}
+		>
+			<button
+				onClick={() => { onCopy(); onClose(); }}
+				className="w-full flex items-center gap-2 px-3 py-1.5 text-void-fg-2 hover:text-void-fg-1 hover:bg-void-bg-3 transition-colors"
+			>
+				<CopyIcon size={14} />
+				<span>Copy</span>
+			</button>
+			{canRetry && (
+				<button
+					onClick={() => { onRetry(); onClose(); }}
+					className="w-full flex items-center gap-2 px-3 py-1.5 text-void-fg-2 hover:text-void-fg-1 hover:bg-void-bg-3 transition-colors"
+				>
+					<RotateCw size={14} />
+					<span>Retry</span>
+				</button>
+			)}
+			{canDelete && (
+				<button
+					onClick={() => { onDelete(); onClose(); }}
+					className="w-full flex items-center gap-2 px-3 py-1.5 text-red-400/80 hover:text-red-400 hover:bg-void-bg-3 transition-colors"
+				>
+					<Trash2 size={14} />
+					<span>Delete from here</span>
+				</button>
+			)}
 		</div>
 	);
 };
@@ -1075,7 +1147,7 @@ const scrollToBottom = (divRef: { current: HTMLElement | null }, smooth: boolean
 
 
 
-const ScrollToBottomContainer = ({ children, className, style, scrollContainerRef }: { children: React.ReactNode, className?: string, style?: React.CSSProperties, scrollContainerRef: React.MutableRefObject<HTMLDivElement | null> }) => {
+const ScrollToBottomContainer = ({ children, className, style, scrollContainerRef, onAtBottomChange }: { children: React.ReactNode, className?: string, style?: React.CSSProperties, scrollContainerRef: React.MutableRefObject<HTMLDivElement | null>, onAtBottomChange?: (isAtBottom: boolean) => void }) => {
 	const [isAtBottom, setIsAtBottom] = useState(true); // Start at bottom
 
 	const divRef = scrollContainerRef
@@ -1090,6 +1162,7 @@ const ScrollToBottomContainer = ({ children, className, style, scrollContainerRe
 		) < 50; // Increased from 4 to 50 for smoother experience
 
 		setIsAtBottom(isBottom);
+		onAtBottomChange?.(isBottom);
 	};
 
 	// Instant scroll to bottom - no animation for better UX during streaming
@@ -1390,6 +1463,31 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 	const EditSymbol = mode === 'display' ? Pencil : X
 
 
+	// Context menu state
+	const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+	const timeAgo = formatTimeAgo((chatMessage as any)._timestamp)
+
+	const handleContextMenu = (e: React.MouseEvent) => {
+		e.preventDefault()
+		setContextMenu({ x: e.clientX, y: e.clientY })
+	}
+
+	const handleCopy = async () => {
+		const accessor = useAccessor()
+		const clipboardService = accessor.get('IClipboardService')
+		await clipboardService.writeText(chatMessage.displayContent || '')
+	}
+
+	const handleDelete = () => {
+		const threadId = chatThreadsService.state.currentThreadId
+		chatThreadsService.deleteMessagesFromIndex(threadId, messageIdx)
+	}
+
+	const handleRetry = async () => {
+		const threadId = chatThreadsService.state.currentThreadId
+		await chatThreadsService.retryFromMessage(threadId, messageIdx)
+	}
+
 	let chatbubbleContents: React.ReactNode
 	if (mode === 'display') {
 		chatbubbleContents = <div className="flex flex-col gap-2">
@@ -1499,13 +1597,14 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 	const messageLength = (chatMessage.displayContent || '').length
 	const hasAttachments = !!(chatMessage.selections?.length || chatMessage.images?.length)
 	const shouldCollapse = messageLength > 200 || hasAttachments
-	
+
 	const displayContent = chatMessage.displayContent || ''
 
 	return (
 		<div className={`flex gap-3 mb-6 ${mode === 'edit' ? 'w-full' : 'self-end max-w-[92%]'} ${isCheckpointGhost && !isMsgAfterCheckpoint ? 'opacity-40 grayscale' : ''}`}
 			onMouseEnter={useCallback(() => setIsHovered(true), [])}
 			onMouseLeave={useCallback(() => setIsHovered(false), [])}
+			onContextMenu={handleContextMenu}
 		>
 			<div className="flex flex-col items-end gap-1.5 flex-1 min-w-0">
 				{mode === 'edit' ? (
@@ -1535,6 +1634,9 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 									</svg>
 								</div>
 								<span className="user-message-label">You</span>
+								{timeAgo && (
+									<span className="text-[10px] text-void-fg-4/50 ml-1.5">{timeAgo}</span>
+								)}
 								{/* Show a compact preview of the message in the header when collapsed */}
 								{!isExpanded && shouldCollapse && (
 									<span className="text-[11px] text-void-fg-4 truncate flex-1 min-w-0 ml-2">
@@ -1553,8 +1655,8 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 									className="user-message-action-btn"
 									title="Edit message"
 								>
-										<Pencil size={12} />
-									</button>
+											<Pencil size={12} />
+										</button>
 								{/* Collapse toggle */}
 								{shouldCollapse && (
 									<ChevronRight
@@ -1603,6 +1705,20 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 					</div>
 				)}
 			</div>
+
+			{/* Context Menu */}
+			{contextMenu && (
+				<MessageContextMenu
+					x={contextMenu.x}
+					y={contextMenu.y}
+					onClose={() => setContextMenu(null)}
+					onCopy={handleCopy}
+					onDelete={handleDelete}
+					onRetry={handleRetry}
+					canRetry={true}
+					canDelete={true}
+				/>
+			)}
 		</div>
 	)
 })
@@ -1616,6 +1732,27 @@ const AssistantMessageComponent = React.memo(({ chatMessage, isCheckpointGhost, 
 	const isDoneReasoning = !!chatMessage.displayContent
 	const thread = chatThreadsService.getCurrentThread()
 
+	const timeAgo = formatTimeAgo((chatMessage as any)._timestamp)
+
+	// Context menu state
+	const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+
+	const handleContextMenu = (e: React.MouseEvent) => {
+		e.preventDefault()
+		setContextMenu({ x: e.clientX, y: e.clientY })
+	}
+
+	const handleCopy = async () => {
+		const accessor = useAccessor()
+		const clipboardService = accessor.get('IClipboardService')
+		await clipboardService.writeText(chatMessage.displayContent || '')
+	}
+
+	const handleDelete = () => {
+		const threadId = chatThreadsService.state.currentThreadId
+		chatThreadsService.deleteMessagesFromIndex(threadId, messageIdx)
+	}
+
 
 	const chatMessageLocation: ChatMessageLocation = {
 		threadId: thread.id,
@@ -1626,7 +1763,9 @@ const AssistantMessageComponent = React.memo(({ chatMessage, isCheckpointGhost, 
 	if (isEmpty) return null
 
 	return (
-		<div className={`flex gap-3 mb-8 ${isCheckpointGhost ? 'opacity-40 grayscale' : ''}`}>
+		<div className={`flex gap-3 mb-8 ${isCheckpointGhost ? 'opacity-40 grayscale' : ''}`}
+			onContextMenu={handleContextMenu}
+		>
 			<div className="flex flex-col gap-2 flex-1 min-w-0">
 				<div className="flex flex-col gap-3">
 					{/* reasoning token */}
@@ -1661,7 +1800,26 @@ const AssistantMessageComponent = React.memo(({ chatMessage, isCheckpointGhost, 
 						</div>
 					}
 				</div>
-				<span className="text-[9px] font-black uppercase tracking-[0.15em] text-void-fg-4/60 px-1">A-Coder</span>
+				<div className="flex items-center gap-2 px-1">
+					<span className="text-[9px] font-black uppercase tracking-[0.15em] text-void-fg-4/60">A-Coder</span>
+					{timeAgo && (
+						<span className="text-[10px] text-void-fg-4/50">{timeAgo}</span>
+					)}
+				</div>
+
+				{/* Context Menu */}
+				{contextMenu && (
+					<MessageContextMenu
+						x={contextMenu.x}
+						y={contextMenu.y}
+						onClose={() => setContextMenu(null)}
+						onCopy={handleCopy}
+						onDelete={handleDelete}
+						onRetry={() => {}}
+						canRetry={false}
+						canDelete={true}
+					/>
+				)}
 			</div>
 		</div>
 	)
@@ -1795,6 +1953,7 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 	'fast_context': { resultWrapper: SearchQueryResultWrapper as ResultWrapper<'fast_context'> },
 	'codebase_search': { resultWrapper: SearchQueryResultWrapper as ResultWrapper<'codebase_search'> },
 	'edit_file': { resultWrapper: EditToolResultWrapper as ResultWrapper<'edit_file'> },
+	'edit_files': { resultWrapper: EditToolResultWrapper as ResultWrapper<'edit_files'> },
 	'rewrite_file': { resultWrapper: EditToolResultWrapper as ResultWrapper<'rewrite_file'> },
 	'run_command': { resultWrapper: CommandToolResultWrapper as ResultWrapper<'run_command'> },
 	'run_persistent_command': { resultWrapper: CommandToolResultWrapper as ResultWrapper<'run_persistent_command'> },
@@ -1950,10 +2109,10 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 	'repo_resolve_ref': { resultWrapper: DefaultToolResultWrapper },
 	'repo_get_commit_metadata': { resultWrapper: DefaultToolResultWrapper },
 	'repo_wait_for_embeddings': { resultWrapper: DefaultToolResultWrapper },
-	'create_plan': { resultWrapper: (params: WrapperProps<'create_plan'>) => (<React.Suspense fallback={null}><LazyPlanningResultWrapper {...params} /></React.Suspense>) },
-	'update_task_status': { resultWrapper: (params: WrapperProps<'update_task_status'>) => (<React.Suspense fallback={null}><LazyPlanningResultWrapper {...params} /></React.Suspense>) },
-	'add_tasks_to_plan': { resultWrapper: (params: WrapperProps<'add_tasks_to_plan'>) => (<React.Suspense fallback={null}><LazyPlanningResultWrapper {...params} /></React.Suspense>) },
-	'get_plan_status': { resultWrapper: (params: WrapperProps<'get_plan_status'>) => (<React.Suspense fallback={null}><LazyPlanningResultWrapper {...params} /></React.Suspense>) },
+	'create_todo': { resultWrapper: (params: WrapperProps<'create_todo'>) => (<React.Suspense fallback={null}><LazyPlanningResultWrapper {...params} /></React.Suspense>) },
+	'update_todo': { resultWrapper: (params: WrapperProps<'update_todo'>) => (<React.Suspense fallback={null}><LazyPlanningResultWrapper {...params} /></React.Suspense>) },
+	'add_todos': { resultWrapper: (params: WrapperProps<'add_todos'>) => (<React.Suspense fallback={null}><LazyPlanningResultWrapper {...params} /></React.Suspense>) },
+	'get_todos': { resultWrapper: (params: WrapperProps<'get_todos'>) => (<React.Suspense fallback={null}><LazyPlanningResultWrapper {...params} /></React.Suspense>) },
 	'update_walkthrough': { resultWrapper: WalkthroughResultWrapper as ResultWrapper<'update_walkthrough'> },
 	'create_implementation_plan': { resultWrapper: (params: WrapperProps<'create_implementation_plan'>) => (<React.Suspense fallback={null}><LazyImplementationPlanPreviewWrapper {...params} /></React.Suspense>) },
 	'preview_implementation_plan': { resultWrapper: (params: WrapperProps<'preview_implementation_plan'>) => (<React.Suspense fallback={null}><LazyImplementationPlanPreviewWrapper {...params} /></React.Suspense>) },
@@ -2886,6 +3045,10 @@ export const SidebarChat = () => {
 
 	const sidebarRef = useRef<HTMLDivElement>(null)
 	const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+
+	// Floating scroll-to-bottom button state
+	const [showScrollToBottom, setShowScrollToBottom] = useState(false)
+
 	const onSubmit = useCallback(async (_forceSubmit?: string) => {
 
 		if (isDisabled && !_forceSubmit) return
@@ -3238,6 +3401,7 @@ export const SidebarChat = () => {
 	const messagesHTML = <ScrollToBottomContainer
 		key={'messages' + chatThreadsState.currentThreadId} // force rerender on all children if id changes
 		scrollContainerRef={scrollContainerRef}
+		onAtBottomChange={(isBottom) => setShowScrollToBottom(!isBottom)}
 		className={`
 			flex flex-col
 			px-4 py-6 space-y-8
@@ -3726,6 +3890,19 @@ export const SidebarChat = () => {
 		<PersistentTaskPlan />
 		<ErrorBoundary>
 			<div className='flex-1 overflow-hidden relative'>
+				{/* Floating scroll-to-bottom button */}
+				{showScrollToBottom && (
+					<button
+						onClick={() => scrollToBottom(scrollContainerRef, true)}
+						className='absolute bottom-4 right-6 z-20 flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-void-fg-2 bg-void-bg-3/90 hover:bg-void-bg-2 border border-void-border-1 rounded-full shadow-lg backdrop-blur-sm transition-all duration-200 hover:scale-105'
+						data-tooltip-id='void-tooltip'
+						data-tooltip-content='Scroll to bottom'
+						data-tooltip-place='left'
+					>
+						<ArrowDown size={14} />
+						<span>Latest</span>
+					</button>
+				)}
 				{/* Checkpoint Timeline on the left */}
 				<CheckpointTimeline
 					threadId={threadId}

@@ -100,9 +100,9 @@ const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
 // Planning/task tools are safe to run in parallel — they operate on in-memory
 // state with no file-system, terminal, or git conflicts.
 const PARALLEL_SAFE_WRITE_TOOLS: ReadonlySet<string> = new Set([
-	'create_plan',
-	'update_task_status',
-	'add_tasks_to_plan',
+	'create_todo',
+	'update_todo',
+	'add_todos',
 ])
 
 // Tools that are NEVER safe to run in parallel due to global state
@@ -110,6 +110,7 @@ const SEQUENTIAL_ONLY_TOOLS: ReadonlySet<string> = new Set([
 	'run_command',      // Terminal state is shared
 	'run_code',         // Process execution state is shared
 	'edit_file',        // File editing can conflict
+	'edit_files',       // Multi-file editing can conflict
 	'rewrite_file',     // File rewriting can conflict
 	'delete',           // Deletions can conflict
 	'git_commit',       // Git state is shared
@@ -226,6 +227,7 @@ function isWriteTool(toolName: string): boolean {
 	return SEQUENTIAL_ONLY_TOOLS.has(toolName) ||
 		toolName === 'create_file_or_folder' ||
 		toolName === 'edit_file' ||
+		toolName === 'edit_files' ||
 		toolName === 'rewrite_file' ||
 		toolName === 'delete' ||
 		toolName === 'apply_diff'
@@ -673,25 +675,13 @@ export interface IChatThreadService {
 	// jump to history
 	jumpToCheckpointBeforeMessageIdx(opts: { threadId: string, messageIdx: number, jumpToUserModified: boolean }): void;
 
-	// message queue
-	getQueuedMessagesCount(threadId: string): number;
-	getQueuedMessages(threadId: string): Array<{ userMessage: string, selections?: StagingSelectionItem[], images?: ImageAttachment[] }>;
-	removeQueuedMessage(threadId: string, index: number): void;
-	clearMessageQueue(threadId: string): void;
-	forceSendQueuedMessage(threadId: string, index: number): Promise<void>;
+	// Message operations
+	deleteMessagesFromIndex(threadId: string, messageIdx: number): void;
+	retryFromMessage(threadId: string, messageIdx: number): Promise<void>;
+	copyMessageContent(threadId: string, messageIdx: number): string;
 
-	focusCurrentChat: (timeout?: number) => Promise<void>
-	blurCurrentChat: () => Promise<void>
-
-	getAutoContinuePreference(threadId: string): boolean;
-	setAutoContinuePreference(threadId: string, enabled: boolean): void;
-
-	// Task planning
-	getTaskPlan(threadId: string): TaskPlan[];
-	createTask(threadId: string, description: string, dependencies?: string[]): string;
-	updateTaskStatus(threadId: string, taskId: string, status: TaskPlan['status']): void;
-	deleteTask(threadId: string, taskId: string): void;
-	clearTaskPlan(threadId: string): void;
+	focusCurrentChat: (timeout?: number) => Promise<void>;
+	blurCurrentChat: () => Promise<void>;
 
 	// Student mode session
 	getStudentSession(threadId: string): StudentSession | undefined;
@@ -1438,11 +1428,12 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 			case 'read_file': return `Reading file: ${params.uri?.fsPath || '...'}`;
 			case 'search_for_files': return `Searching codebase for: "${params.query}"`;
 			case 'run_command': return `Executing command: "${params.command}"`;
-			case 'edit_file': return `Applying edits to: ${params.uri?.fsPath || '...'}`;
-			case 'rewrite_file': return `Rewriting file: ${params.uri?.fsPath || '...'}`;
+		case 'edit_file': return `Applying edits to: ${params.uri?.fsPath || '...'}`;
+		case 'edit_files': return `Applying edits to ${params.edits?.length || 0} file(s)...`;
+		case 'rewrite_file': return `Rewriting file: ${params.uri?.fsPath || '...'}`;
 			case 'get_dir_tree': return `Analyzing project structure...`;
 			case 'search_pathnames_only': return `Locating files matching: "${params.query}"`;
-			case 'create_plan': return `Architecting implementation plan...`;
+			case 'create_todo': return `Creating todo list...`;
 			case 'fast_context': return `Morph: Searching for "${params.query}"...`;
 			default: return `Executing ${toolName}...`;
 		}
@@ -1497,6 +1488,11 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 			}
 
 			if (toolName === 'edit_file') { this._addToolEditCheckpoint({ threadId, uri: (toolParams as BuiltinToolCallParams['edit_file']).uri }) }
+			if (toolName === 'edit_files') {
+				for (const edit of (toolParams as BuiltinToolCallParams['edit_files']).edits) {
+					this._addToolEditCheckpoint({ threadId, uri: edit.uri })
+				}
+			}
 			if (toolName === 'rewrite_file') { this._addToolEditCheckpoint({ threadId, uri: (toolParams as BuiltinToolCallParams['rewrite_file']).uri }) }
 
 			const approvalType = isBuiltInTool ? approvalTypeOfBuiltinToolName[toolName] : 'MCP tools'
@@ -3733,6 +3729,11 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		const oldThread = allThreads[threadId]
 		if (!oldThread) return // should never happen
 
+		// Add timestamp if not present
+		if (!('_timestamp' in message)) {
+			(message as any)._timestamp = Date.now();
+		}
+
 		// SIZE-BASED LIMIT: Truncate message if it exceeds size limit before adding
 		let processedMessage = message;
 		const messageSizeKB = this._calculateMessageSizeKB(message);
@@ -4329,6 +4330,64 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		// TODO: Could implement a trigger queue or notification system here
 		// for cases where the user wants to be notified of trigger events
 		// without automatically starting a chat response.
+	}
+
+	/** Delete all messages from a given index onwards (for context menu delete/retry) */
+	deleteMessagesFromIndex(threadId: string, messageIdx: number): void {
+		const thread = this.state.allThreads[threadId]
+		if (!thread) return
+		if (messageIdx < 0 || messageIdx >= thread.messages.length) return
+
+		const newMessages = thread.messages.slice(0, messageIdx)
+		const newThreads = {
+			...this.state.allThreads,
+			[threadId]: {
+				...thread,
+				messages: newMessages,
+			},
+		}
+		this._storeAllThreads(newThreads)
+		this._setState({ allThreads: newThreads })
+		this._onDidChangeCurrentThread.fire()
+	}
+
+	/** Regenerate the assistant response from a given user message */
+	async retryFromMessage(threadId: string, messageIdx: number): Promise<void> {
+		const thread = this.state.allThreads[threadId]
+		if (!thread) return
+
+		// Must be a user message
+		const msg = thread.messages[messageIdx]
+		if (!msg || msg.role !== 'user') return
+
+		// Delete everything after this message
+		this.deleteMessagesFromIndex(threadId, messageIdx + 1)
+
+		// Re-stream from this user message
+		const userMsg = msg as ChatMessage & { role: 'user' }
+		await this._addUserMessageAndStreamResponse({
+			userMessage: userMsg.displayContent || '',
+			_chatSelections: userMsg.selections || undefined,
+			threadId,
+		})
+	}
+
+	/** Copy message content to clipboard */
+	copyMessageContent(threadId: string, messageIdx: number): string {
+		const thread = this.state.allThreads[threadId]
+		if (!thread) return ''
+		const msg = thread.messages[messageIdx]
+		if (!msg) return ''
+
+		if (msg.role === 'user') return (msg as any).displayContent || ''
+		if (msg.role === 'assistant') return (msg as any).displayContent || ''
+		if (msg.role === 'tool') {
+			const t = msg as any
+			if (t.type === 'success' && typeof t.result === 'string') return t.result
+			if (t.type === 'tool_error') return t.content || ''
+			return t.content || ''
+		}
+		return ''
 	}
 
 	// gets `staging` and `setStaging` of the currently focused element, given the index of the currently selected message (or undefined if no message is selected)

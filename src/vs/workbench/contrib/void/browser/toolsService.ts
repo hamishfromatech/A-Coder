@@ -592,6 +592,29 @@ export class ToolsService implements IToolsService {
 				return { uri, old_string, new_string }
 			},
 
+			edit_files: (params: RawToolParamsObj) => {
+				const { edits: editsUnknown } = params
+				if (!Array.isArray(editsUnknown)) {
+					throw new Error('edit_files: The "edits" parameter must be an array of edit objects.')
+				}
+				if (editsUnknown.length === 0) {
+					throw new Error('edit_files: The "edits" array must contain at least one edit.')
+				}
+				if (editsUnknown.length > 3) {
+					throw new Error('edit_files: Maximum 3 edits are allowed per call.')
+				}
+				const edits = editsUnknown.map((e: any, i: number) => {
+					if (!e || typeof e !== 'object') {
+						throw new Error(`edit_files: edit at index ${i} must be an object with uri, old_string, and new_string.`)
+					}
+					const uri = validateURI(e.uri)
+					const old_string = validateStr(`edit[${i}].old_string`, e.old_string)
+					const new_string = validateStr(`edit[${i}].new_string`, e.new_string)
+					return { uri, old_string, new_string }
+				})
+				return { edits }
+			},
+
 			// ---
 
 			run_code: (params: RawToolParamsObj) => {
@@ -626,92 +649,92 @@ export class ToolsService implements IToolsService {
 
 			// --- Planning tools ---
 
-			create_plan: (params: RawToolParamsObj) => {
+			create_todo: (params: RawToolParamsObj) => {
 				const { goal: goalUnknown, tasks: tasksUnknown } = params;
 				const goal = validateStr('goal', goalUnknown);
 
-				// Validate tasks array - handle both array and JSON string
-				// Also handles JS object notation (unquoted keys) that some LLMs output
-				let tasksParsed: any;
-				if (typeof tasksUnknown === 'string') {
-					try {
-						tasksParsed = parseJSONOrJSObject(tasksUnknown);
-					} catch (e) {
-						throw new Error(`Invalid LLM output: tasks parameter is a string but not valid JSON: ${tasksUnknown}`);
-					}
-				} else {
-					tasksParsed = tasksUnknown;
+			// Validate tasks array - handle both array and JSON string
+			// Also handles JS object notation (unquoted keys) that some LLMs output
+			let tasksParsed: any;
+			if (typeof tasksUnknown === 'string') {
+				try {
+					tasksParsed = parseJSONOrJSObject(tasksUnknown);
+				} catch (e) {
+					throw new Error(`Invalid LLM output: tasks parameter is a string but not valid JSON: ${tasksUnknown}`);
 				}
+			} else {
+				tasksParsed = tasksUnknown;
+			}
 
-				if (!Array.isArray(tasksParsed)) {
-					throw new Error(`Invalid LLM output: tasks must be an array of task objects. Received: ${typeof tasksParsed}`);
+			if (!Array.isArray(tasksParsed)) {
+				throw new Error(`Invalid LLM output: tasks must be an array of task objects. Received: ${typeof tasksParsed}`);
+			}
+
+			const tasks = tasksParsed.map((task: any, idx: number) => {
+				if (typeof task !== 'object' || task === null) {
+					throw new Error(`Invalid LLM output: task at index ${idx} must be an object`);
 				}
+				const id = validateStr('task.id', task.id);
+				const description = validateStr('task.description', task.description);
+				const dependencies = Array.isArray(task.dependencies) ? task.dependencies.map((dep: any) => validateStr('dependency', dep)) : [];
+				return { id, description, dependencies };
+			});
 
-				const tasks = tasksParsed.map((task: any, idx: number) => {
-					if (typeof task !== 'object' || task === null) {
-						throw new Error(`Invalid LLM output: task at index ${idx} must be an object`);
-					}
-					const id = validateStr('task.id', task.id);
-					const description = validateStr('task.description', task.description);
-					const dependencies = Array.isArray(task.dependencies) ? task.dependencies.map((dep: any) => validateStr('dependency', dep)) : [];
-					return { id, description, dependencies };
-				});
+			return { goal, tasks };
+		},
 
-				return { goal, tasks };
-			},
-
-			update_task_status: (params: RawToolParamsObj) => {
+			update_todo: (params: RawToolParamsObj) => {
 				const { task_id: taskIdUnknown, status: statusUnknown, notes: notesUnknown } = params;
 				const taskId = validateStr('task_id', taskIdUnknown);
 				const status = validateStr('status', statusUnknown);
 				const notes = validateOptionalStr('notes', notesUnknown);
 
-				// Validate status is one of the allowed values
-				const validStatuses: PlanTaskStatus[] = ['pending', 'in_progress', 'complete', 'failed', 'skipped'];
-				if (!validStatuses.includes(status as PlanTaskStatus)) {
-					throw new Error(`Invalid status: "${status}". Must be one of: ${validStatuses.join(', ')}`);
-				}
+			// Validate status is one of the allowed values
+			const validStatuses: PlanTaskStatus[] = ['pending', 'in_progress', 'complete', 'failed', 'skipped'];
+			if (!validStatuses.includes(status as PlanTaskStatus)) {
+				throw new Error(`Invalid status: "${status}". Must be one of: ${validStatuses.join(', ')}`);
+			}
 
-				return { taskId, status, notes };
-			},
+			return { taskId, status, notes };
+		},
 
-			get_plan_status: (params: RawToolParamsObj) => {
+			get_todos: (params: RawToolParamsObj) => {
 				// No parameters needed
 				return {};
 			},
 
-			add_tasks_to_plan: (params: RawToolParamsObj) => {
+			add_todos: (params: RawToolParamsObj) => {
 				const { tasks: tasksUnknown } = params;
 
-				// Validate tasks array - handle both array and JSON string
-				// Also handles JS object notation (unquoted keys) that some LLMs output
-				let tasksParsed: any;
-				if (typeof tasksUnknown === 'string') {
-					try {
-						tasksParsed = parseJSONOrJSObject(tasksUnknown);
-					} catch (e) {
-						throw new Error(`Invalid LLM output: tasks parameter is a string but not valid JSON: ${tasksUnknown}`);
-					}
-				} else {
-					tasksParsed = tasksUnknown;
+			// Validate tasks array - handle both array and JSON string
+			// Also handles JS object notation (unquoted keys) that some LLMs output
+			let tasksParsed: any;
+			if (typeof tasksUnknown === 'string') {
+				try {
+					tasksParsed = parseJSONOrJSObject(tasksUnknown);
+				} catch (e) {
+					throw new Error(`Invalid LLM output: tasks parameter is a string but not valid JSON: ${tasksUnknown}`);
 				}
+			} else {
+				tasksParsed = tasksUnknown;
+			}
 
-				if (!Array.isArray(tasksParsed)) {
-					throw new Error(`Invalid LLM output: tasks must be an array of task objects. Received: ${typeof tasksParsed}`);
+			if (!Array.isArray(tasksParsed)) {
+				throw new Error(`Invalid LLM output: tasks must be an array of task objects. Received: ${typeof tasksParsed}`);
+			}
+
+			const tasks = tasksParsed.map((task: any, idx: number) => {
+				if (typeof task !== 'object' || task === null) {
+					throw new Error(`Invalid LLM output: task at index ${idx} must be an object`);
 				}
+				const id = validateStr('task.id', task.id);
+				const description = validateStr('task.description', task.description);
+				const dependencies = Array.isArray(task.dependencies) ? task.dependencies.map((dep: any) => validateStr('dependency', dep)) : [];
+				return { id, description, dependencies };
+			});
 
-				const tasks = tasksParsed.map((task: any, idx: number) => {
-					if (typeof task !== 'object' || task === null) {
-						throw new Error(`Invalid LLM output: task at index ${idx} must be an object`);
-					}
-					const id = validateStr('task.id', task.id);
-					const description = validateStr('task.description', task.description);
-					const dependencies = Array.isArray(task.dependencies) ? task.dependencies.map((dep: any) => validateStr('dependency', dep)) : [];
-					return { id, description, dependencies };
-				});
-
-				return { tasks };
-			},
+			return { tasks };
+		},
 
 			update_walkthrough: (params: RawToolParamsObj) => {
 				const { content: contentUnknown, mode: modeUnknown, title: titleUnknown, include_plan_status: includePlanStatusUnknown } = params;
@@ -1478,6 +1501,35 @@ export class ToolsService implements IToolsService {
 
 				return { result: lintErrorsPromise }
 			},
+
+			edit_files: async ({ edits }, opts) => {
+				const results: Array<{ uri: string, lintErrors: LintErrorItem[] | null, error?: string }> = []
+
+				for (let i = 0; i < edits.length; i++) {
+					const { uri, old_string, new_string } = edits[i]
+					try {
+						await this._voidModelService.initializeModel(uri)
+						await this._editCodeService.callBeforeApplyOrEdit(uri)
+						opts?.onData?.(`Replacing text in ${path.basename(uri.fsPath)} (${i + 1}/${edits.length})...`);
+						this._editCodeService.instantlyReplaceString({ uri, oldString: old_string, newString: new_string, onProgress: (data) => {
+							opts?.onData?.(data)
+						} });
+						// Morph Repo Storage: sync to cloud if enabled
+						this._syncToMorphRepoStorage(uri, 'Edit file: ' + path.basename(uri.fsPath));
+						// collect lint errors asynchronously for this file
+						const lintResult = await Promise.resolve().then(async () => {
+							await timeout(2000)
+							const { lintErrors } = this._getLintErrors(uri)
+							return lintErrors
+						})
+						results.push({ uri: uri.fsPath, lintErrors: lintResult })
+					} catch (e: any) {
+						results.push({ uri: uri.fsPath, lintErrors: null, error: e?.message || String(e) })
+					}
+				}
+
+				return { result: Promise.resolve({ results }) }
+			},
 			// ---
 			run_code: async ({ code, timeout }) => {
 				// Get IPC channel to electron-main
@@ -1542,20 +1594,20 @@ export class ToolsService implements IToolsService {
 
 			// --- Planning tools ---
 
-			create_plan: async ({ goal, tasks }) => {
+			create_todo: async ({ goal, tasks }) => {
 				const plan = this._planningService.createPlan(goal, tasks);
 				const summary = this._planningService.formatPlanStatus(plan);
 				return { result: { planId: plan.id, summary } };
 			},
 
-			update_task_status: async ({ taskId, status, notes }) => {
+			update_todo: async ({ taskId, status, notes }) => {
 				const task = this._planningService.updateTaskStatus(taskId, status as PlanTaskStatus, notes ?? undefined);
 				const plan = this._planningService.getPlanStatus();
 				const summary = plan ? this._planningService.formatPlanStatus(plan) : 'No active plan';
 				return { result: { taskId: task.id, newStatus: task.status, summary } };
 			},
 
-			get_plan_status: async () => {
+			get_todos: async () => {
 				const plan = this._planningService.getPlanStatus();
 				if (!plan) {
 					return { result: { planExists: false, summary: null } };
@@ -1564,7 +1616,7 @@ export class ToolsService implements IToolsService {
 				return { result: { planExists: true, summary } };
 			},
 
-			add_tasks_to_plan: async ({ tasks }) => {
+			add_todos: async ({ tasks }) => {
 				const plan = this._planningService.addTasksToPlan(tasks);
 				const summary = this._planningService.formatPlanStatus(plan);
 				return { result: { summary } };
@@ -2968,6 +3020,22 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 
 				return `Change successfully made to ${params.uri.fsPath}.${lintErrsString}`
 			},
+			edit_files: (params, result) => {
+				let output = `Changes applied to ${result.results.length} file(s):\n\n`
+				for (const r of result.results) {
+					if (r.error) {
+						output += `❌ ${r.uri}: Error: ${r.error}\n`
+					} else {
+						const lintErrsString = (
+							this._voidSettingsService.state.globalSettings.includeToolLintErrors ?
+								(r.lintErrors ? `\n  Lint errors found after change:\n  ${stringifyLintErrors(r.lintErrors).replace(/\n/g, '\n  ')}.\n  If this is related to a change made while calling this tool, you might want to fix the error.`
+									: `\n  No lint errors found.`)
+								: '')
+						output += `✅ ${r.uri}: Change successful.${lintErrsString}\n`
+					}
+				}
+				return output
+			},
 			rewrite_file: (params, result) => {
 				const lintErrsString = (
 					this._voidSettingsService.state.globalSettings.includeToolLintErrors ?
@@ -3099,23 +3167,23 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 
 			// --- Planning tools ---
 
-			create_plan: (params, result) => {
-				return `\u{2705} Plan created successfully!\n\n${result.summary}`;
+			create_todo: (params, result) => {
+				return `\u{2705} Todo list created successfully!\n\n${result.summary}`;
 			},
 
-			update_task_status: (params, result) => {
-				return `\u{2705} Task "${result.taskId}" updated to status: ${result.newStatus}\n\n${result.summary}`;
+			update_todo: (params, result) => {
+				return `\u{2705} Todo "${result.taskId}" updated to status: ${result.newStatus}\n\n${result.summary}`;
 			},
 
-			get_plan_status: (params, result) => {
+			get_todos: (params, result) => {
 				if (!result.planExists) {
-					return 'No active plan. Create one using create_plan.';
+					return 'No active todo list. Create one using create_todo.';
 				}
 				return result.summary!;
 			},
 
-			add_tasks_to_plan: (params, result) => {
-				return `\u{2705} Tasks added to plan!\n\n${result.summary}`;
+			add_todos: (params, result) => {
+				return `\u{2705} Todos added!\n\n${result.summary}`;
 			},
 
 			update_walkthrough: (params, result) => {

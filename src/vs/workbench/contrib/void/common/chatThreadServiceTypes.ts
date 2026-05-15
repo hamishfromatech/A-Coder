@@ -86,16 +86,18 @@ export type ChatMessage =
 			reasoning: string;
 			summary: string;
 		};
+		_timestamp?: number; // ms since epoch when message was created
 	} | {
 		role: 'assistant';
 		displayContent: string; // content received from LLM  - allowed to be '', will be replaced with (empty)
 		reasoning: string; // reasoning from the LLM, used for step-by-step thinking
 
 		anthropicReasoning: AnthropicReasoning[] | null; // anthropic reasoning
+		_timestamp?: number; // ms since epoch when message was created
 	}
-	| ToolMessage<ToolName>
-	| DecorativeCanceledTool
-	| CheckpointEntry
+	| (ToolMessage<ToolName> & { _timestamp?: number; })
+	| (DecorativeCanceledTool & { _timestamp?: number; })
+	| (CheckpointEntry & { _timestamp?: number; })
 
 
 // one of the square items that indicates a selection in a chat bubble

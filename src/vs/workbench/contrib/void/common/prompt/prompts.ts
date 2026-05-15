@@ -546,6 +546,38 @@ If edit_file fails with "Could not find text to replace":
 		},
 	},
 
+	edit_files: {
+		name: 'edit_files',
+		description: `Edit up to 3 files simultaneously with the same precise find-and-replace strategy as edit_file. **ALWAYS use this tool instead of multiple separate edit_file calls** when making related changes across multiple files in a single turn.
+
+**When to use edit_files:**
+- Adding a new prop to a React component (edit the component definition AND the interface/type definition)
+- Renaming a function across a project (update the definition, call sites, imports, and tests)
+- Changing a shared constant (update the definition AND all files that reference it)
+- Any scenario where multiple files need coordinated changes
+
+**When NOT to use edit_files:**
+- Only 1 file needs to change (use edit_file instead)
+- More than 3 files need to change (group into batches of <=3, or use rewrite_file for larger refactors)
+
+**REQUIRED PARAMETERS:**
+- edits: An array of 1-3 edit objects, each with:
+  - uri: The FULL file path
+  - old_string: The exact text to find and replace in that file
+  - new_string: The new text to replace it with
+
+**WORKFLOW:**
+1. ALWAYS read the files first with read_file to get exact content
+2. Use edit_files with precise old_string values that match each file exactly
+3. Include enough context (surrounding lines) to ensure unique matches
+4. The tool applies all edits as a single atomic operation
+
+**IMPORTANT:** If you call edit_files, you CANNOT call any other tool in the same turn. All edits must be in the single edit_files call.`,
+		params: {
+			edits: { description: 'An array of 1-3 edit objects. Each edit must have: uri (string), old_string (string), new_string (string).' }
+		},
+	},
+
 	rewrite_file: {
 		name: 'rewrite_file',
 		description: `Replace the entire contents of a file with new content. More reliable than edit_file for: (1) Large refactors, (2) Multiple scattered changes, (3) When edit_file fails with "Not found" errors, (4) Files you just created. Simply provide the complete new file content - no need to match exact whitespace or worry about finding ORIGINAL blocks.`,
@@ -653,9 +685,9 @@ return { activeCount: filtered.length, sample: filtered.slice(0, 3) };
 
 	// --- Planning & Task Management ---
 
-	create_plan: {
-		name: 'create_plan',
-		description: `Creates a structured plan for complex, multi-step tasks. This allows you to break down large requests into manageable steps and track progress.
+	create_todo: {
+		name: 'create_todo',
+		description: `Creates a structured todo list for complex, multi-step tasks. This allows you to break down large requests into manageable steps and track progress.
 
 **When to use:** At the start of complex requests like:
 - Large refactors or redesigns
@@ -663,21 +695,21 @@ return { activeCount: filtered.length, sample: filtered.slice(0, 3) };
 - Complex debugging investigations
 - Any task requiring multiple coordinated steps
 
-**What you'll receive:** A plan ID and summary showing all tasks.
+**What you'll receive:** A todo list ID and summary showing all tasks.
 
-**Important:** After creating a plan, execute tasks in order, marking each as complete as you go using update_task_status.
+**Important:** After creating a todo list, execute tasks in order, marking each as complete as you go using update_todo.
 
 **Example workflow:**
 1. User requests: "Redesign the authentication system"
-2. You call create_plan with tasks:
+2. You call create_todo with tasks:
    - task1: "Analyze current auth implementation"
    - task2: "Design new JWT-based flow" (depends on task1)
    - task3: "Implement AuthService" (depends on task2)
    - task4: "Update UI components" (depends on task3)
-3. Execute each task, calling update_task_status(task1, "in_progress"), then update_task_status(task1, "complete") when done
+3. Execute each task, calling update_todo(task1, "in_progress"), then update_todo(task1, "complete") when done
 4. Continue with remaining tasks in order`,
 		params: {
-			goal: { description: 'Overall goal this plan accomplishes (e.g., "Redesign authentication flow")' },
+			goal: { description: 'Overall goal this todo list accomplishes (e.g., "Redesign authentication flow")' },
 			tasks: {
 				description: `Array of task objects. Each task must have:
 - id: Unique identifier (e.g., "task1", "refactor_auth", "add_tests")
@@ -693,9 +725,9 @@ Example: [
 		}
 	},
 
-	update_task_status: {
-		name: 'update_task_status',
-		description: `Updates the status of a task in your current plan.
+	update_todo: {
+		name: 'update_todo',
+		description: `Updates the status of a task in your current todo list.
 
 **When to use:**
 - When starting a task: mark as 'in_progress'
@@ -703,19 +735,19 @@ Example: [
 - If a task fails: mark as 'failed' with error notes
 - If skipping a task: mark as 'skipped' with reason
 
-**What you'll receive:** Confirmation with the task ID, new status, and updated plan summary.
+**What you'll receive:** Confirmation with the task ID, new status, and updated todo list summary.
 
 **Best practice:** Always update status when you START and when you FINISH each task. This keeps your progress visible.`,
 		params: {
-			task_id: { description: 'The ID of the task to update (must match an ID from create_plan)' },
+			task_id: { description: 'The ID of the task to update (must match an ID from create_todo)' },
 			status: { description: `New status. Must be one of: "pending", "in_progress", "complete", "failed", "skipped"` },
 			notes: { description: 'Optional. Brief notes about this status change (e.g., "Completed refactor of AuthService", "Failed: circular dependency found")' }
 		}
 	},
 
-	get_plan_status: {
-		name: 'get_plan_status',
-		description: `Retrieves the current state of your plan, showing all tasks and their statuses.
+	get_todos: {
+		name: 'get_todos',
+		description: `Retrieves the current state of your todo list, showing all tasks and their statuses.
 
 **When to use:**
 - To check which tasks are complete and what's next
@@ -723,22 +755,22 @@ Example: [
 - To see the overall progress
 
 **What you'll receive:** A formatted summary showing:
-- Plan goal
+- Todo list goal
 - Progress (X/Y tasks completed)
 - Tasks grouped by status (in_progress, pending, complete, failed, skipped)
 - Dependencies for pending tasks`,
 		params: {}
 	},
 
-	add_tasks_to_plan: {
-		name: 'add_tasks_to_plan',
-		description: `Adds new tasks to the current plan.
+	add_todos: {
+		name: 'add_todos',
+		description: `Adds new tasks to the current todo list.
 
 **When to use:** When you discover additional work needed that wasn't in the original plan (e.g., "I realize I also need to update the tests").
 
-**What you'll receive:** Updated plan summary with the new tasks added.
+**What you'll receive:** Updated todo list summary with the new tasks added.
 
-**Example:** While implementing task3, you realize you need to add migration scripts, so you call add_tasks_to_plan with a new task for migrations.`,
+**Example:** While implementing task3, you realize you need to add migration scripts, so you call add_todos with a new task for migrations.`,
 		params: {
 			tasks: {
 				description: `Array of new task objects to add. Each task must have:
@@ -1494,6 +1526,7 @@ const agentModeTools: BuiltinToolName[] = [
 	'create_file_or_folder',
 	'delete_file_or_folder',
 	'edit_file',
+	'edit_files',
 	'rewrite_file',
 	// Terminal tools - run commands
 	'run_command',
@@ -1502,10 +1535,10 @@ const agentModeTools: BuiltinToolName[] = [
 	'wait',
 	'check_terminal_status',
 	// Task planning - track progress on multi-step tasks
-	'create_plan',
-	'update_task_status',
-	'get_plan_status',
-	'add_tasks_to_plan',
+	'create_todo',
+	'update_todo',
+	'get_todos',
+	'add_todos',
 	// Walkthrough - document progress
 	'update_walkthrough',
 	'open_walkthrough_preview',
@@ -2063,9 +2096,9 @@ Triggering the plan:
 
 Approved Implementation Plans:
 When the user approves an implementation plan (you'll see a message like "implementation plan has been approved for execution"):
-1. IMMEDIATELY call \`create_plan\` to create a task plan based on the implementation plan steps
+1. IMMEDIATELY call 'create_todo' to create a task plan based on the implementation plan steps
 2. Convert each implementation step into a task with clear dependencies
-3. Begin executing tasks in order, using \`update_task_status\` to track progress
+3. Begin executing tasks in order, using 'update_todo' to track progress
 4. For each task: read files, make changes, verify they work, then mark complete
 5. Continue until all tasks are done - do NOT stop and ask for confirmation between steps
 
@@ -2105,18 +2138,18 @@ NEVER modify a file outside the user's workspace without permission from the use
 	const workflowBehavior = `<workflow_behavior>
 WORKFLOW TRACKING IN CODE MODE:
 
-For complex, multi-step tasks (refactoring, multi-file changes, feature implementation), you MUST use the create_plan tool to establish a workflow:
+For complex, multi-step tasks (refactoring, multi-file changes, feature implementation), you MUST use the create_todo tool to establish a workflow:
 
-1. START WITH A PLAN: Before executing any tools, call create_plan with:
+1. START WITH A PLAN: Before executing any tools, call create_todo with:
    - goal: Clear statement of what you're accomplishing (use the user's exact request)
    - tasks: Break down into atomic steps (each task should be a single tool operation or small group of related operations)
    - dependencies: Specify which tasks must complete before others (use empty array [] if no dependencies)
 
 2. TRACK PROGRESS: As you work through each task:
-   - Call update_task_status(task_id, "in_progress") BEFORE starting a task
+   - Call update_todo(task_id, "in_progress") BEFORE starting a task
    - Execute the required tools to complete the task
-   - Call update_task_status(task_id, "complete") when done
-   - Call update_task_status(task_id, "failed") if blocked (include notes about the issue)
+   - Call update_todo(task_id, "complete") when done
+   - Call update_todo(task_id, "failed") if blocked (include notes about the issue)
 
 3. COMPLETION SIGNAL: The system automatically detects when all tasks are complete and will continue the loop until you finish.
 

@@ -179,8 +179,8 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 			const approvalMessage = `The implementation plan (ID: ${planInfo.planId}) has been approved for execution.
 
 **Instructions:**
-1. First, use the \`create_plan\` tool to create a task plan based on the approved implementation plan steps
-2. Then execute each task in order, using \`update_task_status\` to track progress
+1. First, use the \`create_todo\` tool to create a task plan based on the approved implementation plan steps
+2. Then execute each task in order, using \`update_todo\` to track progress
 3. For each step: read relevant files, make the necessary changes, and verify they work
 4. Mark each task complete as you finish it
 

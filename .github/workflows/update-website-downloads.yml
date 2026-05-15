@@ -1,0 +1,185 @@
+name: Update Website Download Links
+
+on:
+  # Update when a new release is published
+  release:
+    types: [published]
+  # Manual trigger for testing
+  workflow_dispatch:
+  # Daily check at midnight UTC (in case builder uploads after release)
+  schedule:
+    - cron: '0 0 * * *'
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  generate-download-manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch latest release
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get latest release info from GitHub API
+          RELEASE_JSON=$(curl -sL \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/latest")
+
+          TAG=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+          # Save raw release JSON for next step
+          echo "$RELEASE_JSON" > release.json
+
+      - name: Parse assets by platform
+        id: manifest
+        run: |
+          TAG="${{ steps.release.outputs.tag }}"
+
+          # Build a structured manifest JSON
+          # We categorize by OS and pick the best primary download per platform
+          cat release.json | jq --arg tag "$TAG" '
+            {
+              version: $tag,
+              published_at: .published_at,
+              release_url: .html_url,
+              platforms: {
+                macos: {
+                  arm64: {
+                    primary: [
+                      .assets[] | select(.name | test("darwin.*arm64.*\\.zip$")) | .browser_download_url
+                    ] | first // null,
+                    dmg: [
+                      .assets[] | select(.name | test("darwin.*\\.dmg$")) | .browser_download_url
+                    ] | first // null
+                  },
+                  universal: {
+                    primary: [
+                      .assets[] | select(.name | test("darwin.*universal.*\\.zip$")) | .browser_download_url
+                    ] | first // null,
+                    dmg: [
+                      .assets[] | select(.name | test("darwin.*universal.*\\.dmg$")) | .browser_download_url
+                    ] | first // null
+                  },
+                  x64: {
+                    primary: [
+                      .assets[] | select(.name | test("darwin.*x64.*\\.zip$")) | .browser_download_url
+                    ] | first // null,
+                    dmg: [
+                      .assets[] | select(.name | test("darwin.*x64.*\\.dmg$")) | .browser_download_url
+                    ] | first // null
+                  }
+                },
+                windows: {
+                  x64: {
+                    primary: [
+                      .assets[] | select(.name | test("Setup-x64.*\\.exe$")) | .browser_download_url
+                    ] | first // null,
+                    zip: [
+                      .assets[] | select(.name | test("win32-x64.*\\.zip$")) | .browser_download_url
+                    ] | first // null,
+                    msi: [
+                      .assets[] | select(.name | test("x64.*\\.msi$") and (.name | contains("updates-disabled") | not)) | .browser_download_url
+                    ] | first // null
+                  },
+                  arm64: {
+                    primary: [
+                      .assets[] | select(.name | test("Setup-arm64.*\\.exe$")) | .browser_download_url
+                    ] | first // null,
+                    zip: [
+                      .assets[] | select(.name | test("win32-arm64.*\\.zip$")) | .browser_download_url
+                    ] | first // null
+                  }
+                },
+                linux: {
+                  x64: {
+                    primary: [
+                      .assets[] | select(.name | test("linux-x64.*\\.tar\\.gz$")) | .browser_download_url
+                    ] | first // null,
+                    deb: [
+                      .assets[] | select(.name | test("\\.deb$")) | .browser_download_url
+                    ] | first // null,
+                    rpm: [
+                      .assets[] | select(.name | test("\\.rpm$")) | .browser_download_url
+                    ] | first // null
+                  },
+                  arm64: {
+                    primary: [
+                      .assets[] | select(.name | test("linux-arm64.*\\.tar\\.gz$")) | .browser_download_url
+                    ] | first // null
+                  },
+                  armhf: {
+                    primary: [
+                      .assets[] | select(.name | test("linux-armhf.*\\.tar\\.gz$")) | .browser_download_url
+                    ] | first // null
+                  }
+                }
+              },
+              all_assets: [
+                .assets[] | { name, url: .browser_download_url, size, content_type }
+              ]
+            }
+          ' > download-manifest.json
+
+          # Pretty print for logs
+          echo "=== Generated Manifest ==="
+          cat download-manifest.json | jq .
+
+          # Create a flat JSON for simple website consumption
+          cat download-manifest.json | jq '{
+            version,
+            published_at,
+            macos_arm64: .platforms.macos.arm64.primary,
+            macos_arm64_dmg: .platforms.macos.arm64.dmg,
+            macos_universal: .platforms.macos.universal.primary,
+            macos_universal_dmg: .platforms.macos.universal.dmg,
+            macos_x64: .platforms.macos.x64.primary,
+            windows_x64: .platforms.windows.x64.primary,
+            windows_x64_zip: .platforms.windows.x64.zip,
+            windows_x64_msi: .platforms.windows.x64.msi,
+            windows_arm64: .platforms.windows.arm64.primary,
+            windows_arm64_zip: .platforms.windows.arm64.zip,
+            linux_x64: .platforms.linux.x64.primary,
+            linux_x64_deb: .platforms.linux.x64.deb,
+            linux_x64_rpm: .platforms.linux.x64.rpm,
+            linux_arm64: .platforms.linux.arm64.primary,
+            linux_armhf: .platforms.linux.armhf.primary,
+            release_url
+          }' > download-links.json
+
+          echo "=== Flat Links ==="
+          cat download-links.json | jq .
+
+      - name: Upload manifest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: download-manifest
+          path: |
+            download-manifest.json
+            download-links.json
+          retention-days: 90
+
+      - name: Output summary
+        run: |
+          echo "## 📦 Download Manifest Generated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** \`${{ steps.release.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Quick Links" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          TAG="${{ steps.release.outputs.tag }}"
+
+          # Extract URLs for summary
+          MACOS=$(cat download-links.json | jq -r '.macos_arm64 // .macos_universal // "N/A"')
+          WIN=$(cat download-links.json | jq -r '.windows_x64 // "N/A"')
+          LINUX=$(cat download-links.json | jq -r '.linux_x64 // "N/A"')
+
+          echo "- 🍎 macOS: [$MACOS]($MACOS)" >> $GITHUB_STEP_SUMMARY
+          echo "- 🪟 Windows: [$WIN]($WIN)" >> $GITHUB_STEP_SUMMARY
+          echo "- 🐧 Linux: [$LINUX]($LINUX)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Artifacts: \`download-manifest.json\` and \`download-links.json\`" >> $GITHUB_STEP_SUMMARY

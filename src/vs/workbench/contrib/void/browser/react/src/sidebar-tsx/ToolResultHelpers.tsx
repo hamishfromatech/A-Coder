@@ -148,16 +148,17 @@ export const titleOfBuiltinToolName = {
 	'create_file_or_folder': { done: `Created`, proposed: `Create`, running: loadingTitleWrapper(`Creating`) },
 	'delete_file_or_folder': { done: `Deleted`, proposed: `Delete`, running: loadingTitleWrapper(`Deleting`) },
 	'edit_file': { done: `Edited file`, proposed: 'Edit file', running: loadingTitleWrapper('Editing file') },
+	'edit_files': { done: `Edited files`, proposed: 'Edit files', running: loadingTitleWrapper('Editing files') },
 	'rewrite_file': { done: `Wrote file`, proposed: 'Write file', running: loadingTitleWrapper('Writing file') },
 	'run_command': { done: `Ran terminal`, proposed: 'Run terminal', running: loadingTitleWrapper('Running terminal') },
 	'run_persistent_command': { done: `Ran terminal`, proposed: 'Run terminal', running: loadingTitleWrapper('Running terminal') },
 	'open_persistent_terminal': { done: `Opened terminal`, proposed: 'Open terminal', running: loadingTitleWrapper('Opening terminal') },
 	'kill_persistent_terminal': { done: `Killed terminal`, proposed: 'Kill terminal', running: loadingTitleWrapper('Killing terminal') },
 	'run_code': { done: 'Executed code', proposed: 'Execute code', running: loadingTitleWrapper('Executing code') },
-	'create_plan': { done: 'Plan created', proposed: 'Create plan', running: loadingTitleWrapper('Creating plan') },
-	'update_task_status': { done: 'Updated task', proposed: 'Update task', running: loadingTitleWrapper('Updating task') },
-	'get_plan_status': { done: 'Got plan status', proposed: 'Get plan status', running: loadingTitleWrapper('Getting plan status') },
-	'add_tasks_to_plan': { done: 'Added tasks', proposed: 'Add tasks', running: loadingTitleWrapper('Adding tasks') },
+	'create_todo': { done: 'Todo created', proposed: 'Create todo', running: loadingTitleWrapper('Creating todo') },
+	'update_todo': { done: 'Updated todo', proposed: 'Update todo', running: loadingTitleWrapper('Updating todo') },
+	'get_todos': { done: 'Got todos', proposed: 'Get todos', running: loadingTitleWrapper('Getting todos') },
+	'add_todos': { done: 'Added todos', proposed: 'Add todos', running: loadingTitleWrapper('Adding todos') },
 	'create_implementation_plan': { done: 'Created implementation plan', proposed: 'Create implementation plan', running: loadingTitleWrapper('Creating implementation plan') },
 	'preview_implementation_plan': { done: 'Previewed implementation plan', proposed: 'Preview implementation plan', running: loadingTitleWrapper('Previewing implementation plan') },
 	'execute_implementation_plan': { done: 'Executed implementation plan', proposed: 'Execute implementation plan', running: loadingTitleWrapper('Executing implementation plan') },
@@ -305,6 +306,16 @@ export const toolNameToDesc = (toolName: BuiltinToolName, _toolParams: BuiltinTo
 			const toolParams = _toolParams as BuiltinToolCallParams['edit_file']
 			return { desc1: getBasename(toolParams.uri.fsPath), desc1Info: getRelative(toolParams.uri, accessor) }
 		},
+		'edit_files': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['edit_files']
+			const n = toolParams.edits?.length ?? 0
+			const first = toolParams.edits?.[0]
+			const names = toolParams.edits?.map((e) => getBasename(e.uri.fsPath))?.join(', ') ?? ''
+			return {
+				desc1: n === 1 ? first ? getBasename(first.uri.fsPath) : '' : `${n} files: ${names}`,
+				desc1Info: first ? getRelative(first.uri, accessor) : undefined,
+			}
+		},
 		'run_command': () => {
 			const toolParams = _toolParams as BuiltinToolCallParams['run_command']
 			return { desc1: `"${toolParams.command}"` }
@@ -327,18 +338,18 @@ export const toolNameToDesc = (toolName: BuiltinToolName, _toolParams: BuiltinTo
 			return { desc1: getBasename(toolParams.uri.fsPath), desc1Info: getRelative(toolParams.uri, accessor) }
 		},
 		'run_code': () => { return { desc1: 'Executing code in sandbox' } },
-		'create_plan': () => {
-			const toolParams = _toolParams as BuiltinToolCallParams['create_plan']
+		'create_todo': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['create_todo']
 			return { desc1: `"${toolParams.goal}"` }
 		},
-		'update_task_status': () => {
-			const toolParams = _toolParams as BuiltinToolCallParams['update_task_status']
-			return { desc1: `Task: ${toolParams.taskId} → ${toolParams.status}` }
+		'update_todo': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['update_todo']
+			return { desc1: `Todo: ${toolParams.taskId} → ${toolParams.status}` }
 		},
-		'get_plan_status': () => { return { desc1: '' } },
-		'add_tasks_to_plan': () => {
-			const toolParams = _toolParams as BuiltinToolCallParams['add_tasks_to_plan']
-			return { desc1: `${toolParams.tasks.length} task(s)` }
+		'get_todos': () => { return { desc1: '' } },
+		'add_todos': () => {
+			const toolParams = _toolParams as BuiltinToolCallParams['add_todos']
+			return { desc1: `${toolParams.tasks.length} todo(s)` }
 		},
 		'create_implementation_plan': () => {
 			const toolParams = _toolParams as BuiltinToolCallParams['create_implementation_plan']

@@ -36,6 +36,7 @@ export const approvalTypeOfBuiltinToolName: Partial<{ [T in BuiltinToolName]?: '
 	'delete_file_or_folder': 'edits',
 	'rewrite_file': 'edits',
 	'edit_file': 'edits',
+	'edit_files': 'edits',
 	'update_walkthrough': 'edits',
 	'run_command': 'terminal',
 	'open_persistent_terminal': 'terminal',
@@ -96,6 +97,7 @@ export type BuiltinToolCallParams = {
 	// ---
 	'rewrite_file': { uri: URI, newContent: string },
 	'edit_file': { uri: URI, old_string: string, new_string: string },
+	'edit_files': { edits: Array<{ uri: URI, old_string: string, new_string: string }> },
 	'create_file_or_folder': { uri: URI, isFolder: boolean },
 	'delete_file_or_folder': { uri: URI, isRecursive: boolean, isFolder: boolean },
 	// ---
@@ -105,10 +107,10 @@ export type BuiltinToolCallParams = {
 	'open_persistent_terminal': { cwd: string | null },
 	'kill_persistent_terminal': { persistentTerminalId: string },
 	// ---
-	'create_plan': { goal: string, tasks: Array<{ id: string; description: string; dependencies: string[] }> },
-	'update_task_status': { taskId: string, status: string, notes: string | null },
-	'get_plan_status': {},
-	'add_tasks_to_plan': { tasks: Array<{ id: string; description: string; dependencies: string[] }> },
+	'create_todo': { goal: string, tasks: Array<{ id: string; description: string; dependencies: string[] }> },
+	'update_todo': { taskId: string, status: string, notes: string | null },
+	'get_todos': {},
+	'add_todos': { tasks: Array<{ id: string; description: string; dependencies: string[] }> },
 	// ---
 	'create_implementation_plan': {
 		goal: string,
@@ -256,6 +258,7 @@ export type BuiltinToolResultType = {
 	// ---
 	'rewrite_file': Promise<{ lintErrors: LintErrorItem[] | null }>,
 	'edit_file': Promise<{ lintErrors: LintErrorItem[] | null }>,
+	'edit_files': Promise<{ results: Array<{ uri: string, lintErrors: LintErrorItem[] | null, error?: string }> }>,
 	'create_file_or_folder': {},
 	'delete_file_or_folder': {},
 	// ---
@@ -265,10 +268,10 @@ export type BuiltinToolResultType = {
 	'open_persistent_terminal': { persistentTerminalId: string },
 	'kill_persistent_terminal': {},
 	// ---
-	'create_plan': { planId: string, summary: string },
-	'update_task_status': { taskId: string, newStatus: string, summary: string },
-	'get_plan_status': { planExists: boolean, summary: string | null },
-	'add_tasks_to_plan': { summary: string },
+	'create_todo': { planId: string, summary: string },
+	'update_todo': { taskId: string, newStatus: string, summary: string },
+	'get_todos': { planExists: boolean, summary: string | null },
+	'add_todos': { summary: string },
 	// ---
 	'create_implementation_plan': { planId: string, summary: string },
 	'preview_implementation_plan': { planId: string, goal: string, steps: any[], summary: string },

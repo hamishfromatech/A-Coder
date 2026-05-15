@@ -129,15 +129,15 @@ const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 
 	// Get action text based on tool name
 	const getActionText = (isLoading: boolean) => {
-		switch (toolName) {
-			case 'create_plan':
-				return isLoading ? 'Creating plan...' : 'Created Todo List'
-			case 'update_task_status':
-				return isLoading ? 'Updating task...' : 'Updated Task'
-			case 'add_tasks_to_plan':
-				return isLoading ? 'Adding tasks...' : 'Added Tasks'
-			case 'get_plan_status':
-				return isLoading ? 'Getting status...' : 'Plan Status'
+			switch (toolName) {
+				case 'create_todo':
+					return isLoading ? 'Creating todo...' : 'Created Todo List'
+				case 'update_todo':
+					return isLoading ? 'Updating todo...' : 'Updated Todo'
+				case 'add_todos':
+					return isLoading ? 'Adding todos...' : 'Added Todos'
+				case 'get_todos':
+					return isLoading ? 'Getting todos...' : 'Todo List'
 			default:
 				return isLoading ? 'Processing...' : 'Plan Updated'
 		}

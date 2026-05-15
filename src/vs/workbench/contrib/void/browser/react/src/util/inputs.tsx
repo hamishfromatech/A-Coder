@@ -1246,7 +1246,7 @@ export const VoidCheckBox = ({ label, value, onClick, className }: { label: stri
 
 
 
-export const VoidCustomDropdownBox = <T extends NonNullable<any>>({
+export const VoidCustomDropdownBox = <T extends unknown>({
 	options,
 	selectedOption,
 	onChangeOption,
