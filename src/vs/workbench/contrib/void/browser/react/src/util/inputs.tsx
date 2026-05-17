@@ -1446,6 +1446,7 @@ export const VoidCustomDropdownBox = <T extends unknown>({
 						position: strategy,
 						top: y ?? 0,
 						left: x ?? 0,
+						zIndex: 9999,
 						width: (matchInputWidth
 							? (refs.reference.current instanceof HTMLElement ? refs.reference.current.offsetWidth : 0)
 							: Math.max(
@@ -1489,11 +1490,11 @@ export const VoidCustomDropdownBox = <T extends unknown>({
 									<div
 										key={optionName + optionDetail}
 										className={`flex items-center px-2.5 py-1.5 pr-4 cursor-pointer whitespace-nowrap
-									transition-colors duration-100 rounded-md mx-1
-									${thisOptionIsSelected
-												? 'bg-void-accent text-void-fg-0'
-												: 'text-void-fg-2 hover:bg-void-bg-2 hover:text-void-fg-1'}
-								`}
+																					transition-colors duration-100 rounded-md mx-1
+																					${thisOptionIsSelected
+														? 'bg-void-accent text-void-fg-0'
+														: 'text-void-fg-2 hover:bg-void-bg-2 hover:text-void-fg-1'}
+																	`}
 										onClick={() => {
 											onChangeOption(option);
 											setIsOpen(false);

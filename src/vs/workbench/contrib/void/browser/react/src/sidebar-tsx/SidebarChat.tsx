@@ -923,15 +923,14 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 	return (
 		<div
 			ref={divRef}
-			className={`
-					flex flex-col p-3 relative text-left shrink-0 w-full
-					glass-premium rounded-2xl
-					transition-all duration-300 ease-out
-					focus-within:border-void-accent/30
-					hover:border-void-border-1 hover:shadow-void-md
-					max-h-[80vh] overflow-visible
-					${className}
-				`}
+					className={`
+						flex flex-col p-3 relative text-left shrink-0 w-full
+						glass-premium rounded-2xl
+						transition-all duration-300 ease-out
+						focus-within:border-void-accent/30
+						hover:border-void-border-1 hover:shadow-void-md
+						${className}
+					`}
 			onClick={(e) => {
 				onClickAnywhere?.()
 			}}
@@ -2764,7 +2763,7 @@ const ReasoningWrapper = ({ isDoneReasoning, isStreaming, children }: { isDoneRe
 
 	return (
 		<div className="my-3 mx-1">
-			<div className={`reasoning-card overflow-hidden ${isWriting ? 'reasoning-card-active' : ''}`}>
+			<div className={`reasoning-card ${isWriting ? 'reasoning-card-active' : ''}`}>
 				<button
 					type="button"
 					className="reasoning-header group"
@@ -3230,7 +3229,8 @@ export const SidebarChat = () => {
 											key={originalIdx}
 											className="mb-4 flex flex-col"
 											data-message-idx={originalIdx}
-											style={{ contentVisibility: 'auto', containIntrinsicSize: '0 200px' }}
+											// contentVisibility disabled to prevent clipping fixed-position dropdowns
+											// style={{ contentVisibility: 'auto', containIntrinsicSize: '0 200px' }}
 										>
 											<ChatBubble
 												currCheckpointIdx={currCheckpointIdx}
@@ -3248,11 +3248,12 @@ export const SidebarChat = () => {
 								// Normal message
 								elements.push(
 									<div
-										key={originalIdx}
-										className="mb-4 flex flex-col"
-										data-message-idx={originalIdx}
-										style={{ contentVisibility: 'auto', containIntrinsicSize: '0 200px' }}
-									>
+											key={originalIdx}
+											className="mb-4 flex flex-col"
+											data-message-idx={originalIdx}
+											// contentVisibility disabled to prevent clipping fixed-position dropdowns
+											// style={{ contentVisibility: 'auto', containIntrinsicSize: '0 200px' }}
+										>
 										<ChatBubble
 											currCheckpointIdx={currCheckpointIdx}
 											chatMessage={message}

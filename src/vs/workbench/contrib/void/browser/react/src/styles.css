@@ -784,7 +784,7 @@
 	box-shadow: var(--void-shadow-sm), inset 0 1px 0 color-mix(in srgb, var(--vscode-foreground) 3%, transparent);
 	transition: all var(--void-duration-normal) var(--void-ease-out);
 	position: relative;
-	overflow: hidden;
+	overflow: visible;
 }
 
 .void-reasoning-card:hover {
@@ -903,6 +903,7 @@
 	opacity: 1;
 	overflow: auto;
 	border-top: 1px solid color-mix(in srgb, var(--void-border-2) 50%, transparent);
+	border-radius: 0 0 var(--void-radius-md) var(--void-radius-md);
 	padding: 12px;
 }
 
