@@ -16,7 +16,7 @@ type UnionOfKeys<T> = T extends T ? keyof T : never;
 export type ProviderName = keyof typeof defaultProviderSettings
 export const providerNames = Object.keys(defaultProviderSettings) as ProviderName[]
 
-export const localProviderNames = ['ollama', 'vLLM', 'lmStudio', 'llamaCpp'] satisfies ProviderName[] // all local names
+export const localProviderNames = ['ollama', 'ollamaCloud', 'vLLM', 'lmStudio', 'llamaCpp'] satisfies ProviderName[] // all local names
 export const nonlocalProviderNames = providerNames.filter((name) => !(localProviderNames as string[]).includes(name)) // all non-local names
 
 type CustomSettingName = UnionOfKeys<typeof defaultProviderSettings[ProviderName]>
@@ -72,6 +72,9 @@ export const displayInfoOfProviderName = (providerName: ProviderName): DisplayIn
 	}
 	else if (providerName === 'ollama') {
 		return { title: 'Ollama', }
+	}
+	else if (providerName === 'ollamaCloud') {
+		return { title: 'Ollama Cloud', }
 	}
 	else if (providerName === 'vLLM') {
 		return { title: 'vLLM', }
@@ -134,6 +137,7 @@ export const subTextMdOfProviderName = (providerName: ProviderName): string => {
 	if (providerName === 'microsoftAzure') return 'Read more about endpoints [here](https://learn.microsoft.com/en-us/rest/api/aifoundry/model-inference/get-chat-completions/get-chat-completions?view=rest-aifoundry-model-inference-2024-05-01-preview&tabs=HTTP), and get your API key [here](https://learn.microsoft.com/en-us/azure/search/search-security-api-keys?tabs=rest-use%2Cportal-find%2Cportal-query#find-existing-keys).'
 	if (providerName === 'awsBedrock') return 'Connect via a LiteLLM proxy or the AWS [Bedrock-Access-Gateway](https://github.com/aws-samples/bedrock-access-gateway). LiteLLM Bedrock setup docs are [here](https://docs.litellm.ai/docs/providers/bedrock).'
 	if (providerName === 'ollama') return 'Read more about custom [Endpoints here](https://github.com/ollama/ollama/blob/main/docs/faq.md#how-can-i-expose-ollama-on-my-network).'
+	if (providerName === 'ollamaCloud') return 'Get your [API Key here](https://ollama.com/settings/keys).'
 	if (providerName === 'vLLM') return 'Read more about custom [Endpoints here](https://docs.vllm.ai/en/latest/getting_started/quickstart.html#openai-compatible-server).'
 	if (providerName === 'lmStudio') return 'Read more about custom [Endpoints here](https://lmstudio.ai/docs/app/api/endpoints/openai).'
 	if (providerName === 'liteLLM') return 'Read more about endpoints [here](https://docs.litellm.ai/docs/providers/openai_compatible).'
@@ -162,8 +166,9 @@ export const displayInfoOfSettingName = (providerName: ProviderName, settingName
 						providerName === 'openRouter' ? 'sk-or-key...' : // sk-or-v1-key
 							providerName === 'gemini' ? 'AIzaSy...' :
 								providerName === 'groq' ? 'gsk_key...' :
-									providerName === 'openAICompatible' ? 'sk-key...' :
-										providerName === 'xAI' ? 'xai-key...' :
+							providerName === 'openAICompatible' ? 'sk-key...' :
+								providerName === 'ollamaCloud' ? 'oc-key...' :
+									providerName === 'xAI' ? 'xai-key...' :
 											providerName === 'mistral' ? 'api-key...' :
 												providerName === 'googleVertex' ? 'AIzaSy...' :
 													providerName === 'microsoftAzure' ? 'key-...' :
@@ -178,7 +183,8 @@ export const displayInfoOfSettingName = (providerName: ProviderName, settingName
 	else if (settingName === 'endpoint') {
 		return {
 			title: providerName === 'ollama' ? 'Endpoint' :
-				providerName === 'vLLM' ? 'Endpoint' :
+				providerName === 'ollamaCloud' ? 'Endpoint' :
+					providerName === 'vLLM' ? 'Endpoint' :
 					providerName === 'lmStudio' ? 'Endpoint' :
 						providerName === 'llamaCpp' ? 'Endpoint' :
 							providerName === 'openAICompatible' ? 'baseURL' : // (do not include /chat/completions)
@@ -189,7 +195,8 @@ export const displayInfoOfSettingName = (providerName: ProviderName, settingName
 												'(never)',
 
 			placeholder: providerName === 'ollama' ? defaultProviderSettings.ollama.endpoint
-				: providerName === 'vLLM' ? defaultProviderSettings.vLLM.endpoint
+				: providerName === 'ollamaCloud' ? defaultProviderSettings.ollamaCloud.endpoint
+					: providerName === 'vLLM' ? defaultProviderSettings.vLLM.endpoint
 					: providerName === 'openAICompatible' ? 'https://my-website.com/v1'
 						: providerName === 'lmStudio' ? defaultProviderSettings.lmStudio.endpoint
 							: providerName === 'llamaCpp' ? defaultProviderSettings.llamaCpp.endpoint
@@ -344,6 +351,12 @@ export const defaultSettingsOfProvider: SettingsOfProvider = {
 		...modelInfoOfDefaultModelNames(defaultModelsOfProvider.ollama),
 		_didFillInProviderSettings: undefined,
 	},
+	ollamaCloud: { // aggregator (serves models from multiple providers)
+		...defaultCustomSettings,
+		...defaultProviderSettings.ollamaCloud,
+		...modelInfoOfDefaultModelNames(defaultModelsOfProvider.ollamaCloud),
+		_didFillInProviderSettings: undefined,
+	},
 	vLLM: { // aggregator (serves models from multiple providers)
 		...defaultCustomSettings,
 		...defaultProviderSettings.vLLM,
@@ -427,7 +440,7 @@ export const displayInfoOfFeatureName = (featureName: FeatureName) => {
 
 // the models of these can be refreshed (in theory all can, but not all should)
 export const refreshableProviderNames = [...localProviderNames, 'aCoder', 'openAdapter'] as const
-export type RefreshableProviderName = 'ollama' | 'vLLM' | 'lmStudio' | 'llamaCpp' | 'aCoder' | 'openAdapter'
+export type RefreshableProviderName = 'ollama' | 'ollamaCloud' | 'vLLM' | 'lmStudio' | 'llamaCpp' | 'aCoder' | 'openAdapter'
 
 // models that come with download buttons
 export const hasDownloadButtonsOnModelsProviderNames = ['ollama'] as const satisfies ProviderName[]

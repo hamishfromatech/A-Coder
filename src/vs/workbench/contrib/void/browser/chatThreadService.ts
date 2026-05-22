@@ -473,6 +473,7 @@ export type ThreadType = {
 	id: string; // store the id here too
 	createdAt: string; // ISO string
 	lastModified: string; // ISO string
+	name?: string; // Optional user-defined thread name
 
 	messages: ChatMessage[];
 	filesWithUserChanges: Set<string>;
@@ -627,6 +628,7 @@ export interface IChatThreadService {
 	// thread selector
 	deleteThread(threadId: string): void;
 	duplicateThread(threadId: string): void;
+	setThreadName(threadId: string, name: string): void;
 
 	// exposed getters/setters
 	// these all apply to current thread
@@ -3608,6 +3610,14 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		}
 		this._storeAllThreads(newThreads)
 		this._setState({ allThreads: newThreads })
+	}
+
+	setThreadName(threadId: string, name: string) {
+		const thread = this.state.allThreads[threadId]
+		if (!thread) return
+		thread.name = name
+		thread.lastModified = new Date().toISOString()
+		this._onDidChangeCurrentThread.fire()
 	}
 
 

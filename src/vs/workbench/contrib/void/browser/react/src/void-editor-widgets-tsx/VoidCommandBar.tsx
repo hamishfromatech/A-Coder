@@ -5,6 +5,7 @@
 
 
 import { useAccessor, useCommandBarState, useIsDark } from '../util/services.js';
+import { getBasename } from '../sidebar-tsx/ToolResultHelpers.js';
 
 import '../styles.css'
 import { useCallback, useEffect, useState, useRef } from 'react';
@@ -148,15 +149,33 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 	const leftRightDisabled = prevURIIdx === null || nextURIIdx === null
 
 	// accept/reject if current URI has changes
-	const onAcceptFile = () => {
+	const onAcceptFile = async () => {
 		if (!uri) return
-		editCodeService.acceptOrRejectAllDiffAreas({ uri, behavior: 'accept', removeCtrlKs: false, _addToHistory: true })
+		const idxBefore = currFileIdx
+		await editCodeService.acceptOrRejectAllDiffAreas({ uri, behavior: 'accept', removeCtrlKs: false, _addToHistory: true })
 		metricsService.capture('Accept File', {})
+		// Auto-advance: after removing current file, the next file is at the same index (array shifted up)
+		setTimeout(() => {
+			const newSorted = commandBarService.sortedURIs
+			if (newSorted.length === 0) return
+			let targetIdx = idxBefore
+			if (targetIdx >= newSorted.length) targetIdx = newSorted.length - 1
+			if (targetIdx >= 0) commandBarService.goToURIIdx(targetIdx)
+		}, 50)
 	}
-	const onRejectFile = () => {
+	const onRejectFile = async () => {
 		if (!uri) return
-		editCodeService.acceptOrRejectAllDiffAreas({ uri, behavior: 'reject', removeCtrlKs: false, _addToHistory: true })
+		const idxBefore = currFileIdx
+		await editCodeService.acceptOrRejectAllDiffAreas({ uri, behavior: 'reject', removeCtrlKs: false, _addToHistory: true })
 		metricsService.capture('Reject File', {})
+		// Auto-advance: after removing current file, the next file is at the same index (array shifted up)
+		setTimeout(() => {
+			const newSorted = commandBarService.sortedURIs
+			if (newSorted.length === 0) return
+			let targetIdx = idxBefore
+			if (targetIdx >= newSorted.length) targetIdx = newSorted.length - 1
+			if (targetIdx >= 0) commandBarService.goToURIIdx(targetIdx)
+		}, 50)
 	}
 
 	const onAcceptAll = () => {
@@ -191,6 +210,14 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 	const acceptAllKeybindLabel = editCodeService.processRawKeybindingText(_acceptAllKeybinding?.getAriaLabel() || '');
 	const rejectAllKeybindLabel = editCodeService.processRawKeybindingText(_rejectAllKeybinding?.getAriaLabel() || '');
 
+
+	// Overall review progress across all files
+	const totalDiffs = sortedCommandBarURIs.reduce((sum, u) => sum + (commandBarState[u.fsPath]?.sortedDiffIds?.length || 0), 0);
+	const reviewedDiffs = sortedCommandBarURIs.reduce((sum, u) => {
+		const idx = commandBarState[u.fsPath]?.diffIdx;
+		return sum + (idx !== null && idx !== undefined ? idx + 1 : 0);
+	}, 0);
+	const progress = totalDiffs > 0 ? reviewedDiffs / totalDiffs : 0;
 
 	if (!isADiffZoneInAnyFile) return null
 
@@ -247,7 +274,19 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 				</div>
 			)}
 
-			<div className="flex items-center h-10 bg-void-bg-1/95 backdrop-blur-md rounded-xl shadow-2xl border border-void-border-2 p-1 gap-1">
+			<div className="relative flex items-center h-10 bg-void-bg-1/95 backdrop-blur-md rounded-xl shadow-2xl border border-void-border-2 p-1 gap-1">
+
+				{/* Overall progress indicator — thin bar at top */}
+				{totalDiffs > 0 && (
+					<div className="absolute -top-2 left-0 right-0 h-1 px-1">
+						<div className="w-full h-full bg-void-bg-3 rounded-full overflow-hidden">
+							<div
+								className="h-full bg-void-accent rounded-full transition-all duration-300"
+								style={{ width: `${Math.round(progress * 100)}%` }}
+							/>
+						</div>
+					</div>
+				)}
 
 				{/* Diff Navigation Group */}
 				<div className="flex items-center h-full px-2 gap-1 border-r border-void-border-2/50 mr-1">
@@ -314,9 +353,14 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 					>
 						<MoveLeft className='size-3.5 text-void-fg-1' />
 					</button>
-					<span className="text-xs font-semibold whitespace-nowrap px-1 mx-0.5 text-void-fg-1 min-w-[80px] text-center">
+					<span className="text-xs font-semibold whitespace-nowrap px-1 mx-0.5 text-void-fg-1 min-w-[100px] text-center leading-tight">
 						{currFileIdx !== null
-							? `File ${currFileIdx + 1} of ${sortedCommandBarURIs.length}`
+							? <>
+								<span>File {currFileIdx + 1} of {sortedCommandBarURIs.length}</span>
+								<span className="block text-[10px] text-void-fg-3 font-normal truncate max-w-[120px]">
+									{getBasename(uri?.fsPath || '')}
+								</span>
+							</>
 							: `${sortedCommandBarURIs.length} file${sortedCommandBarURIs.length === 1 ? '' : 's'}`
 						}
 					</span>

@@ -37,24 +37,21 @@ export const CoachBubble: React.FC<CoachBubbleProps> = ({
 	const severityConfig = {
 		error: {
 			icon: AlertTriangle,
-			bg: 'bg-red-50 dark:bg-red-900/20',
-			border: 'border-red-200 dark:border-red-800',
-			text: 'text-red-700 dark:text-red-400',
-			iconBg: 'bg-red-100 dark:bg-red-900/40',
+			borderLeft: 'border-l-red-500',
+			iconColor: 'text-red-500',
+			iconBg: 'bg-red-500/10',
 		},
 		warning: {
 			icon: Lightbulb,
-			bg: 'bg-amber-50 dark:bg-amber-900/20',
-			border: 'border-amber-200 dark:border-amber-800',
-			text: 'text-amber-700 dark:text-amber-400',
-			iconBg: 'bg-amber-100 dark:bg-amber-900/40',
+			borderLeft: 'border-l-yellow-500',
+			iconColor: 'text-yellow-500',
+			iconBg: 'bg-yellow-500/10',
 		},
 		info: {
 			icon: Info,
-			bg: 'bg-blue-50 dark:bg-blue-900/20',
-			border: 'border-blue-200 dark:border-blue-800',
-			text: 'text-blue-700 dark:text-blue-400',
-			iconBg: 'bg-blue-100 dark:bg-blue-900/40',
+			borderLeft: 'border-l-void-accent',
+			iconColor: 'text-void-accent',
+			iconBg: 'bg-void-accent/10',
 		},
 	};
 
@@ -77,30 +74,30 @@ export const CoachBubble: React.FC<CoachBubbleProps> = ({
 		<div
 			className={`
 				pointer-events-auto select-none
-				max-w-sm rounded-lg shadow-lg border p-4
+				max-w-sm rounded-lg shadow-lg border border-void-border-2 border-l-4 bg-void-bg-1 p-4
 				transition-all duration-300 ease-out
-				${config.bg} ${config.border}
+				${config.borderLeft}
 				${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'}
 			`}
 		>
 			<div className="flex items-start justify-between mb-2">
 				<div className="flex items-center gap-2">
 					<div className={`p-1.5 rounded-full ${config.iconBg}`}>
-						<Icon size={16} className={config.text} />
+						<Icon size={16} className={config.iconColor} />
 					</div>
-					<span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+					<span className="text-xs font-semibold uppercase tracking-wide text-void-fg-3">
 						Coach
 					</span>
 				</div>
 				<button
 					onClick={handleDismiss}
-					className="p-1 rounded hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+					className="p-1 rounded hover:bg-void-bg-2 transition-colors"
 				>
-					<X size={14} className="text-gray-400" />
+					<X size={14} className="text-void-fg-4" />
 				</button>
 			</div>
 
-			<p className={`text-sm leading-relaxed mb-3 ${config.text}`}>
+			<p className={`text-sm leading-relaxed mb-3 text-void-fg-2`}>
 				{observation.message}
 			</p>
 
@@ -110,7 +107,7 @@ export const CoachBubble: React.FC<CoachBubbleProps> = ({
 					className={`
 						flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium
 						transition-all duration-200 hover:opacity-90 active:scale-95
-						${config.text} ${config.iconBg} ${config.border} border
+						bg-void-bg-2 border border-void-border-2 text-void-fg-2 hover:bg-void-bg-3
 					`}
 				>
 					<MessageSquare size={12} />

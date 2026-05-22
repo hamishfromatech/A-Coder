@@ -525,36 +525,40 @@ export const BlockCodeApplyWrapper = ({
 	const currStreamState = currStreamStateRef.current
 
 
-	const name = uri !== 'current' ?
-		<ListableToolItem
-			name={<span className='not-italic'>{getBasename(uri.fsPath)}</span>}
-			isSmall={true}
-			showDot={false}
-			onClick={() => { voidOpenFileFn(uri, accessor) }}
-		/>
-		: <span>{language}</span>
-
-
-	return <div className='border border-void-border-3 rounded overflow-hidden bg-void-bg-3 my-1'>
+	return <div className='border border-void-border-3 rounded overflow-hidden bg-void-bg-3 my-1 group/codeblock'>
 		{/* header */}
-		<div className=" select-none flex justify-between items-center py-1 px-2 border-b border-void-border-3 cursor-default">
-			<div className="flex items-center">
+		<div className="select-none flex justify-between items-center py-1 px-2 border-b border-void-border-3 cursor-default">
+			<div className="flex items-center gap-2">
 				<StatusIndicatorForApplyButton uri={uri} applyBoxId={applyBoxId} />
-				<span className="text-[13px] font-light text-void-fg-3">
-					{name}
-				</span>
+				{uri !== 'current' ? (
+					<ListableToolItem
+						name={<span className='not-italic'>{getBasename(uri.fsPath)}</span>}
+						isSmall={true}
+						showDot={false}
+						onClick={() => { voidOpenFileFn(uri, accessor) }}
+					/>
+				) : (
+					<span className="text-[12px] font-mono font-medium px-1.5 py-0.5 bg-void-bg-2 rounded text-void-fg-3 uppercase tracking-wide">
+						{language || 'code'}
+					</span>
+				)}
 			</div>
 			<div className={`${canApply ? '' : 'hidden'} flex items-center gap-1`}>
 				<JumpToFileButton uri={uri} />
-				{currStreamState === 'idle-no-changes' && <CopyButton codeStr={codeStr} toolTipName='Copy' />}
 				<ApplyButtonsHTML uri={uri} applyBoxId={applyBoxId} codeStr={codeStr} language={language} />
 			</div>
 		</div>
 
 		{/* contents */}
-		<ToolChildrenWrapper>
-			{children}
-		</ToolChildrenWrapper>
+		<div className="relative">
+			{/* floating copy button — visible on hover */}
+			<div className="absolute top-2 right-2 opacity-0 group-hover/codeblock:opacity-100 transition-opacity duration-200 z-10">
+				<CopyButton codeStr={codeStr} toolTipName='Copy code' />
+			</div>
+			<ToolChildrenWrapper>
+				{children}
+			</ToolChildrenWrapper>
+		</div>
 	</div>
 
 }

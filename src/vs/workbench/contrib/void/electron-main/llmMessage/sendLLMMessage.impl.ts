@@ -167,6 +167,20 @@ const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName, includ
 			...commonPayloadOpts
 		})
 	}
+	else if (providerName === 'ollamaCloud') {
+		const thisConfig = settingsOfProvider[providerName]
+		return new OpenAI({
+			baseURL: `${thisConfig.endpoint}/v1`,
+			apiKey: thisConfig.apiKey,
+			// Add specific configurations for better Ollama compatibility
+			defaultHeaders: {
+				'HTTP-User-Agent': 'A-Coder/1.0.0'
+			},
+			// Increase timeout for Ollama models which can be slower
+			timeout: 120000, // 2 minutes
+			...commonPayloadOpts
+		})
+	}
 	else if (providerName === 'vLLM') {
 		const thisConfig = settingsOfProvider[providerName]
 		return new OpenAI({ baseURL: `${thisConfig.endpoint}/v1`, apiKey: 'noop', ...commonPayloadOpts })
@@ -1572,6 +1586,11 @@ export const sendLLMMessageToProviderImplementation = {
 		sendChat: (params) => _sendOllamaChatWithFallback(params),
 		sendFIM: sendOllamaFIM,
 		list: ollamaList,
+	},
+	ollamaCloud: {
+		sendChat: (params) => _sendOpenAICompatibleChat(params),
+		sendFIM: null,
+		list: (params) => _openaiCompatibleList(params),
 	},
 	openAICompatible: {
 		sendChat: (params) => _sendOpenAICompatibleChat(params), // using openai's SDK is not ideal (your implementation might not do tools, reasoning, FIM etc correctly), talk to us for a custom integration

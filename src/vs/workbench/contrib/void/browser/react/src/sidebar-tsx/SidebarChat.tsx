@@ -22,7 +22,7 @@ import { ChatMode, displayInfoOfProviderName, FeatureName, isFeatureNameDisabled
 import { ICommandService } from '../../../../../../../platform/commands/common/commands.js';
 import { WarningBox } from '../void-settings-tsx/WarningBox.js';
 import { getModelCapabilities, getIsReasoningEnabledState } from '../../../../common/modelCapabilities.js';
-import { AlertTriangle, ChevronRight, ChevronDown, X, Copy as CopyIcon, CircleEllipsis, Play, Settings, ArrowUp, ArrowDown, Trash2, Send, Circle, Loader2, Brain, Check, Pencil, CirclePlus, File as FileIcon, Folder as FolderIcon, Text as TextIcon, SkipForward, MessageCircle, RotateCw } from 'lucide-react';
+import { AlertTriangle, ChevronRight, ChevronDown, X, Copy as CopyIcon, CircleEllipsis, Play, Settings, ArrowUp, ArrowDown, Trash2, Send, Circle, Loader2, Brain, Check, Pencil, CirclePlus, File as FileIcon, Folder as FolderIcon, Text as TextIcon, SkipForward, MessageCircle, RotateCw, FileText, FileCode, FileJson, Target, CheckCircle, Lightbulb, Trophy } from 'lucide-react';
 import { ChatMessage, CheckpointEntry, StagingSelectionItem, ToolMessage, ImageAttachment } from '../../../../common/chatThreadServiceTypes.js';
 import { BuiltinToolName, ToolName, IsRunningType, approvalTypeOfBuiltinToolName } from '../../../../common/toolsServiceTypes.js';
 import { CopyButton, EditToolAcceptRejectButtonsHTML, IconShell1, StatusIndicator, useEditToolStreamState } from '../markdown/ApplyBlockHoverButtons.js';
@@ -37,6 +37,12 @@ import { TypingIndicator, ToolLoadingIndicator, ReActPhaseIndicator, SmoothHeigh
 import { MCPServerModal } from './MCPServerModal.js';
 import { TaskPlan } from '../../../chatThreadService.js';
 import { CheckpointTimeline } from './CheckpointTimeline.js';
+import { ImageLightbox } from './ImageLightbox.js';
+import { SlashCommandMenu, SlashCommand } from './SlashCommandMenu.js';
+import { CompressionToast } from './CompressionToast.js';
+import { ToastNotification } from './ToastNotification.js';
+import { KeyboardShortcutsBanner } from '../util/KeyboardShortcutsBanner.js';
+import { SkeletonMessageList } from './SkeletonMessage.js';
 
 import { 
 	ToolHeaderWrapper, 
@@ -83,39 +89,51 @@ const LazyImplementationPlanPreviewWrapper = React.lazy(() => import('./Implemen
 const ImagePreview = ({ images, onRemove }: { images: ImageAttachment[], onRemove: (index: number) => void }) => {
 	if (images.length === 0) return null;
 
+	const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
 	return (
-		<div className="flex flex-wrap gap-2 mb-2 p-2 card">
-			{images.map((image, index) => (
-				<div key={index} className="relative group">
-					<img
-						src={`data:${image.mimeType};base64,${image.base64}`}
-						alt={image.name || `Attached image ${index + 1}`}
-						className="w-20 h-20 object-cover rounded border border-void-border-2"
-						onError={(e) => {
-							// Fallback for failed image loads
-							const target = e.target as HTMLImageElement;
-							target.style.display = 'none';
-						}}
-					/>
-					<button
-						onClick={() => onRemove(index)}
-						className="absolute -top-1 -right-1 bg-void-bg-1 border border-void-border-2 rounded-full p-2 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-void-accent focus:ring-offset-1"
-						data-tooltip-id="void-tooltip"
-						data-tooltip-content="Remove image"
-						aria-label={`Remove ${image.name || `image ${index + 1}`}`}
-					>
-						<X size={12} className="text-void-fg-3" />
-					</button>
-					{image.name && (
-						<div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] px-1 py-0.5 truncate rounded-b" title={image.name}>
-							{image.name}
+		<>
+			<div className="flex flex-wrap gap-2 mb-2 p-2 card">
+				{images.map((image, index) => (
+					<div key={index} className="relative group">
+						<img
+							src={`data:${image.mimeType};base64,${image.base64}`}
+							alt={image.name || `Attached image ${index + 1}`}
+							className="w-20 h-20 object-cover rounded border border-void-border-2 cursor-pointer hover:opacity-80 transition-opacity"
+							onClick={() => setLightboxIndex(index)}
+							onError={(e) => {
+								const target = e.target as HTMLImageElement;
+								target.style.display = 'none';
+							}}
+						/>
+						<button
+							onClick={() => onRemove(index)}
+							className="absolute -top-1 -right-1 bg-void-bg-1 border border-void-border-2 rounded-full p-2 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-void-accent focus:ring-offset-1"
+							data-tooltip-id="void-tooltip"
+							data-tooltip-content="Remove image"
+							aria-label={`Remove ${image.name || `image ${index + 1}`}`}
+						>
+							<X size={12} className="text-void-fg-3" />
+						</button>
+						{image.name && (
+							<div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] px-1 py-0.5 truncate rounded-b" title={image.name}>
+								{image.name}
+							</div>
+							)}
 						</div>
-					)}
+					))}
 				</div>
-			))}
-		</div>
-	);
-};
+				{lightboxIndex !== null && (
+					<ImageLightbox
+						src={`data:${images[lightboxIndex].mimeType};base64,${images[lightboxIndex].base64}`}
+						alt={images[lightboxIndex].name}
+						isOpen={true}
+						onClose={() => setLightboxIndex(null)}
+					/>
+				)}
+			</>
+		);
+	};
 
 // Time ago helper
 const formatTimeAgo = (timestamp: number | undefined): string => {
@@ -130,6 +148,21 @@ const formatTimeAgo = (timestamp: number | undefined): string => {
 	if (minutes < 60) return `${minutes}m`;
 	if (hours < 24) return `${hours}h`;
 	return `${days}d`;
+};
+
+// Full timestamp for tooltip
+const formatFullTimestamp = (timestamp: number | undefined): string => {
+	if (!timestamp) return '';
+	const date = new Date(timestamp);
+	return date.toLocaleString('en-US', {
+		month: 'short',
+		day: 'numeric',
+		year: 'numeric',
+		hour: 'numeric',
+		minute: '2-digit',
+		second: '2-digit',
+		hour12: true
+	});
 };
 
 // Message context menu component
@@ -1419,6 +1452,7 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 	const [isFocused, setIsFocused] = useState(false)
 	const [isHovered, setIsHovered] = useState(false)
 	const [isDisabled, setIsDisabled] = useState(false)
+	const [lightboxImage, setLightboxImage] = useState<{ src: string; alt?: string } | null>(null)
 	const [textAreaRefState, setTextAreaRef] = useState<HTMLTextAreaElement | null>(null)
 	const textAreaFnsRef = useRef<TextAreaFns | null>(null)
 	// initialize on first render, and when edit was just enabled
@@ -1501,7 +1535,11 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 							alt={image.name || `Image ${index + 1}`}
 							className="w-32 h-32 object-cover rounded-xl border border-void-border-1/30 cursor-pointer hover:opacity-90 transition-all duration-300 hover:scale-[1.02] shadow-md"
 							onClick={(e) => {
-								e.stopPropagation(); // Prevent triggering edit mode
+								e.stopPropagation()
+								setLightboxImage({
+									src: `data:${image.mimeType};base64,${image.base64}`,
+									alt: image.name
+								})
 							}}
 						/>
 					))}
@@ -1634,7 +1672,15 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 								</div>
 								<span className="user-message-label">You</span>
 								{timeAgo && (
-									<span className="text-[10px] text-void-fg-4/50 ml-1.5">{timeAgo}</span>
+									<span
+										className="text-[10px] text-void-fg-4/50 ml-1.5 cursor-default"
+										data-tooltip-id="void-tooltip"
+										data-tooltip-content={formatFullTimestamp((chatMessage as any)._timestamp)}
+										data-tooltip-place="top"
+										data-tooltip-delay-show={500}
+									>
+										{timeAgo}
+									</span>
 								)}
 								{/* Show a compact preview of the message in the header when collapsed */}
 								{!isExpanded && shouldCollapse && (
@@ -1686,11 +1732,17 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 											{chatMessage.images.map((image, index) => (
 												<img
 													key={index}
-													src={`data:${image.mimeType};base64,${image.base64}`}
-													alt={image.name || `Image ${index + 1}`}
-													className="w-32 h-32 object-cover rounded-xl border border-void-border-1/30 cursor-pointer hover:opacity-90 transition-all duration-300 hover:scale-[1.02] shadow-md"
-													onClick={(e) => { e.stopPropagation() }}
-												/>
+															src={`data:${image.mimeType};base64,${image.base64}`}
+															alt={image.name || `Image ${index + 1}`}
+															className="w-32 h-32 object-cover rounded-xl border border-void-border-1/30 cursor-pointer hover:opacity-90 transition-all duration-300 hover:scale-[1.02] shadow-md"
+															onClick={(e) => {
+																e.stopPropagation()
+																setLightboxImage({
+																	src: `data:${image.mimeType};base64,${image.base64}`,
+																	alt: image.name
+																})
+															}}
+														/>
 											))}
 										</div>
 									)}
@@ -1716,6 +1768,14 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 					onRetry={handleRetry}
 					canRetry={true}
 					canDelete={true}
+				/>
+			)}
+			{lightboxImage && (
+				<ImageLightbox
+					src={lightboxImage.src}
+					alt={lightboxImage.alt}
+					isOpen={true}
+					onClose={() => setLightboxImage(null)}
 				/>
 			)}
 		</div>
@@ -1752,6 +1812,24 @@ const AssistantMessageComponent = React.memo(({ chatMessage, isCheckpointGhost, 
 		chatThreadsService.deleteMessagesFromIndex(threadId, messageIdx)
 	}
 
+	const handleRegenerate = async () => {
+		const threadId = chatThreadsService.state.currentThreadId
+		const thread = chatThreadsService.state.allThreads[threadId]
+		if (!thread) return
+		// Find the user message that triggered this assistant message
+		let userMsgIdx = -1
+		for (let i = messageIdx - 1; i >= 0; i--) {
+			if (thread.messages[i]?.role === 'user') {
+				userMsgIdx = i
+				break
+			}
+		}
+		if (userMsgIdx === -1) return
+		// Abort any running stream first
+		await chatThreadsService.abortRunning(threadId)
+		// Retry from the user message
+		await chatThreadsService.retryFromMessage(threadId, userMsgIdx)
+	}
 
 	const chatMessageLocation: ChatMessageLocation = {
 		threadId: thread.id,
@@ -1802,23 +1880,31 @@ const AssistantMessageComponent = React.memo(({ chatMessage, isCheckpointGhost, 
 				<div className="flex items-center gap-2 px-1">
 					<span className="text-[9px] font-black uppercase tracking-[0.15em] text-void-fg-4/60">A-Coder</span>
 					{timeAgo && (
-						<span className="text-[10px] text-void-fg-4/50">{timeAgo}</span>
+						<span
+							className="text-[10px] text-void-fg-4/50 cursor-default"
+							data-tooltip-id="void-tooltip"
+							data-tooltip-content={formatFullTimestamp((chatMessage as any)._timestamp)}
+							data-tooltip-place="top"
+							data-tooltip-delay-show={500}
+						>
+							{timeAgo}
+						</span>
 					)}
 				</div>
 
-				{/* Context Menu */}
-				{contextMenu && (
-					<MessageContextMenu
-						x={contextMenu.x}
-						y={contextMenu.y}
-						onClose={() => setContextMenu(null)}
-						onCopy={handleCopy}
-						onDelete={handleDelete}
-						onRetry={() => {}}
-						canRetry={false}
-						canDelete={true}
-					/>
-				)}
+			{/* Context Menu */}
+			{contextMenu && (
+				<MessageContextMenu
+					x={contextMenu.x}
+					y={contextMenu.y}
+					onClose={() => setContextMenu(null)}
+					onCopy={handleCopy}
+					onDelete={handleDelete}
+					onRetry={handleRegenerate}
+					canRetry={true}
+					canDelete={true}
+				/>
+			)}
 			</div>
 		</div>
 	)
@@ -2467,9 +2553,32 @@ const CommandBarInChat = () => {
 
 
 	// !select-text cursor-auto
+	const getFileIcon = (pathStr: string) => {
+		const ext = pathStr.split('.').pop()?.toLowerCase() || '';
+		if (['tsx', 'ts', 'jsx', 'js'].includes(ext)) return <FileCode size={13} className="text-void-accent flex-shrink-0" />;
+		if (['json', 'yaml', 'yml'].includes(ext)) return <FileJson size={13} className="text-yellow-400 flex-shrink-0" />;
+		return <FileText size={13} className="text-void-fg-4 flex-shrink-0" />;
+	};
+
+	const [resolvedFiles, setResolvedFiles] = useState<Set<string>>(new Set());
+
+	// Reset resolved state when the thread or files change significantly
+	useEffect(() => {
+		setResolvedFiles(new Set());
+	}, [chatThreadsState.currentThreadId]);
+
 	const fileDetailsContent = <div className="px-2 gap-1 w-full overflow-y-auto">
 		{sortedCommandBarURIs.map((uri, i) => {
-			const basename = getBasename(uri.fsPath)
+			const isResolved = resolvedFiles.has(uri.fsPath);
+			if (isResolved) return null; // hide resolved files
+
+			const basename = getBasename(uri.fsPath);
+			const relPath = getRelative(uri, accessor);
+			// Show parent folder as context (e.g., "src/components/index.tsx" → "…components/index.tsx")
+			const pathParts = relPath?.split('/').filter(Boolean) || [];
+			const folderContext = pathParts.length > 1
+				? '…' + pathParts.slice(-2, -1).join('/')
+				: '';
 
 			const { sortedDiffIds, isStreaming } = commandBarStateOfURI[uri.fsPath] ?? {}
 			const isFinishedMakingFileChanges = !isStreaming
@@ -2482,60 +2591,64 @@ const CommandBarInChat = () => {
 			)
 
 			const fileNameHTML = <div
-				className="flex items-center gap-1.5 text-void-fg-3 hover:brightness-125 transition-all duration-200 cursor-pointer"
+				className="flex items-center gap-1.5 min-w-0 cursor-pointer group"
 				onClick={() => voidOpenFileFn(uri, accessor)}
 			>
-				{/* <FileIcon size={14} className="text-void-fg-3" /> */}
-				<span className="text-void-fg-3">{basename}</span>
+				{getFileIcon(uri.fsPath)}
+				<span className="truncate text-void-fg-2 group-hover:text-void-fg-1 transition-colors text-xs font-medium">
+					{basename}
+				</span>
+				{folderContext && (
+					<span className="text-[10px] text-void-fg-4 truncate ml-0.5">
+						{folderContext}
+					</span>
+				)}
 			</div>
 
-
-
-
-			const detailsContent = <div className='flex px-4'>
-				<span className="text-void-fg-3">{numDiffs} diff{numDiffs !== 1 ? 's' : ''}</span>
+			const detailsContent = <div className='flex px-2'>
+				<span className="text-[11px] text-void-fg-4">{numDiffs} diff{numDiffs !== 1 ? 's' : ''}</span>
 			</div>
+
+			const handleAccept = () => {
+				editCodeService.acceptOrRejectAllDiffAreas({ uri, removeCtrlKs: true, behavior: "accept", _addToHistory: true });
+				setResolvedFiles(prev => new Set(prev).add(uri.fsPath));
+			};
+
+			const handleReject = () => {
+				editCodeService.acceptOrRejectAllDiffAreas({ uri, removeCtrlKs: true, behavior: "reject", _addToHistory: true });
+				setResolvedFiles(prev => new Set(prev).add(uri.fsPath));
+			};
 
 			const acceptRejectButtons = <div
-				// do this with opacity so that the height remains the same at all times
-				className={`flex items-center gap-0.5
-					${isFinishedMakingFileChanges ? '' : 'opacity-0 pointer-events-none'}
-				`}
+				className={`flex items-center gap-0.5 ${isFinishedMakingFileChanges ? '' : 'opacity-0 pointer-events-none'}`}
 			>
-				{/* <JumpToFileButton
-					uri={uri}
-					data-tooltip-id='void-tooltip'
-					data-tooltip-place='top'
-					data-tooltip-content='Go to file'
-				/> */}
-				<IconShell1 // RejectAllButtonWrapper
+				<IconShell1
 					Icon={X}
-					onClick={() => { editCodeService.acceptOrRejectAllDiffAreas({ uri, removeCtrlKs: true, behavior: "reject", _addToHistory: true, }); }}
+					className='size-3.5'
+					onClick={handleReject}
 					data-tooltip-id='void-tooltip'
 					data-tooltip-place='top'
 					data-tooltip-content='Reject file'
-
 				/>
-				<IconShell1 // AcceptAllButtonWrapper
+				<IconShell1
 					Icon={Check}
-					onClick={() => { editCodeService.acceptOrRejectAllDiffAreas({ uri, removeCtrlKs: true, behavior: "accept", _addToHistory: true, }); }}
+					className='size-3.5'
+					onClick={handleAccept}
 					data-tooltip-id='void-tooltip'
 					data-tooltip-place='top'
 					data-tooltip-content='Accept file'
 				/>
-
 			</div>
 
 			const fileStatusHTML = <StatusIndicator className='mx-1' indicatorColor={fileStatus.color} title={fileStatus.title} />
 
 			return (
-				// name, details
-				<div key={i} className="flex justify-between items-center">
-					<div className="flex items-center">
+				<div key={i} className="flex justify-between items-center py-0.5">
+					<div className="flex items-center min-w-0">
 						{fileNameHTML}
 						{detailsContent}
 					</div>
-					<div className="flex items-center gap-2">
+					<div className="flex items-center gap-2 flex-shrink-0">
 						{acceptRejectButtons}
 						{fileStatusHTML}
 					</div>
@@ -2901,6 +3014,11 @@ export const SidebarChat = () => {
 	const [attachedImages, setAttachedImages] = useState<ImageAttachment[]>([])
 	const [isDraggingOver, setIsDraggingOver] = useState(false)
 
+	// Slash command menu state
+	const [slashMenuOpen, setSlashMenuOpen] = useState(false)
+	const [slashQuery, setSlashQuery] = useState('')
+	const slashMenuContainerRef = useRef<HTMLDivElement>(null)
+
 	// MCP Server Modal state
 	const [isMCPModalOpen, setIsMCPModalOpen] = useState(false)
 
@@ -3044,6 +3162,33 @@ export const SidebarChat = () => {
 
 	const sidebarRef = useRef<HTMLDivElement>(null)
 	const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+
+	// Preserve scroll position per thread
+	const scrollPositionsRef = useRef<Map<string, number>>(new Map());
+
+	// Save scroll position before switching threads
+	useEffect(() => {
+		return () => {
+			// Cleanup: save current scroll position when component unmounts or thread changes
+			if (scrollContainerRef.current && threadId) {
+				scrollPositionsRef.current.set(threadId, scrollContainerRef.current.scrollTop);
+			}
+		};
+	}, [threadId]);
+
+	// Restore scroll position when thread changes
+	useEffect(() => {
+		if (!scrollContainerRef.current) return;
+		const saved = scrollPositionsRef.current.get(threadId);
+		if (saved !== undefined) {
+			// Use requestAnimationFrame to ensure the DOM has updated
+			requestAnimationFrame(() => {
+				if (scrollContainerRef.current) {
+					scrollContainerRef.current.scrollTop = saved;
+				}
+			});
+		}
+	}, [threadId]);
 
 	// Floating scroll-to-bottom button state
 	const [showScrollToBottom, setShowScrollToBottom] = useState(false)
@@ -3478,8 +3623,25 @@ export const SidebarChat = () => {
 	const lastEnterPressRef = useRef<number>(0);
 	const DOUBLE_TAP_THRESHOLD = 500; // ms
 
+	// Input history navigation for Up/Down arrows
+	const inputHistoryRef = useRef<string[]>([]);
+	const historyIndexRef = useRef<number>(-1); // -1 = current draft, 0..n = history items
+	const historyDraftRef = useRef<string>('');
+
+	useEffect(() => {
+		const msgs = previousMessages
+			.filter(m => m.role === 'user')
+			.map(m => (m as any).displayContent || '')
+			.filter((text: string) => text.trim().length > 0);
+		inputHistoryRef.current = msgs;
+	}, [previousMessages]);
+
 	const onKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
 		if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+			// Reset history navigation when sending
+			historyIndexRef.current = -1;
+			historyDraftRef.current = '';
+
 			const now = Date.now();
 			const timeSinceLastEnter = now - lastEnterPressRef.current;
 
@@ -3503,6 +3665,34 @@ export const SidebarChat = () => {
 			}
 		} else if (e.key === 'Escape' && isRunning) {
 			onAbort();
+		} else if (e.key === 'ArrowUp' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+			const textarea = e.currentTarget;
+			const isAtStart = textarea.selectionStart === 0 && textarea.selectionEnd === 0;
+			if (isAtStart && inputHistoryRef.current.length > 0) {
+				if (historyIndexRef.current === -1) {
+					historyDraftRef.current = textarea.value;
+					historyIndexRef.current = inputHistoryRef.current.length - 1;
+				} else {
+					historyIndexRef.current = Math.max(0, historyIndexRef.current - 1);
+				}
+				const historyItem = inputHistoryRef.current[historyIndexRef.current];
+				textAreaFnsRef.current?.setValue(historyItem);
+				e.preventDefault();
+			}
+		} else if (e.key === 'ArrowDown' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+			const textarea = e.currentTarget;
+			const isAtEnd = textarea.selectionStart === textarea.value.length && textarea.selectionEnd === textarea.value.length;
+			if (isAtEnd && historyIndexRef.current !== -1) {
+				historyIndexRef.current += 1;
+				if (historyIndexRef.current >= inputHistoryRef.current.length) {
+					historyIndexRef.current = -1;
+					textAreaFnsRef.current?.setValue(historyDraftRef.current);
+				} else {
+					const historyItem = inputHistoryRef.current[historyIndexRef.current];
+					textAreaFnsRef.current?.setValue(historyItem);
+				}
+				e.preventDefault();
+			}
 		}
 	}, [onSubmit, onAbort, isRunning])
 
@@ -3682,11 +3872,43 @@ export const SidebarChat = () => {
 				<ImagePreview images={attachedImages} onRemove={removeImage} />
 			)}
 
+			{/* Slash Command Menu */}
+			<div ref={slashMenuContainerRef} className="relative">
+				<SlashCommandMenu
+					query={slashQuery}
+					isOpen={slashMenuOpen}
+					onSelect={(cmd) => {
+						setSlashMenuOpen(false);
+						setSlashQuery('');
+						if (textAreaFnsRef.current) {
+							textAreaFnsRef.current.setValue('/' + cmd.label + ' ');
+						}
+						textAreaRef.current?.focus();
+					}}
+					onClose={() => {
+						setSlashMenuOpen(false);
+						setSlashQuery('');
+					}}
+					inputRef={textAreaRef}
+				/>
+			</div>
+
 			<VoidInputBox2
 				enableAtToMention
 				className={`min-h-[81px] px-3 py-2 border-0 focus:ring-0 w-full`}
 				placeholder={queuedCount > 0 ? `Enter to send queued message (⏎)` : `@ to mention, ${keybindingString ? `${keybindingString} to add a selection. ` : ''}Enter instructions...`}
-				onChangeText={onChangeText}
+				onChangeText={(text) => {
+					onChangeText(text);
+					// Detect slash command typing
+					if (text.startsWith('/')) {
+						const query = text.slice(1).split(' ')[0] || '';
+						setSlashQuery(query);
+						setSlashMenuOpen(true);
+					} else {
+						setSlashMenuOpen(false);
+						setSlashQuery('');
+					}
+				}}
 				onKeyDown={onKeyDown}
 				onFocus={() => { chatThreadsService.setCurrentlyFocusedMessageIdx(undefined) }}
 				ref={textAreaRef}
@@ -3801,6 +4023,9 @@ export const SidebarChat = () => {
 					{modeTaglines[currentChatMode]}
 				</p>
 
+				{/* Keyboard shortcuts hint banner */}
+				<KeyboardShortcutsBanner keybindingString={keybindingString} />
+
 				{/* Student mode quick tips */}
 				{currentChatMode === 'learn' && (
 					<div className="mt-6 p-4 bg-void-bg-2 rounded-xl max-w-sm text-sm">
@@ -3842,49 +4067,100 @@ export const SidebarChat = () => {
 
 	// Get student session for progress display
 	const studentSession = chatThreadsService.getStudentSession(threadId)
-	const activeExerciseCount = studentSession ? Object.values(studentSession.activeExercises).filter(e => e.status === 'active').length : 0
+	const activeExercises = studentSession ? Object.values(studentSession.activeExercises).filter(e => e.status === 'active') : []
 	const completedExerciseCount = studentSession?.completedExerciseCount ?? 0
+	const activeExerciseCount = activeExercises.length
+	const conceptsLearned = studentSession?.conceptsLearned ?? []
 
 	const threadPageContent = <div
 		ref={sidebarRef}
 		className='w-full h-full flex flex-col overflow-hidden'
 	>
-		{/* Top toolbar */}
-		{currentChatMode === 'learn' && (completedExerciseCount > 0 || activeExerciseCount > 0) && (
+		{/* Top toolbar — Student Mode */}
+		{currentChatMode === 'learn' && (
 			<ErrorBoundary>
-				<div className='flex-shrink-0 px-4 py-2 flex justify-between items-center border-b border-void-border-1'>
-					{/* Student mode progress indicator */}
-					<div className='flex items-center gap-3 text-xs'>
-						<div className='flex items-center gap-1.5 text-purple-400'>
-							<span>{"\u{1F3AF}"}</span>
-							<span>{activeExerciseCount} active</span>
+				<div className='flex-shrink-0 px-4 py-2 flex flex-col border-b border-void-border-1'>
+					<div className='flex justify-between items-center'>
+						<div className='flex items-center gap-3 text-xs'>
+							{activeExerciseCount > 0 && (
+								<div className='flex items-center gap-1.5 text-purple-400'
+									data-tooltip-id='void-tooltip'
+									data-tooltip-content={`${activeExerciseCount} active exercise${activeExerciseCount !== 1 ? 's' : ''}`}
+									data-tooltip-place='bottom'
+								>
+									<Target size={12} />
+									<span>{activeExerciseCount} active</span>
+								</div>
+							)}
+							{completedExerciseCount > 0 && (
+								<div className='flex items-center gap-1.5 text-green-400'
+									data-tooltip-id='void-tooltip'
+									data-tooltip-content={`${completedExerciseCount} exercise${completedExerciseCount !== 1 ? 's' : ''} completed`}
+									data-tooltip-place='bottom'
+								>
+									<CheckCircle size={12} />
+									<span>{completedExerciseCount} done</span>
+								</div>
+							)}
+							{conceptsLearned.length > 0 && (
+								<div className='flex items-center gap-1.5 text-void-accent'
+									data-tooltip-id='void-tooltip'
+									data-tooltip-content={`${conceptsLearned.length} concept${conceptsLearned.length !== 1 ? 's' : ''} learned`}
+									data-tooltip-place='bottom'
+								>
+									<Lightbulb size={12} />
+									<span>{conceptsLearned.length} concept{conceptsLearned.length !== 1 ? 's' : ''}</span>
+								</div>
+							)}
 						</div>
-						<div className='flex items-center gap-1.5 text-green-400'>
-							<span>{"\u{2705}"}</span>
-							<span>{completedExerciseCount} completed</span>
+						<div className='flex gap-2 items-center'>
+							<button
+								onClick={() => setShowQuizMe(true)}
+								className='flex items-center gap-1.5 px-3 py-1.5 bg-void-bg-2 hover:bg-void-bg-3 text-void-fg-2 hover:text-void-fg-1 rounded-lg text-xs font-medium transition-colors border border-void-border-2'
+								title='Review concepts with spaced repetition'
+							>
+								<Brain size={14} />
+								<span>Quiz Me</span>
+							</button>
+							<button
+								onClick={() => setShowLearningDashboard(true)}
+								className='flex items-center gap-1.5 px-3 py-1.5 bg-void-bg-2 hover:bg-void-bg-3 text-void-fg-2 hover:text-void-fg-1 rounded-lg text-xs font-medium transition-colors border border-void-border-2'
+								title='View your learning progress'
+							>
+								<Trophy size={14} />
+								<span>My Progress</span>
+							</button>
 						</div>
 					</div>
-					<div className='flex gap-2 items-center'>
-						{/* Quiz Me Button */}
-						<button
-							onClick={() => setShowQuizMe(true)}
-							className='flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-500/20 to-blue-500/20 hover:from-purple-500/30 hover:to-blue-500/30 text-purple-400 hover:text-purple-300 rounded-lg text-xs font-medium transition-colors border border-purple-500/30'
-							title='Review concepts with spaced repetition'
-						>
-							<Brain size={14} />
-							<span>Quiz Me</span>
-						</button>
-						{/* Learning Dashboard Button */}
-						<button
-							onClick={() => setShowLearningDashboard(true)}
-							className='flex items-center gap-1.5 px-3 py-1.5 bg-void-bg-2 hover:bg-void-bg-3 text-void-fg-2 hover:text-void-fg-1 rounded-lg text-xs font-medium transition-colors border border-void-border-2'
-							title='View your learning progress'
-						>
-							<Trophy size={14} />
-							<span>My Progress</span>
-						</button>
-						{/* Buttons moved to CommandBarInChat */}
-					</div>
+					{/* Active exercises list */}
+					{activeExercises.length > 0 && (
+						<div className="mt-2 space-y-1">
+							{activeExercises.slice(0, 3).map(ex => (
+								<div
+									key={ex.id}
+									className="flex items-center justify-between px-2 py-1 bg-void-bg-2/50 rounded-md text-xs"
+								>
+									<div className="flex items-center gap-2 min-w-0">
+										<span className="font-medium text-void-fg-2 truncate">{ex.topic}</span>
+										<span className="text-[10px] text-void-fg-4 flex-shrink-0">{ex.type} · {ex.language}</span>
+									</div>
+									<button
+										onClick={() => {
+											chatThreadsService.setCurrentlyFocusedMessageIdx(undefined);
+											textAreaFnsRef.current?.setValue(`I'm working on exercise ${ex.id}. Can you give me a hint?`);
+											textAreaRef.current?.focus();
+										}}
+										className="flex-shrink-0 px-2 py-0.5 bg-void-accent/10 hover:bg-void-accent/20 text-void-accent rounded text-[10px] font-medium transition-colors"
+									>
+										Hint
+									</button>
+								</div>
+							))}
+							{activeExercises.length > 3 && (
+								<div className="text-[10px] text-void-fg-4 px-2">+{activeExercises.length - 3} more exercises</div>
+							)}
+						</div>
+					)}
 				</div>
 			</ErrorBoundary>
 		)}
@@ -3915,6 +4191,9 @@ export const SidebarChat = () => {
 			</div>
 		</ErrorBoundary>
 		<ErrorBoundary>
+			<ToastNotification />
+			{/* Compression Toast - appears above input area */}
+			<CompressionToast />
 			<div className='flex-shrink-0 border-t border-void-border-1'>
 				{threadPageInput}
 			</div>

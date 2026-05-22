@@ -156,9 +156,47 @@ export const triggerCompressionNotification = (stats: {
 		messagesRemoved: stats.messagesRemoved,
 		messagesSummarized: stats.messagesSummarized,
 	};
-	updateCompressionEventState(event);
+    updateCompressionEventState(event);
 };
 
+// Toast notification state
+export interface ToastState {
+	message: string;
+	type: 'success' | 'error' | 'info' | 'warning';
+	duration?: number;
+	onDismiss?: () => void;
+}
+
+let toastNotificationState: (ToastState & { id: number }) | null = null;
+const toastNotificationListeners: Set<(s: (ToastState & { id: number }) | null) => void> = new Set();
+
+export const updateToastState = (state: (ToastState & { id: number }) | null) => {
+	toastNotificationState = state;
+	toastNotificationListeners.forEach(l => l(toastNotificationState));
+};
+
+export const dismissToast = () => {
+	updateToastState(null);
+};
+
+export const useToast = () => {
+	const [s, ss] = useState(toastNotificationState);
+	useEffect(() => {
+		ss(toastNotificationState);
+		toastNotificationListeners.add(ss);
+		return () => { toastNotificationListeners.delete(ss); }
+	}, [ss]);
+	return s;
+};
+
+export const showThreadDeletedToast = () => {
+	updateToastState({
+		message: 'Thread deleted',
+		type: 'success',
+		duration: 4000,
+		id: Date.now(),
+	});
+};
 
 let _isRegistered = false
 // must call this before you can use any of the hooks below

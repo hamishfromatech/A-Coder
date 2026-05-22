@@ -132,6 +132,8 @@ export const TypingIndicator = ({
 /**
  * ReAct phase indicator — icon-only by default, expands on hover
  */
+const MIN_PHASE_DURATION = 500;
+
 export const ReActPhaseIndicator = ({
 	phase,
 	phaseContent
@@ -140,30 +142,30 @@ export const ReActPhaseIndicator = ({
 	phaseContent?: string;
 }) => {
 	const [displayPhase, setDisplayPhase] = useState(phase);
-	const [isTransitioning, setIsTransitioning] = useState(false);
+	const [isExpanding, setIsExpanding] = useState(false);
+	const [tooltipVisible, setTooltipVisible] = useState(false);
+	const [showContent, setShowContent] = useState(false);
 	const lastPhaseChange = useRef(Date.now());
-	const MIN_PHASE_DURATION = 500; // ms
 	const prefersReducedMotion = usePrefersReducedMotion();
 
 	useEffect(() => {
 		if (phase === displayPhase) return;
 
-		if (prefersReducedMotion) {
-			setDisplayPhase(phase);
-			setIsTransitioning(false);
-			return;
-		}
-
 		const now = Date.now();
 		const timeSinceLastChange = now - lastPhaseChange.current;
 
 		const updatePhase = () => {
-			setIsTransitioning(true);
-			setTimeout(() => {
+			if (prefersReducedMotion) {
 				setDisplayPhase(phase);
-				setIsTransitioning(false);
-				lastPhaseChange.current = Date.now();
-			}, 150);
+				return;
+			}
+			// If transitioning *to* thought, expand content automatically
+			if (phase === 'thought') {
+				setIsExpanding(true);
+				setShowContent(true);
+			}
+			setDisplayPhase(phase);
+			lastPhaseChange.current = Date.now();
 		};
 
 		if (timeSinceLastChange < MIN_PHASE_DURATION) {
@@ -179,34 +181,57 @@ export const ReActPhaseIndicator = ({
 	const phaseConfig = {
 		thought: {
 			icon: <Brain size={14} />,
-			label: 'Thinking'
+			label: 'Thinking',
+			color: 'text-void-fg-3',
+			bgColor: 'bg-void-bg-3',
 		},
 		action: {
 			icon: <Loader2 size={14} className={prefersReducedMotion ? '' : 'animate-spin'} />,
-			label: 'Acting'
+			label: 'Acting',
+			color: 'text-void-accent',
+			bgColor: 'bg-void-accent/10',
 		},
 		observation: {
 			icon: <Eye size={14} />,
-			label: 'Observing'
+			label: 'Observing',
+			color: 'text-void-fg-3',
+			bgColor: 'bg-void-bg-3',
 		}
 	};
 
 	const config = phaseConfig[displayPhase];
 
 	return (
-		<div className={`react-phase-compact group relative flex items-center gap-2 py-2 px-1 ${isTransitioning && !prefersReducedMotion ? 'opacity-60' : 'opacity-100'} ${prefersReducedMotion ? '' : 'transition-opacity duration-150'}`}>
-			<span className="text-void-fg-4 flex items-center">
-				{config.icon}
-			</span>
-			{/* Label visible on hover */}
-			<span className="text-xs text-void-fg-4 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-				{config.label}
-			</span>
-			{phaseContent && (
-				<div className="absolute left-6 top-full mt-1 text-[10px] text-void-fg-4 max-w-xs truncate opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none" title={phaseContent}>
-					{phaseContent}
+		<div className="my-1">
+			<div
+			className={`inline-flex items-center gap-2 py-1.5 px-2.5 rounded-lg border border-void-border-2 ${config.bgColor} cursor-default select-none`}
+			onMouseEnter={() => setTooltipVisible(true)}
+		onMouseLeave={() => setTooltipVisible(false)}
+			onClick={() => {
+				if (displayPhase === 'thought') {
+					setIsExpanding(!isExpanding);
+					if (!isExpanding) setShowContent(true);
+					else setTimeout(() => setShowContent(false), 200);
+				}
+			}}
+			>
+				<span className={`${config.color} flex items-center flex-shrink-0`}>
+					{config.icon}
+				</span>
+				<span className={`text-xs font-medium ${config.color}`}>{config.label}</span>
+				{tooltipVisible && phaseContent && !isExpanding && (
+					<div className="absolute left-0 bottom-full mb-1 px-2 py-1 bg-void-bg-1 border border-void-border-2 rounded-lg shadow-lg text-[10px] text-void-fg-3 max-w-[200px] whitespace-normal break-words pointer-events-none z-50">
+						{phaseContent}
+					</div>
+				)}
+			</div>
+			<SmoothHeight isVisible={isExpanding && showContent}>
+				<div className="mt-1.5 pl-3 border-l-2 border-void-border-2">
+					<div className="text-[11px] text-void-fg-4 leading-relaxed whitespace-pre-wrap font-mono">
+						{phaseContent}
+					</div>
 				</div>
-			)}
+			</SmoothHeight>
 		</div>
 	);
 };

@@ -150,6 +150,16 @@ function escapeHtml(text: string): string {
 		.replace(/'/g, '&#039;');
 }
 
+// Escape for use inside single-quoted JS strings (e.g. onclick='...')
+function escapeJs(text: string): string {
+	return text
+		.replace(/\\/g, '\\\\')
+		.replace(/'/g, "\\'")
+		.replace(/"/g, '\\"')
+		.replace(/\n/g, '\\n')
+		.replace(/\r/g, '\\r');
+}
+
 // Convert markdown to HTML (simplified)
 function markdownToHtml(markdown: string): string {
 	if (!markdown) return '';
@@ -248,11 +258,11 @@ function generateExerciseHtml(exercise: LessonExercise, theme: LessonTheme, inde
 				<div class="editor-toolbar flex items-center justify-between px-3 py-2 bg-[var(--background-light)] border-b border-[var(--border)]">
 					<span class="text-xs text-[var(--text-muted)] font-mono">${exercise.language || 'typescript'}</span>
 					<div class="flex items-center gap-2">
-						<button onclick="resetExercise('${exercise.id}')" class="px-2 py-1 text-xs text-gray-400 hover:text-white transition-colors" title="Reset code">
+						<button onclick="resetExercise('${escapeJs(exercise.id)}')" class="px-2 py-1 text-xs text-gray-400 hover:text-white transition-colors" title="Reset code">
 							<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
 							Reset
 						</button>
-						<button onclick="getHint('${exercise.id}')" class="px-2 py-1 text-xs text-[var(--accent)] hover:text-[var(--accent-light)] transition-colors" title="Get a hint">
+						<button onclick="getHint('${escapeJs(exercise.id)}')" class="px-2 py-1 text-xs text-[var(--accent)] hover:text-[var(--accent-light)] transition-colors" title="Get a hint">
 							<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
 							Hint
 						</button>
@@ -279,11 +289,11 @@ function generateExerciseHtml(exercise: LessonExercise, theme: LessonTheme, inde
 			<div id="feedback-${exercise.id}" class="feedback-container hidden mt-4 p-3 rounded-lg"></div>
 
 			<div class="flex justify-end gap-3 mt-4">
-				<button onclick="runExercise('${exercise.id}')" class="px-4 py-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-gray-300 hover:text-white hover:border-gray-500 transition-all text-sm font-medium">
+				<button onclick="runExercise('${escapeJs(exercise.id)}')" class="px-4 py-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-gray-300 hover:text-white hover:border-gray-500 transition-all text-sm font-medium">
 					<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
 					Run
 				</button>
-				<button onclick="submitExercise('${exercise.id}')" class="px-4 py-2 rounded-lg bg-[var(--primary)] text-white hover:bg-[var(--primary-dark)] transition-all text-sm font-medium">
+				<button onclick="submitExercise('${escapeJs(exercise.id)}')" class="px-4 py-2 rounded-lg bg-[var(--primary)] text-white hover:bg-[var(--primary-dark)] transition-all text-sm font-medium">
 					<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
 					Submit
 				</button>
@@ -382,7 +392,7 @@ function generateQuizHtml(quiz: LessonQuiz, theme: LessonTheme): string {
 			${questionsHtml}
 
 			<div class="flex justify-end gap-3 mt-6">
-				<button onclick="checkQuiz('${quiz.id}')" class="px-5 py-2.5 rounded-lg bg-[var(--primary)] text-white hover:bg-[var(--primary-dark)] transition-all font-medium">
+				<button onclick="checkQuiz('${escapeJs(quiz.id)}')" class="px-5 py-2.5 rounded-lg bg-[var(--primary)] text-white hover:bg-[var(--primary-dark)] transition-all font-medium">
 					<svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
 					</svg>
@@ -734,7 +744,7 @@ export function generateLessonHtml(data: LessonData, course?: CourseData): strin
 			>
 				<button
 					class="section-header w-full px-5 py-4 flex items-center gap-4 hover:bg-void-bg-3/50 transition-colors text-left"
-					onclick="toggleSection('${section.id}')"
+					onclick="toggleSection('${escapeJs(section.id)}')"
 				>
 					<div class="flex items-center justify-center w-10 h-10 rounded-xl ${idx === 0 ? 'bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)]' : 'bg-void-bg-3'} transition-all">
 						<span class="section-icon ${idx === 0 ? 'text-white' : 'text-gray-400'}">
@@ -772,7 +782,7 @@ export function generateLessonHtml(data: LessonData, course?: CourseData): strin
 
 					<div class="flex justify-end mt-6">
 						<button
-							onclick="markSectionComplete('${section.id}')"
+								onclick="markSectionComplete('${escapeJs(section.id)}')"
 							class="mark-complete-btn px-4 py-2 rounded-lg text-sm font-medium transition-all
 								bg-transparent border border-void-border-2 text-gray-400 hover:text-white hover:border-[var(--primary)]
 								flex items-center gap-2"

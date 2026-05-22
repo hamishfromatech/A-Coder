@@ -22,6 +22,10 @@ export const defaultProviderSettings = {
 	ollama: {
 		endpoint: 'http://127.0.0.1:11434',
 	},
+	ollamaCloud: {
+		endpoint: 'https://ollama.com',
+		apiKey: '',
+	},
 	vLLM: {
 		endpoint: 'http://localhost:8000',
 	},
@@ -120,6 +124,8 @@ export const defaultModelsOfProvider = {
 		'deepseek-reasoner',
 	],
 	ollama: [ // autodetected
+	],
+	ollamaCloud: [ // autodetected
 	],
 	vLLM: [ // autodetected
 	],
@@ -1694,6 +1700,21 @@ const ollamaSettings: VoidStaticProviderInfo = {
 	},
 }
 
+const ollamaCloudSettings: VoidStaticProviderInfo = {
+	modelOptionsFallback: (modelName) => {
+		const res = extensiveModelOptionsFallback(modelName, { downloadable: { sizeGb: 'not-known' } })
+		if (res) res.specialToolFormat = 'openai-style'
+		return res
+	},
+	modelOptions: {
+		// Models are fetched dynamically from /v1/models
+	},
+	providerReasoningIOSettings: {
+		input: { includeInPayload: openAICompatIncludeInPayloadReasoning },
+		output: { nameOfFieldInDelta: 'reasoning_content' },
+	},
+}
+
 const openaiCompatible: VoidStaticProviderInfo = {
 	modelOptionsFallback: (modelName) => {
 		const res = extensiveModelOptionsFallback(modelName)
@@ -2058,6 +2079,7 @@ const modelSettingsOfProvider: { [providerName in ProviderName]: VoidStaticProvi
 	openRouter: openRouterSettings,
 	vLLM: vLLMSettings,
 	ollama: ollamaSettings,
+	ollamaCloud: ollamaCloudSettings,
 	openAICompatible: openaiCompatible,
 	mistral: mistralSettings,
 

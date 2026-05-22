@@ -45,6 +45,7 @@ export type RefreshModelStateOfProvider = Record<RefreshableProviderName, Refres
 
 const refreshBasedOn: { [k in RefreshableProviderName]: (keyof SettingsOfProvider[k])[] } = {
 	ollama: ['_didFillInProviderSettings', 'endpoint'],
+	ollamaCloud: ['_didFillInProviderSettings', 'apiKey'],
 	vLLM: ['_didFillInProviderSettings', 'endpoint'],
 	lmStudio: ['_didFillInProviderSettings', 'endpoint'],
 	llamaCpp: ['_didFillInProviderSettings', 'endpoint'],
@@ -145,6 +146,7 @@ export class RefreshModelService extends Disposable implements IRefreshModelServ
 
 	state: RefreshModelStateOfProvider = {
 		ollama: { state: 'init', timeoutId: null },
+		ollamaCloud: { state: 'init', timeoutId: null },
 		vLLM: { state: 'init', timeoutId: null },
 		lmStudio: { state: 'init', timeoutId: null },
 		llamaCpp: { state: 'init', timeoutId: null },
@@ -178,6 +180,7 @@ export class RefreshModelService extends Disposable implements IRefreshModelServ
 					providerName,
 					models.map(model => {
 						if (providerName === 'ollama') return (model as OllamaModelResponse).name;
+						else if (providerName === 'ollamaCloud') return (model as OpenaiCompatibleModelResponse).id;
 						else if (providerName === 'vLLM') return (model as OpenaiCompatibleModelResponse).id;
 						else if (providerName === 'lmStudio') return (model as OpenaiCompatibleModelResponse).id;
 						else if (providerName === 'llamaCpp') return (model as OpenaiCompatibleModelResponse).id;

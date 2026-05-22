@@ -5,9 +5,9 @@
 
 import { useMemo, useState } from 'react';
 import { CopyButton, IconShell1 } from '../markdown/ApplyBlockHoverButtons.js';
-import { useAccessor, useChatThreadsState, useChatThreadsStreamState, useFullChatThreadsStreamState, useSettingsState } from '../util/services.js';
+import { useAccessor, useChatThreadsState, useChatThreadsStreamState, useFullChatThreadsStreamState, useSettingsState, showThreadDeletedToast } from '../util/services.js';
 import { IconX } from './SidebarChat.js';
-import { Check, Copy, Icon, LoaderCircle, MessageCircleQuestion, Trash2, UserCheck, X } from 'lucide-react';
+import { Check, Copy, Icon, LoaderCircle, MessageCircleQuestion, PenLine, Trash2, UserCheck, X } from 'lucide-react';
 import { IsRunningType, ThreadType } from '../../../chatThreadService.js';
 
 
@@ -127,6 +127,18 @@ const formatTime = (date: Date) => {
 };
 
 
+const RenameButton = ({ onClick }: { onClick: (e: React.MouseEvent) => void }) => {
+	return <IconShell1
+		Icon={PenLine}
+		className='size-3.5'
+		onClick={onClick}
+		data-tooltip-id='void-tooltip'
+		data-tooltip-place='top'
+		data-tooltip-content='Rename thread'
+	>
+	</IconShell1>
+}
+
 const DuplicateButton = ({ threadId }: { threadId: string }) => {
 	const accessor = useAccessor()
 	const chatThreadsService = accessor.get('IChatThreadService')
@@ -163,7 +175,7 @@ const TrashButton = ({ threadId }: { threadId: string }) => {
 			<IconShell1
 				Icon={Check}
 				className='size-3.5'
-				onClick={() => { chatThreadsService.deleteThread(threadId); setIsTrashPressed(false); }}
+				onClick={() => { chatThreadsService.deleteThread(threadId); setIsTrashPressed(false); showThreadDeletedToast(); }}
 				data-tooltip-id='void-tooltip'
 				data-tooltip-place='top'
 				data-tooltip-content='Confirm'
@@ -194,53 +206,48 @@ const PastThreadElement = ({ pastThread, idx, hoveredIdx, setHoveredIdx, isRunni
 	const accessor = useAccessor()
 	const chatThreadsService = accessor.get('IChatThreadService')
 
-	// const settingsState = useSettingsState()
-	// const convertService = accessor.get('IConvertToLLMMessageService')
-	// const chatMode = settingsState.globalSettings.chatMode
-	// const modelSelection = settingsState.modelSelectionOfFeature?.Chat ?? null
-	// const copyChatButton = <CopyButton
-	// 	codeStr={async () => {
-	// 		const { messages } = await convertService.prepareLLMChatMessages({
-	// 			chatMessages: currentThread.messages,
-	// 			chatMode,
-	// 			modelSelection,
-	// 		})
-	// 		return JSON.stringify(messages, null, 2)
-	// 	}}
-	// 	toolTipName={modelSelection === null ? 'Copy As Messages Payload' : `Copy As ${displayInfoOfProviderName(modelSelection.providerName).title} Payload`}
-	// />
+	const [isRenaming, setIsRenaming] = useState(false)
+	const [renameValue, setRenameValue] = useState('')
 
-
-	// const currentThread = chatThreadsService.getCurrentThread()
-	// const copyChatButton2 = <CopyButton
-	// 	codeStr={async () => {
-	// 		return JSON.stringify(currentThread.messages, null, 2)
-	// 	}}
-	// 	toolTipName={`Copy As Void Chat`}
-	// />
-
-	let firstMsg = null;
-	const firstUserMsgIdx = pastThread.messages.findIndex((msg) => msg.role === 'user');
-
-	if (firstUserMsgIdx !== -1) {
-		const firsUsertMsgObj = pastThread.messages[firstUserMsgIdx];
-		firstMsg = firsUsertMsgObj.role === 'user' && firsUsertMsgObj.displayContent || '';
-	} else {
-		firstMsg = '""';
+	let displayName = pastThread.name;
+	if (!displayName) {
+		const firstUserMsgIdx = pastThread.messages.findIndex((msg) => msg.role === 'user');
+		if (firstUserMsgIdx !== -1) {
+			const firstUserMsgObj = pastThread.messages[firstUserMsgIdx];
+			displayName = firstUserMsgObj.role === 'user' && firstUserMsgObj.displayContent || '';
+		} else {
+			displayName = 'New Thread';
+		}
 	}
 
 	const numMessages = pastThread.messages.filter((msg) => msg.role === 'assistant' || msg.role === 'user').length;
 
 	const detailsHTML = <span
-	// data-tooltip-id='void-tooltip'
-	// data-tooltip-content={`Last modified ${formatTime(new Date(pastThread.lastModified))}`}
-	// data-tooltip-place='top'
 	>
 		<span className='opacity-60'>{numMessages}</span>
 		{` `}
 		{formatDate(new Date(pastThread.lastModified))}
-		{/* {` messages `} */}
 	</span>
+
+	const handleStartRename = (e: React.MouseEvent) => {
+		e.stopPropagation();
+		setRenameValue(pastThread.name || displayName);
+		setIsRenaming(true);
+	};
+
+	const handleConfirmRename = (e?: React.MouseEvent | React.KeyboardEvent) => {
+		e?.stopPropagation?.();
+		const trimmed = renameValue.trim();
+		if (trimmed) {
+			chatThreadsService.setThreadName(pastThread.id, trimmed);
+		}
+		setIsRenaming(false);
+	};
+
+	const handleCancelRename = (e?: React.MouseEvent) => {
+		e?.stopPropagation?.();
+		setIsRenaming(false);
+	};
 
 	return <div
 		key={pastThread.id}
@@ -248,7 +255,9 @@ const PastThreadElement = ({ pastThread, idx, hoveredIdx, setHoveredIdx, isRunni
 			py-2 px-2 text-sm cursor-pointer text-void-fg-2 hover:text-void-fg-1 hover:bg-void-bg-1 rounded-md transition-all duration-200
 		`}
 		onClick={() => {
-			chatThreadsService.switchToThread(pastThread.id);
+			if (!isRenaming) {
+				chatThreadsService.switchToThread(pastThread.id);
+			}
 		}}
 		onMouseEnter={() => setHoveredIdx(idx)}
 		onMouseLeave={() => setHoveredIdx(null)}
@@ -265,16 +274,56 @@ const PastThreadElement = ({ pastThread, idx, hoveredIdx, setHoveredIdx, isRunni
 						<Check className="text-void-fg-3 flex-shrink-0 flex-grow-0" size={14} />
 				}
 				{/* name */}
-				<span className="truncate overflow-hidden text-ellipsis font-medium"
-					data-tooltip-id='void-tooltip'
-					data-tooltip-content={numMessages + ' messages'}
-					data-tooltip-place='top'
-				>{firstMsg}</span>
+				{isRenaming ? (
+					<div className="flex items-center gap-1 flex-1 min-w-0">
+						<input
+							type="text"
+							value={renameValue}
+							onChange={(e) => setRenameValue(e.target.value)}
+							onKeyDown={(e) => {
+								e.stopPropagation();
+								if (e.key === 'Enter') {
+									handleConfirmRename(e);
+								} else if (e.key === 'Escape') {
+									handleCancelRename();
+								}
+							}}
+							onClick={(e) => e.stopPropagation()}
+							className="flex-1 min-w-0 px-1.5 py-0.5 text-xs bg-void-bg-1 border border-void-border-1 rounded text-void-fg-1 focus:outline-none focus:ring-1 focus:ring-void-accent"
+							autoFocus
+						/>
+						<IconShell1
+							Icon={Check}
+							className='size-3'
+							onClick={handleConfirmRename}
+							data-tooltip-id='void-tooltip'
+							data-tooltip-place='top'
+							data-tooltip-content='Save name'
+						/>
+						<IconShell1
+							Icon={X}
+							className='size-3'
+							onClick={handleCancelRename}
+							data-tooltip-id='void-tooltip'
+							data-tooltip-place='top'
+							data-tooltip-content='Cancel'
+						/>
+					</div>
+				) : (
+					<span className="truncate overflow-hidden text-ellipsis font-medium"
+						data-tooltip-id='void-tooltip'
+						data-tooltip-content={numMessages + ' messages'}
+						data-tooltip-place='top'
+					>{displayName}</span>
+				)}
 			</span>
 
 			<div className="flex items-center gap-x-1.5 text-void-fg-3 text-xs flex-shrink-0">
-				{idx === hoveredIdx ?
+				{idx === hoveredIdx && !isRenaming ?
 					<>
+							{/* rename icon */}
+						<RenameButton onClick={handleStartRename} />
+
 						{/* duplicate icon */}
 						<DuplicateButton threadId={pastThread.id} />
 
