@@ -49,11 +49,13 @@ class ErrorBoundary extends Component<Props, State> {
 				return this.props.fallback;
 			}
 
+			const errMsg = String(this.state.error);
+			const safeMsg = errMsg.length > 180 ? errMsg.slice(0, 180) + '…' : errMsg;
 			// Use ErrorDisplay component as the default error UI
 			return (
-				<WarningBox text={this.state.error + ''} />
+				<WarningBox text={safeMsg} />
 				// <ErrorDisplay
-				// 	message={this.state.error + ''}
+				// 	message={safeMsg}
 				// 	fullError={this.state.error}
 				// 	onDismiss={this.props.onDismiss || null}
 				// />

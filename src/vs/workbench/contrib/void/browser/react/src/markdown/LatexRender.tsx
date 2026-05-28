@@ -51,8 +51,11 @@ export const LatexRender: React.FC<LatexRenderProps> = ({
 			return katex.renderToString(cleanLatex, {
 				displayMode,
 				throwOnError,
+				// Keep htmlAndMathml for copy-paste / accessibility (affects display math DOM)
 				output: 'htmlAndMathml',
-				trust: true, // Allow certain commands like \includegraphics
+				// Restrict `trust` to inline mode only; display math already added a safe
+				// overflowX wrapper, so disable arbitrary command trust there.
+				trust: displayMode ? false : true,
 			});
 		} catch (error) {
 			console.error('KaTeX rendering error:', error);
@@ -68,8 +71,9 @@ export const LatexRender: React.FC<LatexRenderProps> = ({
 		<span
 			className={`katex-container ${displayMode ? 'block my-2 text-center' : 'inline'} ${className}`}
 			style={displayMode ? { display: 'block', overflowX: 'auto', padding: '0.5em 0' } : {}}
-			dangerouslySetInnerHTML={{ __html: html }}
-		/>
+		>
+			<span dangerouslySetInnerHTML={{ __html: html }} />
+		</span>
 	);
 };
 
