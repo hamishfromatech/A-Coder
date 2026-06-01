@@ -544,6 +544,16 @@ export type GlobalSettings = {
 		// Proactive learning coach
 		enableProactiveCoach: boolean; // Enable/disable the proactive learning coach
 		proactiveCoachIntervalSeconds: number; // Minimum seconds between coach checks
+		// Voice / STT / TTS settings
+		sttEnabled: boolean; // Enable speech-to-text in chat input
+		sttServerUrl: string; // OpenAI-compatible endpoint for STT (e.g. http://localhost:11434/v1)
+		sttModel: string; // Model name for STT (e.g. whisper-1)
+		sttApiKey: string; // Optional API key for STT endpoint
+		ttsEnabled: boolean; // Enable text-to-speech on assistant messages
+		ttsServerUrl: string; // OpenAI-compatible endpoint for TTS (e.g. http://localhost:11434/v1)
+		ttsModel: string; // Model name for TTS (e.g. tts-1)
+		ttsVoice: string; // Voice identifier for TTS (e.g. alloy)
+		ttsApiKey: string; // Optional API key for TTS endpoint
 }
 
 export const defaultGlobalSettings: GlobalSettings = {
@@ -597,6 +607,16 @@ export const defaultGlobalSettings: GlobalSettings = {
 	// Proactive learning coach
 	enableProactiveCoach: false, // Disabled by default
 	proactiveCoachIntervalSeconds: 120, // 2 minutes between checks
+		// Voice / STT / TTS defaults
+		sttEnabled: false,
+		sttServerUrl: 'http://localhost:11434/v1',
+		sttModel: 'whisper-1',
+		sttApiKey: '',
+		ttsEnabled: false,
+		ttsServerUrl: 'http://localhost:11434/v1',
+		ttsModel: 'tts-1',
+		ttsVoice: 'alloy',
+		ttsApiKey: '',
 }
 
 export type GlobalSettingName = keyof GlobalSettings

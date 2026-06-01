@@ -125,10 +125,10 @@ const providerNamesOfTab: Record<TabName, ProviderName[]> = {
 };
 
 const descriptionOfTab: Record<TabName, string> = {
-	Free: `Providers with a 100% free tier. Add as many as you'd like!`,
-	Paid: `Connect directly with any provider (bring your own key).`,
-	Local: `Active providers should appear automatically. Add as many as you'd like! `,
-	'Cloud/Other': `Add as many as you'd like! Reach out for custom configuration requests.`,
+	Free: `Start coding right away with free-tier AI models.`,
+	Paid: `Connect your own API keys for premium models and full control.`,
+	Local: `Run models on your machine for total privacy and zero cost. `,
+	'Cloud/Other': `Enterprise and custom deployments for teams.`,
 };
 
 
@@ -167,10 +167,10 @@ const AddProvidersPage = ({ pageIndex, setPageIndex }: { pageIndex: number, setP
 	return (
 		<div className="w-full max-w-5xl mx-auto px-4">
 			<div className="flex flex-col gap-8">
-				<div className="text-center space-y-2">
-					<h1 className="text-4xl font-bold text-void-fg-1 tracking-tight">Add a Provider</h1>
-					<p className="text-void-fg-3 text-lg">Choose how you want to power your AI assistant.</p>
-				</div>
+					<div className="text-center space-y-2">
+						<h1 className="text-4xl font-bold text-void-fg-1 tracking-tight">Connect Your AI</h1>
+						<p className="text-void-fg-3 text-lg">Pick a provider and start coding with an assistant that actually understands your project.</p>
+					</div>
 
 				<div className="flex flex-col md:flex-row gap-8">
 					{/* Left Column - Navigation */}
@@ -195,7 +195,7 @@ const AddProvidersPage = ({ pageIndex, setPageIndex }: { pageIndex: number, setP
 						</div>
 
 						{/* Feature Checklist Card */}
-						<SettingCard title="Features Enabled" isDark={isDark} className="p-4">
+						<SettingCard title="What's Ready" isDark={isDark} className="p-4">
 							<div className="space-y-3">
 								{featureNameMap.map(({ display, featureName }) => {
 									const hasModel = settingsState.modelSelectionOfFeature[featureName] !== null;
@@ -295,7 +295,7 @@ const AddProvidersPage = ({ pageIndex, setPageIndex }: { pageIndex: number, setP
 											setPageIndex(pageIndex + 1);
 											setErrorMessage(null);
 										} else {
-											setErrorMessage("Please set up at least one Chat model before moving on.");
+														setErrorMessage("Add at least one AI provider before moving on.");
 										}
 									}}
 								/>
@@ -327,7 +327,7 @@ const NextButton = ({ onClick, ...props }: { onClick: () => void } & React.Butto
 			`}
 			{...disabled && {
 				'data-tooltip-id': 'void-tooltip',
-				"data-tooltip-content": 'Please enter all required fields or choose another provider',
+				"data-tooltip-content": 'Enter your API key or pick a local provider first',
 				"data-tooltip-place": 'top',
 			}}
 			{...buttonProps}
@@ -762,10 +762,10 @@ const VoidOnboardingContent = () => {
 						<p className="text-xs text-void-fg-3 font-mono opacity-60">
 							Version: 1.4.9 (0044)
 						</p>
-						<p className='text-void-fg-3 text-lg leading-relaxed'>
-							Your open-source, AI-powered coding assistant.<br />
-							Experience the future of software development today.
-						</p>
+													<p className='text-void-fg-3 text-lg leading-relaxed'>
+														Your code, understood by AI. Chat naturally, plan architecture,<br />
+														and ship faster with an editor that thinks alongside you.
+													</p>
 					</div>
 
 					<FadeIn delayMs={800}>
@@ -793,14 +793,14 @@ const VoidOnboardingContent = () => {
 			content={
 				<div className='flex flex-col items-center justify-center gap-8 py-12'>
 					<div className="text-center space-y-2">
-						<h1 className="text-4xl font-bold text-void-fg-1 tracking-tight">Settings & Migration</h1>
-						<p className="text-void-fg-3 text-lg">Make yourself at home by bringing your existing setup.</p>
+						<h1 className="text-4xl font-bold text-void-fg-1 tracking-tight">One Last Step</h1>
+						<p className="text-void-fg-3 text-lg">Bring your favorite extensions, themes, and shortcuts from your old editor.</p>
 					</div>
 
 					<SettingCard
 						isDark={isDark}
-						title="Transfer from another editor"
-						description="We'll automatically migrate your extensions, keybindings, and snippets."
+						title="Migrate in One Click"
+						description="Transfer everything you rely on — no re-setup required."
 						className="w-full max-w-xl"
 					>
 						<SettingBox className="flex flex-col gap-3">
@@ -812,7 +812,7 @@ const VoidOnboardingContent = () => {
 
 					<div className="flex items-center gap-4 w-full max-w-xl text-void-fg-4 text-sm px-2">
 						<div className="h-px flex-1 bg-void-border-2" />
-						<span>or skip for now</span>
+						<span>or start fresh</span>
 						<div className="h-px flex-1 bg-void-border-2" />
 					</div>
 				</div>

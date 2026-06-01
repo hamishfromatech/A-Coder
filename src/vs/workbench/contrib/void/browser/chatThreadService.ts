@@ -508,6 +508,9 @@ export type ThreadType = {
 		// Student mode session state
 		studentSession?: StudentSession;
 
+		// Voice mode state
+		voiceModeActive: boolean;
+
 		// Skills system: map of skill name to its instructions/content
 		loadedSkills: { [skillName: string]: string };
 	};
@@ -600,6 +603,7 @@ const newThreadObject = () => {
 			autoContinueEnabled: false,
 			activeWorkflow: null,
 			queueBehavior: 'wait_for_workflow',
+			voiceModeActive: false,
 			loadedSkills: {},
 		},
 		filesWithUserChanges: new Set()
@@ -1044,6 +1048,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 					autoContinueEnabled: thread.state?.autoContinueEnabled ?? false,
 					activeWorkflow: thread.state?.activeWorkflow ?? null,
 					queueBehavior: thread.state?.queueBehavior ?? 'wait_for_workflow',
+					voiceModeActive: thread.state?.voiceModeActive ?? false,
 				},
 			}
 		}

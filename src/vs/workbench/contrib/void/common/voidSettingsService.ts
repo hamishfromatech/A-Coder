@@ -345,10 +345,21 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 			}
 			if (readS.globalSettings.composioEnabledToolkits === undefined) {
 
-				// notification sound setting (1.6.8+)
-				if (readS.globalSettings.notificationSound === undefined) readS.globalSettings.notificationSound = 'none';
-				readS.globalSettings.composioEnabledToolkits = [];
-			}
+			// notification sound setting (1.6.8+)
+			if (readS.globalSettings.notificationSound === undefined) readS.globalSettings.notificationSound = 'none';
+			readS.globalSettings.composioEnabledToolkits = [];
+		}
+
+		// Voice / STT / TTS migration (1.7.0+)
+		if (readS.globalSettings.sttEnabled === undefined) readS.globalSettings.sttEnabled = false;
+		if (readS.globalSettings.sttServerUrl === undefined) readS.globalSettings.sttServerUrl = 'http://localhost:11434/v1';
+		if (readS.globalSettings.sttModel === undefined) readS.globalSettings.sttModel = 'whisper-1';
+		if (readS.globalSettings.sttApiKey === undefined) readS.globalSettings.sttApiKey = '';
+		if (readS.globalSettings.ttsEnabled === undefined) readS.globalSettings.ttsEnabled = false;
+		if (readS.globalSettings.ttsServerUrl === undefined) readS.globalSettings.ttsServerUrl = 'http://localhost:11434/v1';
+		if (readS.globalSettings.ttsModel === undefined) readS.globalSettings.ttsModel = 'tts-1';
+		if (readS.globalSettings.ttsVoice === undefined) readS.globalSettings.ttsVoice = 'alloy';
+		if (readS.globalSettings.ttsApiKey === undefined) readS.globalSettings.ttsApiKey = '';
 		}
 		catch (e) {
 			readS = defaultState()

@@ -9,7 +9,7 @@ import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js'
 import { VoidButtonBgDarken, VoidCustomDropdownBox, VoidInputBox2, VoidSimpleInputBox, VoidSwitch } from '../util/inputs.js'
 import { useAccessor, useClipboardService, useIsDark, useIsOptedOut, useRefreshModelListener, useRefreshModelState, useSettingsState, /* useACoderOAuthState, useACoderModels */ } from '../util/services.js'
 // import { IACoderOAuthService, type ACoderModelInfo } from '../../../../common/aCoderOAuthService.js'
-import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, List, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User, Download, Star, MessageCircle, Store, Plug, ExternalLink, AlertTriangle, Eye, EyeOff, ChevronRight, Wind, Brain, Terminal, Code, BookOpen, Target, Trophy, Palette, Image as ImageIcon, Volume2, Play } from 'lucide-react'
+import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, List, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User, Download, Star, MessageCircle, Store, Plug, ExternalLink, AlertTriangle, Eye, EyeOff, ChevronRight, Wind, Brain, Terminal, Code, BookOpen, Target, Trophy, Palette, Image as ImageIcon, Volume2, Play, Mic } from 'lucide-react'
 import { URI } from '../../../../../../../base/common/uri.js'
 import { VSBuffer } from '../../../../../../../base/common/buffer.js'
 import { ModelDropdown } from './ModelDropdown.js'
@@ -2808,18 +2808,19 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 	}, [initialTab]);
 
 	const navItems: { tab: Tab; label: string; icon: any }[] = [
-		{ tab: 'models', label: 'Models', icon: Box },
-		{ tab: 'localProviders', label: 'Local Providers', icon: Cpu },
-		{ tab: 'providers', label: 'Main Providers', icon: Globe },
-		{ tab: 'featureOptions', label: 'Feature Options', icon: Sparkles },
-		{ tab: 'mediaGeneration', label: 'Media Generation', icon: Search },
-		{ tab: 'general', label: 'General', icon: Settings2 },
-		{ tab: 'mcp', label: 'MCP', icon: Database },
-		{ tab: 'composio', label: 'App Marketplace', icon: Store },
-		{ tab: 'skills', label: 'Skills', icon: Zap },
-		{ tab: 'mobileApi', label: 'Mobile API', icon: Smartphone },
-		{ tab: 'about', label: 'About', icon: Info },
-		{ tab: 'all', label: 'All Settings', icon: LayoutGrid },
+		{ tab: 'models', label: 'Manage Models', icon: Box },
+		{ tab: 'localProviders', label: 'Local Models', icon: Cpu },
+		{ tab: 'providers', label: 'Cloud Providers', icon: Globe },
+		{ tab: 'featureOptions', label: 'Features', icon: Sparkles },
+		{ tab: 'mediaGeneration', label: 'Images & Media', icon: ImageIcon },
+		{ tab: 'general', label: 'System', icon: Settings2 },
+		{ tab: 'mcp', label: 'MCP Tools', icon: Plug },
+		{ tab: 'composio', label: 'App Integrations', icon: Store },
+		{ tab: 'skills', label: 'AI Skills', icon: Zap },
+		{ tab: 'mobileApi', label: 'API & Mobile', icon: Smartphone },
+		{ tab: 'voice', label: 'Voice & Audio', icon: Mic },
+		{ tab: 'about', label: 'About A-Coder', icon: Info },
+		{ tab: 'all', label: 'View All Settings', icon: LayoutGrid },
 	];
 	const shouldShowTab = (tab: Tab) => selectedSection === 'all' || selectedSection === tab;
 	const accessor = useAccessor()
@@ -2978,26 +2979,26 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 					{/* Models section */}
 					<div className={shouldShowTab('models') ? '' : 'hidden'}>
 						<ErrorBoundary>
-							<SettingCard title="Models" description="Manage your AI models and providers.">
-								<SettingBox className="p-0 overflow-hidden">
-									<ModelDump />
-								</SettingBox>
+						<SettingCard title="Manage Models" description="Choose which AI models appear in your workspace.">
+							<SettingBox className="p-0 overflow-hidden">
+								<ModelDump />
+							</SettingBox>
 
-								<SettingBox className="space-y-4">
-									<AutoDetectLocalModelsToggle />
-									<div className="pt-4 border-t border-void-border-2">
-										<h4 className="text-[11px] font-medium text-void-fg-3 mb-3 uppercase tracking-wide">Available Provider Models</h4>
-										<RefreshableModels />
-									</div>
-								</SettingBox>
-							</SettingCard>
+							<SettingBox className="space-y-4">
+								<AutoDetectLocalModelsToggle />
+								<div className="pt-4 border-t border-void-border-2">
+									<h4 className="text-[11px] font-medium text-void-fg-3 mb-3 uppercase tracking-wide">Available Provider Models</h4>
+									<RefreshableModels />
+								</div>
+							</SettingBox>
+						</SettingCard>
 						</ErrorBoundary>
 					</div>
 
 					{/* Local Providers section */}
 					<div className={shouldShowTab('localProviders') ? '' : 'hidden'}>
 						<ErrorBoundary>
-							<SettingCard title="Local Providers" description="Connect to models running on your own machine." isDark={isDark}>
+							<SettingCard title="Run Models Locally" description="Connect to AI running on your own hardware for privacy and speed." isDark={isDark}>
 								<SettingBox className="mb-6">
 									<h3 className="text-[13px] font-medium mb-3 text-void-fg-1">Setup Instructions</h3>
 									<OllamaSetupInstructions sayWeAutoDetect={true} />
@@ -3014,7 +3015,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 					<div className={shouldShowTab('providers') ? '' : 'hidden'}>
 						<SettingDivider />
 						<ErrorBoundary>
-							<SettingCard title="Main Providers" description="Configure cloud-based AI providers." isDark={isDark}>
+							<SettingCard title="Connect Cloud Providers" description="Log in to popular AI services like OpenAI, Anthropic, and more." isDark={isDark}>
 								<SettingBox className="space-y-6">
 									<VoidProviderSettings providerNames={nonlocalProviderNames} />
 								</SettingBox>
@@ -3027,8 +3028,8 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 											<ErrorBoundary>
 												<section className="space-y-6">
 													<div className="mb-6">
-														<h2 className="text-xl font-medium text-void-fg-1">Feature Options</h2>
-														<p className="text-sm text-void-fg-3 mt-1">Customize A-Coder's behavior and capabilities.</p>
+							<h2 className="text-xl font-medium text-void-fg-1">Features</h2>
+							<p className="text-sm text-void-fg-3 mt-1">Turn features on or off and tune how they behave.</p>
 													</div>
 
 													{/* Quick Settings Grid */}
@@ -3130,7 +3131,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 														<SettingCard
 															isDark={isDark}
 															title="Agent Mode"
-															description="Configure behavior for AI Agent mode."
+															description="Set how many actions the AI agent can run in one loop."
 														>
 															<SettingBox>
 																<SettingRow
@@ -3500,8 +3501,8 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 											<ErrorBoundary>
 												<section className="space-y-6">
 													<div className="mb-6">
-														<h2 className="text-xl font-medium text-void-fg-1">Media Generation</h2>
-														<p className="text-sm text-void-fg-3 mt-1">Configure image generation using an OpenAI-compatible API (e.g., Ollama).</p>
+							<h2 className="text-xl font-medium text-void-fg-1">Images & Media</h2>
+							<p className="text-sm text-void-fg-3 mt-1">Configure image generation using an OpenAI-compatible API.</p>
 													</div>
 
 													<div className="space-y-6">
@@ -3717,8 +3718,8 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 							<section className="space-y-6">
 								<div className="mb-6 flex items-center justify-between">
 									<div>
-										<h2 className="text-xl font-medium text-void-fg-1">MCP Servers</h2>
-										<p className="text-sm text-void-fg-3 mt-1">Manage Model Context Protocol servers.</p>
+											<h2 className="text-xl font-medium text-void-fg-1">MCP Tools</h2>
+											<p className="text-sm text-void-fg-3 mt-1">Connect to external tools and data sources via the Model Context Protocol.</p>
 									</div>
 									<SettingsButton className='px-4 py-2' variant="primary" onClick={async () => { await mcpService.revealMCPConfigFile() }}>
 										Configure MCP
@@ -3755,8 +3756,8 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 							<section className="space-y-6">
 								<div className="mb-6 flex items-center justify-between">
 									<div>
-										<h2 className="text-xl font-medium text-void-fg-1">AI Skills</h2>
-										<p className="text-sm text-void-fg-3 mt-1">Specialized instructions to enhance your AI's expertise.</p>
+												<h2 className="text-xl font-medium text-void-fg-1">AI Skills</h2>
+												<p className="text-sm text-void-fg-3 mt-1">Teach the AI new tricks with domain-specific instructions.</p>
 									</div>
 								</div>
 
@@ -3919,6 +3920,134 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 										</div>
 									</div>
 								</SettingCard>
+							</section>
+						</ErrorBoundary>
+					</div>
+
+					{/* Voice & Audio section */}
+					<div className={shouldShowTab('voice') ? 'space-y-8' : 'hidden'}>
+						<ErrorBoundary>
+							<section className="space-y-6">
+								<div className="mb-6">
+									<h2 className="text-xl font-medium text-void-fg-1">Voice & Audio</h2>
+									<p className="text-sm text-void-fg-3 mt-1">Configure speech-to-text and text-to-speech for hands-free chat.</p>
+								</div>
+
+								<div className="space-y-6">
+									<SettingCard
+										isDark={isDark}
+										title="Speech-to-Text (STT)"
+										description="Transcribe your voice into chat messages using an OpenAI-compatible API."
+									>
+										<SettingBox>
+											<SettingRow label="Enable STT">
+												<VoidSwitch
+													size='sm'
+													value={settingsState.globalSettings.sttEnabled}
+													onChange={(newVal) => voidSettingsService.setGlobalSetting('sttEnabled', newVal)}
+												/>
+											</SettingRow>
+										</SettingBox>
+
+										{settingsState.globalSettings.sttEnabled && (
+											<SettingBox>
+												<div className="space-y-4">
+													<div>
+														<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide mb-2 block">Server URL</label>
+														<VoidSimpleInputBox
+															value={settingsState.globalSettings.sttServerUrl}
+															onChangeValue={(newVal) => voidSettingsService.setGlobalSetting('sttServerUrl', newVal)}
+															placeholder='http://localhost:11434/v1'
+															compact={true}
+														/>
+														<p className="text-[10px] text-void-fg-3/80 mt-1">OpenAI-compatible endpoint for audio transcriptions.</p>
+													</div>
+													<div>
+														<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide mb-2 block">Model</label>
+														<VoidSimpleInputBox
+															value={settingsState.globalSettings.sttModel}
+															onChangeValue={(newVal) => voidSettingsService.setGlobalSetting('sttModel', newVal)}
+															placeholder='whisper-1'
+															compact={true}
+														/>
+													</div>
+													<div>
+														<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide mb-2 block">API Key</label>
+														<VoidSimpleInputBox
+															value={settingsState.globalSettings.sttApiKey}
+															onChangeValue={(newVal) => voidSettingsService.setGlobalSetting('sttApiKey', newVal)}
+															placeholder='sk-...'
+															compact={true}
+															passwordBlur={true}
+														/>
+													</div>
+												</div>
+											</SettingBox>
+										)}
+									</SettingCard>
+
+									<SettingCard
+										isDark={isDark}
+										title="Text-to-Speech (TTS)"
+										description="Have the assistant read responses aloud using an OpenAI-compatible API."
+									>
+										<SettingBox>
+											<SettingRow label="Enable TTS">
+												<VoidSwitch
+													size='sm'
+													value={settingsState.globalSettings.ttsEnabled}
+													onChange={(newVal) => voidSettingsService.setGlobalSetting('ttsEnabled', newVal)}
+												/>
+											</SettingRow>
+										</SettingBox>
+
+										{settingsState.globalSettings.ttsEnabled && (
+											<SettingBox>
+												<div className="space-y-4">
+													<div>
+														<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide mb-2 block">Server URL</label>
+														<VoidSimpleInputBox
+															value={settingsState.globalSettings.ttsServerUrl}
+															onChangeValue={(newVal) => voidSettingsService.setGlobalSetting('ttsServerUrl', newVal)}
+															placeholder='http://localhost:11434/v1'
+															compact={true}
+														/>
+														<p className="text-[10px] text-void-fg-3/80 mt-1">OpenAI-compatible endpoint for audio speech synthesis.</p>
+													</div>
+													<div>
+														<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide mb-2 block">Model</label>
+														<VoidSimpleInputBox
+															value={settingsState.globalSettings.ttsModel}
+															onChangeValue={(newVal) => voidSettingsService.setGlobalSetting('ttsModel', newVal)}
+															placeholder='tts-1'
+															compact={true}
+														/>
+													</div>
+													<div>
+														<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide mb-2 block">Voice</label>
+														<VoidSimpleInputBox
+															value={settingsState.globalSettings.ttsVoice}
+															onChangeValue={(newVal) => voidSettingsService.setGlobalSetting('ttsVoice', newVal)}
+															placeholder='alloy'
+															compact={true}
+														/>
+														<p className="text-[10px] text-void-fg-3/80 mt-1">Voice identifier (e.g. alloy, echo, fable, onyx, nova, shimmer).</p>
+													</div>
+													<div>
+														<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide mb-2 block">API Key</label>
+														<VoidSimpleInputBox
+															value={settingsState.globalSettings.ttsApiKey}
+															onChangeValue={(newVal) => voidSettingsService.setGlobalSetting('ttsApiKey', newVal)}
+															placeholder='sk-...'
+															compact={true}
+															passwordBlur={true}
+														/>
+													</div>
+												</div>
+											</SettingBox>
+										)}
+									</SettingCard>
+								</div>
 							</section>
 						</ErrorBoundary>
 					</div>

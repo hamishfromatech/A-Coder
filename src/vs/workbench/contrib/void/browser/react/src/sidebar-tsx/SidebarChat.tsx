@@ -22,7 +22,7 @@ import { ChatMode, displayInfoOfProviderName, FeatureName, isFeatureNameDisabled
 import { ICommandService } from '../../../../../../../platform/commands/common/commands.js';
 import { WarningBox } from '../void-settings-tsx/WarningBox.js';
 import { getModelCapabilities, getIsReasoningEnabledState } from '../../../../common/modelCapabilities.js';
-import { AlertTriangle, ChevronRight, ChevronDown, X, Copy as CopyIcon, CircleEllipsis, Play, Settings, ArrowUp, ArrowDown, Trash2, Send, Circle, Loader2, Brain, Check, Pencil, CirclePlus, File as FileIcon, Folder as FolderIcon, Text as TextIcon, SkipForward, MessageCircle, RotateCw, FileText, FileCode, FileJson, Target, CheckCircle, Lightbulb, Trophy } from 'lucide-react';
+import { AlertTriangle, ChevronRight, ChevronDown, X, Copy as CopyIcon, CircleEllipsis, Play, Settings, ArrowUp, ArrowDown, Trash2, Send, Circle, Loader2, Brain, Check, Pencil, CirclePlus, File as FileIcon, Folder as FolderIcon, Text as TextIcon, SkipForward, MessageCircle, RotateCw, FileText, FileCode, FileJson, Target, CheckCircle, Lightbulb, Trophy, Mic } from 'lucide-react';
 import { ChatMessage, CheckpointEntry, StagingSelectionItem, ToolMessage, ImageAttachment } from '../../../../common/chatThreadServiceTypes.js';
 import { BuiltinToolName, ToolName, IsRunningType, approvalTypeOfBuiltinToolName } from '../../../../common/toolsServiceTypes.js';
 import { CopyButton, EditToolAcceptRejectButtonsHTML, IconShell1, StatusIndicator, useEditToolStreamState } from '../markdown/ApplyBlockHoverButtons.js';
@@ -79,7 +79,7 @@ import { LearningDashboard } from './LearningDashboard.js';
 import { QuizMe } from './QuizMe.js';
 import { NestedToolGroup } from './NestedToolGroup.js';
 import { PersistentTaskPlan } from './PersistentTaskPlan.js';
-
+import { VoiceModePanel } from './VoiceModePanel.js';
 
 // Lazy-loaded components - MUST be at module level to avoid re-creating on every render
 const LazyPlanningResultWrapper = React.lazy(() => import('./PlanningResultWrapper.js'))
@@ -930,6 +930,8 @@ interface VoidChatAreaProps {
 	// Optional close button
 	onClose?: () => void;
 
+	extraActions?: React.ReactNode;
+
 	featureName: FeatureName;
 }
 
@@ -951,6 +953,7 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 	tokenUsage,
 	featureName,
 	loadingIcon,
+	extraActions,
 }) => {
 	const isDark = useIsDark();
 	return (
@@ -1017,6 +1020,8 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 					{isStreaming && loadingIcon}
 
 					{isStreaming && <ButtonStop onClick={onAbort} />}
+
+					{extraActions}
 
 					<ButtonSubmit
 						onClick={onSubmit}
@@ -3770,6 +3775,14 @@ export const SidebarChat = () => {
 
 	const [isQueueExpanded, setIsQueueExpanded] = useState(false);
 
+	const enterVoiceMode = useCallback(() => {
+		chatThreadsService.setCurrentThreadState({ voiceModeActive: true });
+	}, [chatThreadsService]);
+
+	const exitVoiceMode = useCallback(() => {
+		chatThreadsService.setCurrentThreadState({ voiceModeActive: false });
+	}, [chatThreadsService]);
+
 	const inputChatArea = <div
 		onDragOver={handleDragOver}
 		onDragLeave={handleDragLeave}
@@ -3866,6 +3879,16 @@ export const SidebarChat = () => {
 			setSelections={setSelections}
 			tokenUsage={currThreadStreamState?.tokenUsage}
 			onClickAnywhere={() => { textAreaRef.current?.focus() }}
+			extraActions={
+				<button
+					className="flex items-center justify-center w-8 h-8 rounded-md transition-colors cursor-pointer text-void-fg-3 hover:text-void-fg-1 hover:bg-void-bg-3"
+					onClick={enterVoiceMode}
+					data-tooltip-content="Voice mode"
+					aria-label="Enable voice mode"
+				>
+					<Mic size={16} />
+				</button>
+			}
 		>
 			{/* Image Preview */}
 			{settingsState.globalSettings.enableVisionSupport && attachedImages.length > 0 && (
@@ -3921,7 +3944,7 @@ export const SidebarChat = () => {
 
 
 	const isLandingPage = previousMessages.length === 0
-
+	const voiceModeActive = currentThread?.state?.voiceModeActive ?? false;
 
 	const initiallySuggestedPromptsHTML = useMemo(() => <div className='flex flex-col gap-2 w-full text-nowrap text-void-fg-3 select-none'>
 		{[
@@ -4212,9 +4235,14 @@ export const SidebarChat = () => {
 	return (
 		<Fragment key={threadId} // force rerender when change thread
 		>
-			{isLandingPage ?
-				landingPageContent
-				: threadPageContent}
+			{voiceModeActive ?
+				<VoiceModePanel
+					threadId={threadId}
+					exitVoiceMode={exitVoiceMode}
+				/>
+				: isLandingPage ?
+					landingPageContent
+					: threadPageContent}
 
 			{/* MCP Server Modal */}
 			<MCPServerModal

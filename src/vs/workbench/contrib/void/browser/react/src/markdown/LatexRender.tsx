@@ -3,7 +3,7 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
 import katex from 'katex';
 
 // Import KaTeX CSS
@@ -19,12 +19,36 @@ export interface LatexRenderProps {
 /**
  * Renders LaTeX math expressions using KaTeX
  */
+
+// Reuse the existing 'dompurify' Trusted Types policy (whitelisted in VS Code CSP).
+// Falls back to raw innerHTML if Trusted Types is unavailable or getPolicy doesn't exist.
+const ttPolicy: { createHTML: (v: string) => TrustedHTML | string } | undefined =
+	(() => {
+		try {
+			const tt = typeof window !== 'undefined' && (window as any).trustedTypes;
+			if (!tt || typeof tt.getPolicy !== 'function') return undefined;
+			return tt.getPolicy('dompurify') || undefined;
+		} catch {
+			return undefined;
+		}
+	})();
+
+const safeSetHTML = (el: HTMLElement, html: string) => {
+	if (ttPolicy) {
+		el.innerHTML = ttPolicy.createHTML(html) as string;
+	} else {
+		el.innerHTML = html;
+	}
+};
+
 export const LatexRender: React.FC<LatexRenderProps> = ({
 	latex,
 	displayMode = false,
 	className = '',
 	throwOnError = false,
 }) => {
+	const spanRef = useRef<HTMLSpanElement>(null);
+
 	// Render LaTeX to HTML
 	const html = useMemo(() => {
 		try {
@@ -67,12 +91,19 @@ export const LatexRender: React.FC<LatexRenderProps> = ({
 		}
 	}, [latex, displayMode, throwOnError]);
 
+	// Set innerHTML via ref to satisfy Trusted Types CSP
+	useEffect(() => {
+		if (spanRef.current) {
+			safeSetHTML(spanRef.current, html);
+		}
+	}, [html]);
+
 	return (
 		<span
 			className={`katex-container ${displayMode ? 'block my-2 text-center' : 'inline'} ${className}`}
 			style={displayMode ? { display: 'block', overflowX: 'auto', padding: '0.5em 0' } : {}}
 		>
-			<span dangerouslySetInnerHTML={{ __html: html }} />
+			<span ref={spanRef} />
 		</span>
 	);
 };
