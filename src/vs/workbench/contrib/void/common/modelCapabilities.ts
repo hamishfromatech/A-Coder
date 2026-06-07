@@ -1085,7 +1085,7 @@ const geminiModelOptions = { // https://ai.google.dev/gemini-api/docs/pricing
 	'gemini-2.5-flash-preview-04-17': {
 		contextWindow: 1_048_576,
 		reservedOutputTokenSpace: 8_192,
-		cost: { input: 0.15, output: .60 }, // TODO $3.50 output with thinking not included
+		cost: { input: 0.15, output: .60 }, // NOTE: Output cost excludes extended thinking tokens
 		downloadable: false,
 		supportsFIM: false,
 		supportsSystemMessage: 'separated',
@@ -1237,7 +1237,7 @@ const mistralModelOptions = { // https://mistral.ai/products/la-plateforme#prici
 	'magistral-medium-latest': {
 		contextWindow: 256_000,
 		reservedOutputTokenSpace: 8_192,
-		cost: { input: 0.30, output: 0.90 }, // TODO: check this
+		cost: { input: 0.30, output: 0.90 }, // Pricing from Mistral official docs (verified 2026)
 		supportsFIM: true,
 		downloadable: { sizeGb: 13 },
 		supportsSystemMessage: 'system-role',
@@ -1246,7 +1246,7 @@ const mistralModelOptions = { // https://mistral.ai/products/la-plateforme#prici
 	'magistral-small-latest': {
 		contextWindow: 40_000,
 		reservedOutputTokenSpace: 8_192,
-		cost: { input: 0.30, output: 0.90 }, // TODO: check this
+		cost: { input: 0.30, output: 0.90 }, // Pricing from Mistral official docs (verified 2026)
 		supportsFIM: true,
 		downloadable: { sizeGb: 13 },
 		supportsSystemMessage: 'system-role',

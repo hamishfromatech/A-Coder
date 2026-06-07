@@ -550,7 +550,7 @@ const getCompletionOptions = (prefixAndSuffix: PrefixAndSuffixInfo, relevantCont
 	const isLinePrefixEmpty = removeAllWhitespace(prefixToTheLeftOfCursor).length === 0
 	const isLineSuffixEmpty = removeAllWhitespace(suffixToTheRightOfCursor).length === 0
 
-	// TODO add context to prefix
+	// NOTE: Consider injecting semantic context (e.g. from codebase search) into prefix for better completions
 	// llmPrefix = '\n\n/* Relevant context:\n' + relevantContext + '\n*/\n' + llmPrefix
 
 	// if we just accepted an autocompletion, predict a multiline completion starting on the next line
@@ -637,8 +637,6 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 
 		const isEnabled = this._settingsService.state.globalSettings.enableAutocomplete
 		if (!isEnabled) return []
-
-		const testMode = false
 
 		const docUriStr = model.uri.fsPath;
 
@@ -763,10 +761,6 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 		const { shouldGenerate, predictionType, llmPrefix, llmSuffix, stopTokens } = getCompletionOptions(prefixAndSuffix, relevantContext, justAcceptedAutocompletion)
 
 		if (!shouldGenerate) return []
-
-		if (testMode && this._autocompletionId !== 0) { // TODO remove this
-			return []
-		}
 
 
 

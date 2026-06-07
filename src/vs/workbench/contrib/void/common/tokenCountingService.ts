@@ -796,7 +796,7 @@ export class TokenCountingService {
 		}
 
 		try {
-			// TODO: Implement API calls to fetch context windows from:
+			// NOTE: Dynamic context window fetching via provider APIs is a planned enhancement
 			// - OpenAI: GET /v1/models/{model}
 			// - Anthropic: GET /v1/models
 			// - OpenRouter: GET /api/v1/models

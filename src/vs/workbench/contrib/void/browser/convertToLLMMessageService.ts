@@ -387,7 +387,7 @@ const prepareOpenAIOrAnthropicMessages = ({
 	let messages: (SimpleLLMMessage | { role: 'system', content: string })[] = [...messages_]
 
 	// ================ system message ================
-	// A COMPLETE HACK: last message is system message for context purposes
+	// Include system message in weight calculations for context trimming
 
 	const sysMsgParts: string[] = []
 	if (aiInstructions) sysMsgParts.push(`GUIDELINES (from the user's .a-coder-rules file):\n${aiInstructions}`)
@@ -489,7 +489,7 @@ const prepareOpenAIOrAnthropicMessages = ({
 
 
 	// ================ tools and anthropicReasoning ================
-	// SYSTEM MESSAGE HACK: we shifted (removed) the system message role, so now SimpleLLMMessage[] is valid
+	// Extract system message after trimming; SimpleLLMMessage[] is now valid without system role
 
 	let llmChatMessages: AnthropicOrOpenAILLMMessage[] = []
 	if (specialToolFormat === 'anthropic-style') {

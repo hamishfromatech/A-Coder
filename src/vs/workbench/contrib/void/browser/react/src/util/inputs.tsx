@@ -182,7 +182,7 @@ const numOptionsToShow = 100
 
 
 
-// TODO make this unique based on other options
+// Abbreviates path to basename for dropdown display
 const getAbbreviatedName = (relativePath: string) => {
 	return getBasename(relativePath, 1)
 }
@@ -784,7 +784,8 @@ export const VoidInputBox2 = forwardRef<HTMLTextAreaElement, InputBox2Props>(fun
 					return;
 				}
 
-				if (e.key === 'Backspace') { // TODO allow user to undo this.
+				// When user presses Backspace with no text, remove staging selections
+				if (e.key === 'Backspace') {
 					if (!e.currentTarget.value || (e.currentTarget.selectionStart === 0 && e.currentTarget.selectionEnd === 0)) { // if there is no text or cursor is at position 0, remove a selection
 						if (e.metaKey || e.ctrlKey) { // Ctrl+Backspace = remove all
 							chatThreadService.popStagingSelections(Number.MAX_SAFE_INTEGER)

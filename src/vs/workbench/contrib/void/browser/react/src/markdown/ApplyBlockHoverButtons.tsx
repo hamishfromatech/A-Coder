@@ -131,7 +131,7 @@ export const JumpToTerminalButton = ({ onClick }: { onClick: () => void }) => {
 
 
 // state persisted for duration of react only
-// TODO change this to use type `ChatThreads.applyBoxState[applyBoxId]`
+// This could be moved into ChatThreads state instead of React ref, for cross-session persistence
 const _applyingURIOfApplyBoxIdRef: { current: { [applyBoxId: string]: URI | undefined } } = { current: {} }
 
 const getUriBeingApplied = (applyBoxId: string) => {

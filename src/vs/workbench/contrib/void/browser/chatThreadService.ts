@@ -885,7 +885,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 	private _convertThreadDataFromStorage(threadsStr: string): ChatThreads {
 		return JSON.parse(threadsStr, (key, value) => {
 			if (value && typeof value === 'object' && value.$mid === 1) { // $mid is the MarshalledId. $mid === 1 means it is a URI
-				return URI.from(value); // TODO URI.revive instead of this?
+				return URI.revive(value);
 			}
 			return value;
 		});
@@ -3307,7 +3307,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 	generateCodespanLink: IChatThreadService['generateCodespanLink'] = async ({ codespanStr: _codespanStr, threadId }) => {
 
 		// process codespan to understand what we are searching for
-		// TODO account for more complicated patterns eg `ITextEditorService.openEditor()`
+		// Simplified pattern: supports alphanumeric identifiers; could extend for method signatures
 		const functionOrMethodPattern = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/; // `fUnCt10n_name`
 		const functionParensPattern = /^([^\s(]+)\([^)]*\)$/; // `functionName( args )`
 
@@ -3349,7 +3349,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 					// shorten it
 
-					// TODO make this logic more general
+					// URI display text shortening for this occurrence
 					const prevUriStrs = prevUris.map(uri => uri.fsPath)
 					const shortenedUriStrs = shorten(prevUriStrs)
 					let displayText = shortenedUriStrs[idx]
@@ -3375,7 +3375,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 			for (const [idx, uri] of uris.entries()) {
 				if (doesUriMatchTarget(uri)) {
 
-					// TODO make this logic more general
+					// URI display text shortening for repeated occurrences
 					const prevUriStrs = prevUris.map(uri => uri.fsPath)
 					const shortenedUriStrs = shorten(prevUriStrs)
 					let displayText = shortenedUriStrs[idx]
@@ -4342,9 +4342,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 			console.log('[ChatThreadService] No active thread for trigger event');
 		}
 
-		// TODO: Could implement a trigger queue or notification system here
-		// for cases where the user wants to be notified of trigger events
-		// without automatically starting a chat response.
+		// NOTE: A trigger queue/notification system could be added here for event-based workflows
 	}
 
 	/** Delete all messages from a given index onwards (for context menu delete/retry) */
