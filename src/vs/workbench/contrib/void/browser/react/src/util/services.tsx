@@ -60,6 +60,7 @@ import { OPT_OUT_KEY } from '../../../../common/storageKeys.js'
 import { IAgentManagerService } from '../../../agentManager.contribution.js'
 import { ILearningProgressService } from '../../../../common/learningProgressService.js'
 import { IStandaloneSessionService } from '../../../standaloneSessionService.js'
+import { IVoiceService } from '../../../voiceService.js'
 import { StandaloneSession } from '../../../../common/chatThreadServiceTypes.js'
 import { WorkspaceConnection, WorkspaceThreadSummary } from '../../../../common/workspaceRegistryTypes.js'
 import { IComposioService } from '../../../../common/composioService.js'
@@ -405,6 +406,7 @@ const getReactAccessor = (accessor: ServicesAccessor) => {
 		IStorageService: accessor.get(IStorageService),
 		ISoundService: accessor.get(ISoundService),
 		IStandaloneSessionService: accessor.get(IStandaloneSessionService),
+		IVoiceService: accessor.get(IVoiceService),
 		// IACoderOAuthService: accessor.get(IACoderOAuthService),
 
 	} as const

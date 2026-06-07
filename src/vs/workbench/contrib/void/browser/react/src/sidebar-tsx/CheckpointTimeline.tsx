@@ -241,7 +241,7 @@ export const CheckpointTimeline: React.FC<CheckpointTimelineProps> = ({
 				result.push({
 					messageIdx: idx,
 					checkpoint: msg,
-					timestamp: new Date(), // TODO: Get actual timestamp from checkpoint
+					timestamp: msg._timestamp ? new Date(msg._timestamp) : new Date(),
 					previewText: getPreviewText(messages, idx)
 				});
 			}

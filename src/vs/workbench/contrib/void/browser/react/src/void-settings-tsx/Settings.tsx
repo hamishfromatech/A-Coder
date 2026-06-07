@@ -4126,7 +4126,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 									{/* Book CTA — Featured, full width, more prominent */}
 									<div className="mt-3">
 										<a
-											href="https://theatechcorporation.com/book"
+											href="https://bepracticalbook.com"
 											target="_blank"
 											rel="noreferrer"
 											className="group flex items-center justify-between gap-4 px-6 py-4 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] no-underline"

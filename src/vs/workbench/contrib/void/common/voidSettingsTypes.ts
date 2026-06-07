@@ -124,26 +124,26 @@ export const displayInfoOfProviderName = (providerName: ProviderName): DisplayIn
 
 export const subTextMdOfProviderName = (providerName: ProviderName): string => {
 
-	if (providerName === 'anthropic') return 'Get your [API Key here](https://console.anthropic.com/settings/keys).'
-	if (providerName === 'openAI') return 'Get your [API Key here](https://platform.openai.com/api-keys).'
-	if (providerName === 'deepseek') return 'Get your [API Key here](https://platform.deepseek.com/api_keys).'
-	if (providerName === 'openRouter') return 'Get your [API Key here](https://openrouter.ai/settings/keys). Read about [rate limits here](https://openrouter.ai/docs/api-reference/limits).'
-	if (providerName === 'gemini') return 'Get your [API Key here](https://aistudio.google.com/apikey). Read about [rate limits here](https://ai.google.dev/gemini-api/docs/rate-limits#current-rate-limits).'
-	if (providerName === 'groq') return 'Get your [API Key here](https://console.groq.com/keys).'
-	if (providerName === 'xAI') return 'Get your [API Key here](https://console.x.ai).'
-	if (providerName === 'mistral') return 'Get your [API Key here](https://console.mistral.ai/api-keys).'
-	if (providerName === 'openAICompatible') return `Use any provider that's OpenAI-compatible (use this for llama.cpp and more).`
-	if (providerName === 'googleVertex') return 'You must authenticate before using Vertex with A-Coder. Read more about endpoints [here](https://cloud.google.com/vertex-ai/generative-ai/docs/multimodal/call-vertex-using-openai-library), and regions [here](https://cloud.google.com/vertex-ai/docs/general/locations#available-regions).'
-	if (providerName === 'microsoftAzure') return 'Read more about endpoints [here](https://learn.microsoft.com/en-us/rest/api/aifoundry/model-inference/get-chat-completions/get-chat-completions?view=rest-aifoundry-model-inference-2024-05-01-preview&tabs=HTTP), and get your API key [here](https://learn.microsoft.com/en-us/azure/search/search-security-api-keys?tabs=rest-use%2Cportal-find%2Cportal-query#find-existing-keys).'
-	if (providerName === 'awsBedrock') return 'Connect via a LiteLLM proxy or the AWS [Bedrock-Access-Gateway](https://github.com/aws-samples/bedrock-access-gateway). LiteLLM Bedrock setup docs are [here](https://docs.litellm.ai/docs/providers/bedrock).'
-	if (providerName === 'ollama') return 'Read more about custom [Endpoints here](https://github.com/ollama/ollama/blob/main/docs/faq.md#how-can-i-expose-ollama-on-my-network).'
-	if (providerName === 'ollamaCloud') return 'Get your [API Key here](https://ollama.com/settings/keys).'
-	if (providerName === 'vLLM') return 'Read more about custom [Endpoints here](https://docs.vllm.ai/en/latest/getting_started/quickstart.html#openai-compatible-server).'
-	if (providerName === 'lmStudio') return 'Read more about custom [Endpoints here](https://lmstudio.ai/docs/app/api/endpoints/openai).'
-	if (providerName === 'liteLLM') return 'Read more about endpoints [here](https://docs.litellm.ai/docs/providers/openai_compatible).'
-	if (providerName === 'aCoder') return 'Get your API key from [A-Coder](https://a-coder.dev).'
-	if (providerName === 'openAdapter') return 'Get your [API Key here](https://openadapter.in). Models are fetched automatically from api.openadapter.in/v1/models.'
-	if (providerName === 'llamaCpp') return 'Run llama.cpp with `./llama-server` to start the OpenAI-compatible API. Models are fetched from the endpoint.'
+	if (providerName === 'anthropic') return 'Get your key → [Anthropic Console](https://console.anthropic.com/settings/keys).'
+	if (providerName === 'openAI') return 'Get your key → [OpenAI Platform](https://platform.openai.com/api-keys).'
+	if (providerName === 'deepseek') return 'Get your key → [DeepSeek](https://platform.deepseek.com/api_keys).'
+	if (providerName === 'openRouter') return 'Get your key → [OpenRouter](https://openrouter.ai/settings/keys). See [rate limits](https://openrouter.ai/docs/api-reference/limits).'
+	if (providerName === 'gemini') return 'Get your key → [Google AI Studio](https://aistudio.google.com/apikey). See [rate limits](https://ai.google.dev/gemini-api/docs/rate-limits#current-rate-limits).'
+	if (providerName === 'groq') return 'Get your key → [Groq Console](https://console.groq.com/keys).'
+	if (providerName === 'xAI') return 'Get your key → [xAI Console](https://console.x.ai).'
+	if (providerName === 'mistral') return 'Get your key → [Mistral Console](https://console.mistral.ai/api-keys).'
+	if (providerName === 'openAICompatible') return `Connect any OpenAI-compatible API (e.g. llama.cpp).`
+	if (providerName === 'googleVertex') return 'Authenticate with Google Cloud first. Read about [endpoints](https://cloud.google.com/vertex-ai/generative-ai/docs/multimodal/call-vertex-using-openai-library) and [regions](https://cloud.google.com/vertex-ai/docs/general/locations#available-regions).'
+	if (providerName === 'microsoftAzure') return 'Read about [endpoints](https://learn.microsoft.com/en-us/rest/api/aifoundry/model-inference/get-chat-completions/get-chat-completions?view=rest-aifoundry-model-inference-2024-05-01-preview&tabs=HTTP), then get your [key](https://learn.microsoft.com/en-us/azure/search/search-security-api-keys?tabs=rest-use%2Cportal-find%2Cportal-query#find-existing-keys).'
+	if (providerName === 'awsBedrock') return 'Connect via [LiteLLM proxy](https://docs.litellm.ai/docs/providers/bedrock) or the AWS [Bedrock Access Gateway](https://github.com/aws-samples/bedrock-access-gateway).'
+	if (providerName === 'ollama') return 'Learn about custom [endpoints](https://github.com/ollama/ollama/blob/main/docs/faq.md#how-can-i-expose-ollama-on-my-network).'
+	if (providerName === 'ollamaCloud') return 'Get your key → [Ollama](https://ollama.com/settings/keys).'
+	if (providerName === 'vLLM') return 'Learn about custom [endpoints](https://docs.vllm.ai/en/latest/getting_started/quickstart.html#openai-compatible-server).'
+	if (providerName === 'lmStudio') return 'Learn about custom [endpoints](https://lmstudio.ai/docs/app/api/endpoints/openai).'
+	if (providerName === 'liteLLM') return 'Read about [endpoints](https://docs.litellm.ai/docs/providers/openai_compatible).'
+	if (providerName === 'aCoder') return 'Get your key from [A-Coder](https://a-coder.dev).'
+	if (providerName === 'openAdapter') return 'Get your key → [OpenAdapter](https://openadapter.in). Models are fetched automatically.'
+	if (providerName === 'llamaCpp') return 'Run `./llama-server` to start the OpenAI-compatible API. Models are fetched automatically.'
 
 	throw new Error(`subTextMdOfProviderName: Unknown provider name: "${providerName}"`)
 }
@@ -426,13 +426,13 @@ export const displayInfoOfFeatureName = (featureName: FeatureName) => {
 		return 'Apply'
 	// source control:
 	else if (featureName === 'SCM')
-		return 'Commit Message Generator'
+		return 'Commit Messages'
 	// vision:
 	else if (featureName === 'Vision')
-		return 'Vision (Image Processing)'
+		return 'Vision'
 	// tool orchestration:
 	else if (featureName === 'ToolOrchestration')
-		return 'Tool Orchestration'
+		return 'Smart Tool Picker'
 	else
 		throw new Error(`Feature Name ${featureName} not allowed`)
 }

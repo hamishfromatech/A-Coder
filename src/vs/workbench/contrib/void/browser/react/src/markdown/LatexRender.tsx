@@ -17,29 +17,10 @@ export interface LatexRenderProps {
 }
 
 /**
- * Renders LaTeX math expressions using KaTeX
+ * Renders LaTeX math expressions using KaTeX.
+ * Uses katex.render() which writes via DOM APIs instead of innerHTML,
+ * avoiding Trusted Types CSP violations in VS Code webviews.
  */
-
-// Reuse the existing 'dompurify' Trusted Types policy (whitelisted in VS Code CSP).
-// Falls back to raw innerHTML if Trusted Types is unavailable or getPolicy doesn't exist.
-const ttPolicy: { createHTML: (v: string) => TrustedHTML | string } | undefined =
-	(() => {
-		try {
-			const tt = typeof window !== 'undefined' && (window as any).trustedTypes;
-			if (!tt || typeof tt.getPolicy !== 'function') return undefined;
-			return tt.getPolicy('dompurify') || undefined;
-		} catch {
-			return undefined;
-		}
-	})();
-
-const safeSetHTML = (el: HTMLElement, html: string) => {
-	if (ttPolicy) {
-		el.innerHTML = ttPolicy.createHTML(html) as string;
-	} else {
-		el.innerHTML = html;
-	}
-};
 
 export const LatexRender: React.FC<LatexRenderProps> = ({
 	latex,
@@ -49,36 +30,34 @@ export const LatexRender: React.FC<LatexRenderProps> = ({
 }) => {
 	const spanRef = useRef<HTMLSpanElement>(null);
 
-	// Render LaTeX to HTML
-	const html = useMemo(() => {
+	// Strip delimiters once per latex change
+	const cleanLatex = useMemo(() => {
+		let clean = latex.trim();
+		if (clean.startsWith('$$') && clean.endsWith('$$')) {
+			clean = clean.slice(2, -2).trim();
+		} else if (clean.startsWith('$') && clean.endsWith('$')) {
+			clean = clean.slice(1, -1).trim();
+		} else if (clean.startsWith('\\[') && clean.endsWith('\\]')) {
+			clean = clean.slice(2, -2).trim();
+		} else if (clean.startsWith('\\(') && clean.endsWith('\\)')) {
+			clean = clean.slice(2, -2).trim();
+		}
+		return clean;
+	}, [latex]);
+
+	// Render directly into the DOM node using KaTeX's DOM API (no innerHTML)
+	useEffect(() => {
+		const el = spanRef.current;
+		if (!el) return;
+
+		// Clear previous content safely (textContent avoids Trusted Types)
+		el.textContent = '';
+
 		try {
-			// Clean up the latex string - remove $ or $$ delimiters if present
-			let cleanLatex = latex.trim();
-
-			// Remove display math delimiters $$...$$
-			if (cleanLatex.startsWith('$$') && cleanLatex.endsWith('$$')) {
-				cleanLatex = cleanLatex.slice(2, -2).trim();
-			}
-			// Remove inline math delimiters $...$
-			else if (cleanLatex.startsWith('$') && cleanLatex.endsWith('$')) {
-				cleanLatex = cleanLatex.slice(1, -1).trim();
-			}
-			// Remove \[...\] display math delimiters
-			else if (cleanLatex.startsWith('\\[') && cleanLatex.endsWith('\\]')) {
-				cleanLatex = cleanLatex.slice(2, -2).trim();
-			}
-			// Remove \(...\) inline math delimiters
-			else if (cleanLatex.startsWith('\\(') && cleanLatex.endsWith('\\)')) {
-				cleanLatex = cleanLatex.slice(2, -2).trim();
-			}
-
-			return katex.renderToString(cleanLatex, {
+			katex.render(cleanLatex, el, {
 				displayMode,
 				throwOnError,
-				// Keep htmlAndMathml for copy-paste / accessibility (affects display math DOM)
 				output: 'htmlAndMathml',
-				// Restrict `trust` to inline mode only; display math already added a safe
-				// overflowX wrapper, so disable arbitrary command trust there.
 				trust: displayMode ? false : true,
 			});
 		} catch (error) {
@@ -86,17 +65,13 @@ export const LatexRender: React.FC<LatexRenderProps> = ({
 			if (throwOnError) {
 				throw error;
 			}
-			// Return error message as fallback
-			return `<span class="katex-error text-red-400" style="color: #f87171;">${latex}</span>`;
+			// Fallback: show raw latex in a styled span
+			const fallback = document.createElement('span');
+			fallback.style.color = '#f87171';
+			fallback.textContent = latex;
+			el.appendChild(fallback);
 		}
-	}, [latex, displayMode, throwOnError]);
-
-	// Set innerHTML via ref to satisfy Trusted Types CSP
-	useEffect(() => {
-		if (spanRef.current) {
-			safeSetHTML(spanRef.current, html);
-		}
-	}, [html]);
+	}, [cleanLatex, displayMode, throwOnError, latex]);
 
 	return (
 		<span

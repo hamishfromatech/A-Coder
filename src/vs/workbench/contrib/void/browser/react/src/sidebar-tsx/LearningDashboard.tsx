@@ -112,7 +112,7 @@ export const LearningDashboard: React.FC<LearningDashboardProps> = ({ threadId, 
 								<Layers size={22} />
 							</div>
 							<div>
-								<h2 className="text-base font-black text-void-fg-1 tracking-tight">Academy</h2>
+											<h4 className="text-base font-black text-void-fg-1 tracking-tight">Learning Center</h4>
 								<p className="text-[10px] font-bold text-void-accent uppercase tracking-widest">Student Mode</p>
 							</div>
 						</div>
@@ -246,8 +246,8 @@ export const LearningDashboard: React.FC<LearningDashboardProps> = ({ threadId, 
 									) : (
 										<div className="text-center py-20">
 											<Map size={48} className="mx-auto mb-6 text-void-fg-4 opacity-20" />
-											<h4 className="text-xl font-black text-void-fg-1 mb-2">No Concepts Yet</h4>
-											<p className="text-sm text-void-fg-3 max-w-xs mx-auto">Complete lessons to build your concept mastery map.</p>
+											<h4 className="text-xl font-black text-void-fg-1 mb-2">Start learning to track your progress</h4>
+											<p className="text-sm text-void-fg-3 max-w-xs mx-auto">Complete lessons and quizzes to build your concept mastery map.</p>
 										</div>
 									)}
 								</div>
@@ -277,7 +277,7 @@ export const LearningDashboard: React.FC<LearningDashboardProps> = ({ threadId, 
 									) : (
 										<div className="text-center py-20">
 											<Zap size={48} className="mx-auto mb-6 text-void-fg-4 opacity-20" />
-											<h4 className="text-xl font-black text-void-fg-1 mb-2">No Quizzes Yet</h4>
+											<h4 className="text-xl font-black text-void-fg-1 mb-2">Take a quiz to test your knowledge</h4>
 											<p className="text-sm text-void-fg-3 max-w-xs mx-auto">Complete quizzes during lessons to track your retention.</p>
 										</div>
 									)}

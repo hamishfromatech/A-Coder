@@ -117,7 +117,7 @@ export const QuizMe: React.FC<QuizMeProps> = ({ threadId, onClose, onSelectTopic
 							<Brain size={24} />
 						</div>
 						<div>
-							<h2 className="text-xl font-black text-void-fg-1 tracking-tight">Daily Review</h2>
+							<h2 className="text-xl font-black text-void-fg-1 tracking-tight">Test Yourself</h2>
 							<p className="text-[10px] font-bold text-void-fg-4 uppercase tracking-[0.2em]">Spaced Repetition</p>
 						</div>
 					</div>
@@ -131,7 +131,7 @@ export const QuizMe: React.FC<QuizMeProps> = ({ threadId, onClose, onSelectTopic
 					{items.length === 0 ? (
 						<div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-10">
 							<Sparkles size={48} className="mb-4 text-void-fg-4" />
-							<h3 className="text-lg font-bold text-void-fg-1 mb-1">Knowledge Base Growing</h3>
+							<h3 className="text-lg font-bold text-void-fg-1 mb-1">Your Knowledge is Growing</h3>
 							<p className="text-xs text-void-fg-3 max-w-[200px]">Complete more lessons to unlock your personalized review queue.</p>
 						</div>
 					) : (

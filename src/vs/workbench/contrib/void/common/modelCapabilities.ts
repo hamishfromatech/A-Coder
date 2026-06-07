@@ -279,9 +279,9 @@ const defaultModelOptions = {
 	specialToolFormat: 'openai-style', // added default specialToolFormat
 } as const satisfies VoidStaticModelInfo
 
-// TODO!!! double check all context sizes below
-// TODO!!! add openrouter common models
-// TODO!!! allow user to modify capabilities and tell them if autodetected model or falling back
+// NOTE: Verify context sizes periodically as providers update their documentation
+// NOTE: Consider adding more OpenRouter common models
+// NOTE: Allow user to modify capabilities and notify them if autodetected or falling back
 const openSourceModelOptions_assumingOAICompat = {
 	'deepseekR1': {
 		supportsFIM: false,
@@ -1137,7 +1137,7 @@ const geminiModelOptions = { // https://ai.google.dev/gemini-api/docs/pricing
 	'gemini-1.5-flash': {
 		contextWindow: 1_048_576,
 		reservedOutputTokenSpace: 8_192, // 8_192,
-		cost: { input: 0.075, output: 0.30 },  // TODO!!! price doubles after 128K tokens, we are NOT encoding that info right now
+		cost: { input: 0.075, output: 0.30 },  // Price doubles after 128K tokens (not currently encoded)
 		downloadable: false,
 		supportsFIM: false,
 		supportsSystemMessage: 'separated',
@@ -1147,7 +1147,7 @@ const geminiModelOptions = { // https://ai.google.dev/gemini-api/docs/pricing
 	'gemini-1.5-pro': {
 		contextWindow: 2_097_152,
 		reservedOutputTokenSpace: 8_192,
-		cost: { input: 1.25, output: 5.00 },  // TODO!!! price doubles after 128K tokens, we are NOT encoding that info right now
+		cost: { input: 1.25, output: 5.00 },  // Price doubles after 128K tokens (not currently encoded)
 		downloadable: false,
 		supportsFIM: false,
 		supportsSystemMessage: 'separated',
@@ -1157,7 +1157,7 @@ const geminiModelOptions = { // https://ai.google.dev/gemini-api/docs/pricing
 	'gemini-1.5-flash-8b': {
 		contextWindow: 1_048_576,
 		reservedOutputTokenSpace: 8_192,
-		cost: { input: 0.0375, output: 0.15 },  // TODO!!! price doubles after 128K tokens, we are NOT encoding that info right now
+		cost: { input: 0.0375, output: 0.15 },  // Price doubles after 128K tokens (not currently encoded)
 		downloadable: false,
 		supportsFIM: false,
 		supportsSystemMessage: 'separated',

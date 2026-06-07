@@ -81,6 +81,9 @@ import './agentManager.contribution.js'
 // register Mobile API
 import './apiServiceBridge.js'
 
+// voice service (STT + TTS)
+import './voiceService.js'
+
 // ---------- common (unclear if these actually need to be imported, because they're already imported wherever they're used) ----------
 
 // llmMessage

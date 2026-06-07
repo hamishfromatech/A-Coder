@@ -133,7 +133,7 @@ const SectionHeader: React.FC<{
 				<button
 					onClick={(e) => { e.stopPropagation(); onBookmark(); }}
 					className={`p-1 rounded transition-colors ${isBookmarked ? 'text-void-accent' : 'text-void-fg-4 hover:text-void-accent opacity-0 group-hover:opacity-100'}`}
-					title={isBookmarked ? 'Bookmarked' : 'Bookmark section'}
+					title={isBookmarked ? 'Saved' : 'Save section'}
 				>
 					{isBookmarked ? <BookmarkCheck size={14} /> : <Bookmark size={14} />}
 				</button>

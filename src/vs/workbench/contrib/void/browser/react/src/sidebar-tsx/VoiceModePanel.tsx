@@ -49,20 +49,21 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({ threadId, exitVo
 					const base64Audio = (reader.result as string).split(',')[1];
 					setPhase('transcribing');
 					try {
-						const result = await accessor.call('void-channel-voice', 'transcribe', {
+						const voiceService = accessor.get('IVoiceService');
+						const result = await voiceService.transcribe({
 							baseUrl: sttServerUrl, model: sttModel, apiKey: sttApiKey, audioBase64: base64Audio,
-						}) as { success: boolean; text?: string; error?: string };
+						});
 						if (result.success && result.text) {
 							setPhase('thinking');
 							chatThreadsService.sendUserMessage(threadId, result.text);
 							if (!ttsEnabled) setPhase('idle');
 						} else {
 							setPhase('error');
-							setError(result.error || 'Transcription failed');
+									setError(result.error || "Couldn\u2019t hear that — try again?");
 						}
 					} catch (e) {
 						setPhase('error');
-						setError(e instanceof Error ? e.message : 'Unknown STT error');
+						setError(e instanceof Error ? e.message : 'Audio error — check your microphone');
 					}
 				};
 				reader.readAsDataURL(blob);
@@ -71,7 +72,7 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({ threadId, exitVo
 			mediaRecorder.start();
 		} catch (e) {
 			setPhase('error');
-			setError(e instanceof Error ? e.message : 'Microphone access denied');
+			setError(e instanceof Error ? e.message : 'Microphone access denied — allow it in your browser settings');
 		}
 	}, [threadId, sttServerUrl, sttModel, sttApiKey, ttsEnabled, accessor, chatThreadsService]);
 
@@ -90,9 +91,10 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({ threadId, exitVo
 			const lastMsg = msgs[msgs.length - 1];
 			if (lastMsg?.role === 'assistant' && !lastMsg.isStreaming) {
 				setPhase('speaking');
-				accessor.call('void-channel-voice', 'synthesize', {
+				const voiceService = accessor.get('IVoiceService');
+				voiceService.synthesize({
 					baseUrl: ttsServerUrl, model: ttsModel, voice: ttsVoice, apiKey: ttsApiKey, text: lastMsg.content,
-				}).then((result: any) => {
+				}).then((result) => {
 					if (result.success && result.audioBase64) {
 						const audio = new Audio(`data:audio/mp3;base64,${result.audioBase64}`);
 						audioRef.current = audio;
@@ -113,7 +115,7 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({ threadId, exitVo
 		transcribing: { icon: <Loader2 size={20} className="animate-spin" />, label: 'Transcribing...', color: 'text-void-fg-2' },
 		thinking: { icon: <Loader2 size={20} className="animate-spin" />, label: 'Thinking...', color: 'text-void-fg-2' },
 		speaking: { icon: <Volume2 size={20} />, label: 'Speaking...', color: 'text-void-accent' },
-		error: { icon: <AlertCircle size={20} />, label: error ?? 'Error', color: 'text-red-500' },
+		error: { icon: <AlertCircle size={20} />, label: error ?? 'Something went wrong', color: 'text-red-500' },
 	};
 
 	const config = phaseConfig[phase];
@@ -132,7 +134,7 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({ threadId, exitVo
 				className="mt-4 px-4 py-2 text-sm text-void-fg-3 bg-void-bg-2 rounded-lg cursor-pointer border border-void-border-2 hover:bg-void-bg-3 transition-colors"
 				onClick={exitVoiceMode}
 			>
-				<PhoneOff size={14} className="inline mr-1" /> Exit voice mode
+				<PhoneOff size={14} className="inline mr-1" /> Stop voice mode
 			</button>
 		</div>
 	);

@@ -337,7 +337,7 @@ const TaskPlanView = ({
 							onClearPlan();
 						}}
 						className="btn-ghost min-w-[44px] min-h-[44px] flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-void-accent"
-						title="Clear all tasks"
+										title="Clear task list"
 					>
 						<Trash2 className="w-4 h-4 text-void-fg-4" />
 					</button>
@@ -388,7 +388,7 @@ const TaskPlanView = ({
 								<button
 									onClick={() => onDeleteTask(task.id)}
 									className="btn-ghost opacity-0 group-hover:opacity-100 focus:opacity-100 min-w-[44px] min-h-[44px] flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-void-accent"
-									title="Delete task"
+										title="Remove task"
 								>
 									<X className="w-4 h-4 text-void-fg-4" />
 								</button>
@@ -412,7 +412,7 @@ const TaskPlanView = ({
 											setNewTaskDescription('');
 										}
 									}}
-									placeholder="Enter task description..."
+										placeholder="What should the AI work on?"
 									className="input flex-1"
 									autoFocus
 								/>
@@ -1374,7 +1374,7 @@ export const SelectedFiles = (
 									voidOpenFileFn(selection.uri, accessor, selection.range);
 								}
 								else if (selection.type === 'Folder') {
-									// TODO!!! reveal in tree
+									commandService.executeCommand('revealInExplorer', selection.uri);
 								}
 							}}
 						>
@@ -1614,7 +1614,7 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 				enableAtToMention
 				ref={setTextAreaRef}
 				className='min-h-[81px] max-h-[500px] px-0.5'
-				placeholder="Edit your message..."
+				placeholder="Update your message..."
 				onChangeText={(text) => setIsDisabled(!text)}
 				onFocus={() => {
 					setIsFocused(true)
@@ -1703,7 +1703,7 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 										onOpenEdit()
 									}}
 									className="user-message-action-btn"
-									title="Edit message"
+										title="Update message"
 								>
 											<Pencil size={12} />
 										</button>
@@ -2502,7 +2502,7 @@ const CommandBarInChat = () => {
 	// acceptall + rejectall
 	// popup info about each change (each with num changes + acceptall + rejectall of their own)
 
-	const numFilesChangedStr = numFilesChanged === 0 ? 'No files with changes'
+	const numFilesChangedStr = numFilesChanged === 0 ? 'No changes yet — keep chatting!'
 		: `${sortedCommandBarURIs.length} file${numFilesChanged === 1 ? '' : 's'} with changes`
 
 
@@ -3614,7 +3614,7 @@ export const SidebarChat = () => {
 					showDismiss={true}
 				/>
 
-				<WarningBox className='text-sm my-2 mx-4' onClick={() => { commandService.executeCommand(VOID_OPEN_SETTINGS_ACTION_ID) }} text='Open settings' />
+				<WarningBox className='text-sm my-2 mx-4' onClick={() => { commandService.executeCommand(VOID_OPEN_SETTINGS_ACTION_ID) }} text='Set up your AI provider first' />
 			</div>
 		}
 	</ScrollToBottomContainer>
@@ -4140,7 +4140,7 @@ export const SidebarChat = () => {
 							<button
 								onClick={() => setShowQuizMe(true)}
 								className='flex items-center gap-1.5 px-3 py-1.5 bg-void-bg-2 hover:bg-void-bg-3 text-void-fg-2 hover:text-void-fg-1 rounded-lg text-xs font-medium transition-colors border border-void-border-2'
-								title='Review concepts with spaced repetition'
+								title='Review what you have learned'
 							>
 								<Brain size={14} />
 								<span>Quiz Me</span>
@@ -4148,7 +4148,7 @@ export const SidebarChat = () => {
 							<button
 								onClick={() => setShowLearningDashboard(true)}
 								className='flex items-center gap-1.5 px-3 py-1.5 bg-void-bg-2 hover:bg-void-bg-3 text-void-fg-2 hover:text-void-fg-1 rounded-lg text-xs font-medium transition-colors border border-void-border-2'
-								title='View your learning progress'
+								title='Your learning journey'
 							>
 								<Trophy size={14} />
 								<span>My Progress</span>
