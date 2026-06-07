@@ -2992,23 +2992,6 @@ export const SidebarChat = () => {
 	// Detect ANY tool call activity (native or XML) - ensure boolean
 	const isAnyToolActivity = hasToolName || toolIsGenerating || isGeneratingXMLToolCall;
 
-	// Debug: log tool state and ReAct phase
-	if ((toolCallsSoFar && toolCallsSoFar.length > 0) || isGeneratingXMLToolCall || reactPhase) {
-		console.log('[SidebarChat] Tool generation state:', {
-			toolCallsSoFar: toolCallsSoFar ? toolCallsSoFar.map(tc => ({
-				name: tc.name,
-				isDone: tc.isDone,
-			})) : null,
-			isGeneratingXMLToolCall,
-			reactPhase: reactPhase ? {
-				type: reactPhase.type,
-				content: reactPhase.content,
-				detectedAt: reactPhase.detectedAt
-			} : null,
-			displayContentLength: displayContentSoFar?.length
-		});
-	}
-
 	// ----- SIDEBAR CHAT state (local) -----
 
 	// state of current message

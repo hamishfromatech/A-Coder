@@ -158,12 +158,9 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 	}
 
 	const handleApprove = async () => {
-		console.log('[ImplementationPlanPreview] handleApprove called', { planId: planInfo.planId, isApproving, threadId })
-		console.log('[ImplementationPlanPreview] chatThreadsService:', chatThreadsService)
-		console.log('[ImplementationPlanPreview] chatThreadsService.addUserMessageAndStreamResponse:', chatThreadsService?.addUserMessageAndStreamResponse)
+		// Approve implementation plan and trigger execution
 
 		if (!planInfo.planId || isApproving) {
-			console.log('[ImplementationPlanPreview] Early return - planId or isApproving', { planId: planInfo.planId, isApproving })
 			return
 		}
 
@@ -171,7 +168,6 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 		try {
 			// Switch to Code mode (agent) for execution
 			if (voidSettingsService?.setGlobalSetting) {
-				console.log('[ImplementationPlanPreview] Switching to agent mode')
 				voidSettingsService.setGlobalSetting('chatMode', 'code')
 			}
 
@@ -186,18 +182,10 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 
 Please begin execution now.`
 
-			console.log('[ImplementationPlanPreview] Calling addUserMessageAndStreamResponse with:', { threadId, userMessage: approvalMessage.substring(0, 100) + '...' })
-
-			if (!chatThreadsService?.addUserMessageAndStreamResponse) {
-				console.error('[ImplementationPlanPreview] addUserMessageAndStreamResponse method not found on chatThreadsService!')
-				return
-			}
-
 			await chatThreadsService.addUserMessageAndStreamResponse({
 				threadId,
 				userMessage: approvalMessage
 			})
-			console.log('[ImplementationPlanPreview] Message sent successfully')
 		} catch (error) {
 			console.error('[ImplementationPlanPreview] Failed to approve implementation plan:', error)
 		} finally {
