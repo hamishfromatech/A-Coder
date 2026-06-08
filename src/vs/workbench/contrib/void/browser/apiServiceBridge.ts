@@ -35,6 +35,10 @@ export class ApiServiceBridge extends Disposable implements IApiServiceBridge {
 
 	declare readonly _serviceBrand: undefined;
 
+	// Logging state to avoid console spam
+	private _lastLoggedApiEnabled: boolean | undefined;
+	private _lastLoggedApiPort: number | undefined;
+
 	constructor(
 		@IChatThreadService private readonly chatThreadService: IChatThreadService,
 		@IToolsService private readonly toolsService: IToolsService,
@@ -218,10 +222,20 @@ export class ApiServiceBridge extends Disposable implements IApiServiceBridge {
 			// console.log('[ApiServiceBridge] API disabled by default');
 		}
 
-		// Listen for settings changes
+		// Listen for settings changes with debounce to avoid spam
+		let lastSettingsHash = '';
 		this._register(this.settingsService.onDidChangeState(() => {
 			const newSettings = this.settingsService.state.globalSettings;
-			// console.log('[ApiServiceBridge] Settings changed:', newSettings.apiEnabled);
+			const newHash = JSON.stringify({
+				enabled: newSettings.apiEnabled,
+				port: newSettings.apiPort,
+				tokens: newSettings.apiTokens,
+				tunnelUrl: newSettings.apiTunnelUrl,
+			});
+
+			// Skip if nothing meaningful changed
+			if (newHash === lastSettingsHash) return;
+			lastSettingsHash = newHash;
 
 			// Update main process settings first
 			this.updateMainProcessSettings(newSettings);
@@ -254,11 +268,16 @@ export class ApiServiceBridge extends Disposable implements IApiServiceBridge {
 				tunnelUrl: settings.apiTunnelUrl,
 			};
 			await apiChannel.call('updateApiSettings', updateData);
-			console.log('[API Bridge] Updated main process API settings:', {
-				enabled: updateData.enabled,
-				port: updateData.port,
-				tokensCount: updateData.tokens?.length || 0
-			});
+			// Log only on significant changes (enable/disable or port change)
+			if (updateData.enabled !== this._lastLoggedApiEnabled || updateData.port !== this._lastLoggedApiPort) {
+				this._lastLoggedApiEnabled = updateData.enabled;
+				this._lastLoggedApiPort = updateData.port;
+				console.log('[API Bridge] Updated main process API settings:', {
+					enabled: updateData.enabled,
+					port: updateData.port,
+					tokensCount: updateData.tokens?.length || 0
+				});
+			}
 		} catch (err) {
 			console.error('[API Bridge] Failed to update main process settings:', err);
 		}

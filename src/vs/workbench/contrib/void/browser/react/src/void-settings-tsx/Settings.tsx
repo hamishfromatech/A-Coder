@@ -675,7 +675,7 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 				const hasOverrides = !!settingsState.overridesOfModel?.[providerName]?.[modelName]
 				const isExpanded = expandedModel?.modelName === modelName && expandedModel?.providerName === providerName;
 
-				return <div key={`${modelName}${providerName}`}>
+				return <div key={`${modelName}-${providerName}-${i}`}>
 					<div
 						className={`flex items-center justify-between gap-4 py-3 px-4 hover:bg-void-bg-2 transition-colors cursor-default group`}
 					>
@@ -760,7 +760,7 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 
 					return (
 						<div
-							key={`${modelName}${providerName}`}
+							key={`${modelName}-${providerName}-${i}`}
 							className={`model-card group ${disabled ? 'model-card-disabled' : ''} ${isExpanded ? 'model-card-expanded' : ''}`}
 							style={{ animationDelay: `${Math.min(i, 10) * 30}ms` }}
 						>
