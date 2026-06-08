@@ -461,6 +461,42 @@ const rawToolCallObjOfAnthropicParams = (toolBlock: Anthropic.Messages.ToolUseBl
 }
 
 
+// Sanitize messages for OpenAI-compatible providers that are strict about
+// schema validation (e.g. Mistral, and OpenRouter when routing to Mistral).
+// Strips non-standard fields like `reasoning`, `thought_signature`, and `name`
+// on `role: 'tool'` messages that were added for internal tracking or Gemini
+// proxy compatibility.
+const sanitizeOpenAIMessages = (messages: any[]): any[] => {
+	return messages.map(m => {
+		if (m.role === 'assistant') {
+			const sanitized: any = {
+				role: m.role,
+				content: m.content,
+			}
+			if (m.tool_calls) {
+				sanitized.tool_calls = m.tool_calls.map((tc: any) => ({
+					type: tc.type,
+					id: tc.id,
+					function: {
+						name: tc.function?.name,
+						arguments: tc.function?.arguments,
+					}
+				}))
+			}
+			return sanitized
+		}
+		if (m.role === 'tool') {
+			return {
+				role: m.role,
+				content: m.content,
+				tool_call_id: m.tool_call_id,
+			}
+		}
+		return m
+	})
+}
+
+
 // ------------ OPENAI-COMPATIBLE ------------
 
 
@@ -517,7 +553,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 	}
 	const options: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
 		model: modelName,
-		messages: messages as any,
+		messages: providerName === 'mistral' || providerName === 'openRouter' ? sanitizeOpenAIMessages(messages) : messages as any,
 		stream: true,
 		...nativeToolsObj,
 		// Enable parallel tool calls for models that support native tool calling.
