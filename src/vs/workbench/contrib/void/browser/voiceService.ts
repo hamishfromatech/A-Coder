@@ -53,13 +53,31 @@ export class VoiceService implements IVoiceService {
 	) { }
 
 	transcribe(request: STTRequest): Promise<STTResponse> {
-		const channel = this.mainProcessService.getChannel('void-channel-voice');
-		return channel.call('transcribe', request) as Promise<STTResponse>;
+		try {
+			const channel = this.mainProcessService.getChannel('void-channel-voice');
+			if (!channel || typeof channel.call !== 'function') {
+				console.error('[VoiceService] Voice channel not available or invalid');
+				return Promise.resolve({ success: false, error: 'Voice channel not available' });
+			}
+			return channel.call('transcribe', request) as Promise<STTResponse>;
+		} catch (e) {
+			console.error('[VoiceService] transcribe error:', e);
+			return Promise.resolve({ success: false, error: e instanceof Error ? e.message : 'Voice service error' });
+		}
 	}
 
 	synthesize(request: TTSRequest): Promise<TTSResponse> {
-		const channel = this.mainProcessService.getChannel('void-channel-voice');
-		return channel.call('synthesize', request) as Promise<TTSResponse>;
+		try {
+			const channel = this.mainProcessService.getChannel('void-channel-voice');
+			if (!channel || typeof channel.call !== 'function') {
+				console.error('[VoiceService] Voice channel not available or invalid');
+				return Promise.resolve({ success: false, error: 'Voice channel not available' });
+			}
+			return channel.call('synthesize', request) as Promise<TTSResponse>;
+		} catch (e) {
+			console.error('[VoiceService] synthesize error:', e);
+			return Promise.resolve({ success: false, error: e instanceof Error ? e.message : 'Voice service error' });
+		}
 	}
 }
 
