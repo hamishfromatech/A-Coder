@@ -41,8 +41,10 @@ import { IWorkspaceContextService } from '../../../../platform/workspace/common/
 import { IDirectoryStrService } from '../common/directoryStrService.js';
 import { IFileService } from '../../../../platform/files/common/files.js';
 import { IMCPService } from '../common/mcpService.js';
+import { IACPService } from '../common/acpService.js';
 import { IComposioService } from '../common/composioService.js';
 import { RawMCPToolCall } from '../common/mcpServiceTypes.js';
+import { ACPRunAgentResponse } from '../common/acpServiceTypes.js';
 import { StreamingXMLParser, ReActPhase } from './streamingXMLParser.js';
 import { ToonService } from '../common/toonService.js';
 
@@ -763,6 +765,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		@IDirectoryStrService private readonly _directoryStringService: IDirectoryStrService,
 		@IFileService private readonly _fileService: IFileService,
 		@IMCPService private readonly _mcpService: IMCPService,
+		@IACPService private readonly _acpService: IACPService,
 		@IComposioService private readonly _composioService: IComposioService,
 		@IVisionService private readonly _visionService: IVisionService,
 		@IModelService private readonly _modelService: IModelService,
@@ -1299,9 +1302,12 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 	private _computeMCPServerOfToolName = (toolName: string) => {
 		const isComposio = this._composioService.isComposioTool(toolName);
-		console.log(`[_computeMCPServerOfToolName] toolName="${toolName}", isComposio=${isComposio}`);
 		if (isComposio) {
 			return 'composio_tool_router'
+		}
+		const acpTool = this._acpService.getACPAgents()?.find(t => t.name === toolName);
+		if (acpTool) {
+			return 'acp_agent_router'
 		}
 		return this._mcpService.getMCPTools()?.find(t => t.name === toolName)?.mcpServerName
 	}
@@ -1583,6 +1589,24 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 					}
 
 					toolResult = response.data
+				} else if (mcpServerName === 'acp_agent_router') {
+					// ACP Agent tools - communicate with other agents
+					resolveInterruptor(() => { })
+
+					const acpTool = this._acpService.getACPAgents()?.find(t => t.name === toolName)
+					if (!acpTool) {
+						throw new Error(`ACP agent "${toolName}" not found`)
+					}
+					if (!acpTool.acpServerName || !acpTool.acpAgentName) {
+						throw new Error(`ACP tool "${toolName}" is missing server or agent name`)
+					}
+
+					const input = (toolParams as any).input as string
+					toolResult = (await this._acpService.callACPAgent({
+						serverName: acpTool.acpServerName,
+						agentName: acpTool.acpAgentName,
+						input,
+					})).result
 				} else {
 					// MCP tools
 					const mcpTools = this._mcpService.getMCPTools()
@@ -1610,7 +1634,6 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 			this._updateToolMessage(threadId, { role: 'tool', type: 'tool_error', params: toolParams, result: errorMessage, name: toolName, content: errorMessage, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature, parallelBatchId }, !!parallelMode)
 			return {}
 		}
-
 		// 4. stringify the result to give to the LLM
 		try {
 			if (isBuiltInTool) {
@@ -1643,6 +1666,11 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 						toolResultStr = JSON.stringify(toolResult, null, 2)
 					}
 				}
+			}
+			// For ACP agent tools, handle the response
+			else if (mcpServerName === 'acp_agent_router') {
+				const acpResult = toolResult as ACPRunAgentResponse
+				toolResultStr = this._acpService.stringifyResult(acpResult)
 			}
 			// For MCP tools, handle the result based on its type
 			else {

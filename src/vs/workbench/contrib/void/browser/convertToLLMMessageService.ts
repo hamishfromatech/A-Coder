@@ -17,6 +17,7 @@ import { URI } from '../../../../base/common/uri.js';
 import { EndOfLinePreference } from '../../../../editor/common/model.js';
 import { ToolName } from '../common/toolsServiceTypes.js';
 import { IMCPService } from '../common/mcpService.js';
+import { IACPService } from '../common/acpService.js';
 import { IComposioService } from '../common/composioService.js';
 import { TokenCountingService } from '../common/tokenCountingService.js';
 import { ContextCompressionService } from '../common/contextCompressionService.js';
@@ -626,6 +627,7 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		@IVoidSettingsService private readonly voidSettingsService: IVoidSettingsService,
 		@IVoidModelService private readonly voidModelService: IVoidModelService,
 		@IMCPService private readonly mcpService: IMCPService,
+		@IACPService private readonly acpService: IACPService,
 		@IComposioService private readonly composioService: IComposioService,
 		@IMainProcessService mainProcessService: IMainProcessService,
 	) {
@@ -681,6 +683,9 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 
 		const mcpTools = this.mcpService.getMCPTools()
 
+		// Get ACP agents if configured
+		const acpTools = this.acpService.getACPAgents()
+
 		// Get Composio meta tools if configured
 		const composioTools = await this._getComposioTools()
 
@@ -707,7 +712,7 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		// Get media generation setting
 		const enableMediaGeneration = this.voidSettingsService.state.globalSettings.enableMediaGeneration
 
-		const systemMessage = chat_systemMessage({ workspaceFolders, openedURIs, directoryStr, activeURI, persistentTerminalIDs, chatMode, mcpTools, composioTools, specialToolFormat: specialToolFormat as any, studentLevel, enableMorphFastContext, enableMediaGeneration })
+		const systemMessage = chat_systemMessage({ workspaceFolders, openedURIs, directoryStr, activeURI, persistentTerminalIDs, chatMode, mcpTools, composioTools, acpTools, specialToolFormat: specialToolFormat as any, studentLevel, enableMorphFastContext, enableMediaGeneration })
 		return systemMessage
 	}
 

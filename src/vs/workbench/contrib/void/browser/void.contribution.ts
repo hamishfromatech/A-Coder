@@ -92,6 +92,9 @@ import '../common/sendLLMMessageService.js'
 // voidSettings
 import '../common/voidSettingsService.js'
 
+// ACP (Agent Communication Protocol)
+import '../common/acpService.js'
+
 // refreshModel
 import '../common/refreshModelService.js'
 

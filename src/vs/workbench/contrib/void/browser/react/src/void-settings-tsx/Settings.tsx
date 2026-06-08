@@ -9,7 +9,7 @@ import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js'
 import { VoidButtonBgDarken, VoidCustomDropdownBox, VoidInputBox2, VoidSimpleInputBox, VoidSwitch } from '../util/inputs.js'
 import { useAccessor, useClipboardService, useIsDark, useIsOptedOut, useRefreshModelListener, useRefreshModelState, useSettingsState, /* useACoderOAuthState, useACoderModels */ } from '../util/services.js'
 // import { IACoderOAuthService, type ACoderModelInfo } from '../../../../common/aCoderOAuthService.js'
-import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, List, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User, Download, Star, MessageCircle, Store, Plug, ExternalLink, AlertTriangle, Eye, EyeOff, ChevronRight, Wind, Brain, Terminal, Code, BookOpen, Target, Trophy, Palette, Image as ImageIcon, Volume2, Play, Mic } from 'lucide-react'
+import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, List, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User, Download, Star, MessageCircle, Store, Plug, ExternalLink, AlertTriangle, Eye, EyeOff, ChevronRight, Wind, Brain, Terminal, Code, BookOpen, Target, Trophy, Palette, Image as ImageIcon, Volume2, Play, Mic, Bot } from 'lucide-react'
 import { URI } from '../../../../../../../base/common/uri.js'
 import { VSBuffer } from '../../../../../../../base/common/buffer.js'
 import { ModelDropdown } from './ModelDropdown.js'
@@ -22,13 +22,14 @@ import Severity from '../../../../../../../base/common/severity.js'
 import { getModelCapabilities, modelOverrideKeys, ModelOverrides } from '../../../../common/modelCapabilities.js';
 import { TransferEditorType, TransferFilesInfo } from '../../../extensionTransferTypes.js';
 import { MCPServer } from '../../../../common/mcpServiceTypes.js';
-import { useMCPServiceState, useComposioServiceState } from '../util/services.js';
+import { ACPAgentState } from '../../../../common/acpServiceTypes.js';
+import { useMCPServiceState, useACPServiceState, useComposioServiceState } from '../util/services.js';
 import { OPT_OUT_KEY } from '../../../../common/storageKeys.js';
 import { StorageScope, StorageTarget } from '../../../../../../../platform/storage/common/storage.js';
 import '../styles.css'
 
 type Tab =
-	| 'models' | 'localProviders' | 'providers' | 'featureOptions' | 'mediaGeneration' | 'general' | 'mcp' | 'composio' | 'skills' | 'mobileApi' | 'about' | 'all';
+	| 'models' | 'localProviders' | 'providers' | 'featureOptions' | 'mediaGeneration' | 'general' | 'mcp' | 'acp' | 'composio' | 'skills' | 'mobileApi' | 'about' | 'all';
 
 // --- Shared Components ---
 
@@ -2024,6 +2025,105 @@ const MCPServersList = () => {
 	return <div className="my-2">{content}</div>
 };
 
+// ACP Server component
+const ACPServerComponent = ({ name, server }: { name: string, server: ACPAgentState }) => {
+	const accessor = useAccessor();
+	const acpService = accessor.get('IACPService');
+
+	const voidSettings = useSettingsState()
+	const isOn = voidSettings.mcpUserStateOfName[name]?.isOn
+
+	return (
+		<div className="void-card py-3 px-4 my-2">
+			<div className="flex items-center justify-between">
+				{/* Left side - status and name */}
+				<div className="flex items-center gap-2">
+					{/* Status indicator */}
+					<div className={`w-2 h-2 rounded-full
+						${server.status === 'success' ? 'bg-green-500'
+							: server.status === 'error' ? 'bg-red-500'
+								: server.status === 'loading' ? 'bg-yellow-500'
+									: server.status === 'offline' ? 'bg-void-fg-3'
+										: ''}
+					`}></div>
+
+					{/* Server name */}
+					<div className="text-sm font-medium text-void-fg-1">{name}</div>
+					{server.url && (
+						<span className="text-xs text-void-fg-3">{server.url}</span>
+					)}
+				</div>
+
+				{/* Right side - power toggle switch */}
+				<VoidSwitch
+					value={isOn ?? false}
+					size='xs'
+					disabled={server.status === 'error'}
+					onChange={() => acpService.toggleServerIsOn(name, !isOn)}
+				/>
+			</div>
+
+			{/* Agents section */}
+			{isOn && (
+				<div className="mt-3">
+					<div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+						{(server.agents ?? []).length > 0 ? (
+							(server.agents ?? []).map((agent: { name: string; description?: string }) => (
+								<span
+									key={agent.name}
+									className="px-2 py-0.5 bg-void-bg-2 text-void-fg-3 rounded-sm text-xs"
+
+									data-tooltip-id='void-tooltip'
+									data-tooltip-content={agent.description || ''}
+									data-tooltip-class-name='void-max-w-[300px]'
+								>
+									{agent.name}
+								</span>
+							))
+						) : (
+							<span className="text-xs text-void-fg-3">No agents available</span>
+						)}
+					</div>
+				</div>
+			)}
+
+			{/* Error display */}
+			{server.status === 'error' && server.error && (
+				<div className="mt-2 text-xs text-red-500">
+					{server.error}
+				</div>
+			)}
+		</div>
+	);
+};
+
+// Main component that renders the list of ACP servers
+const ACPServersList = () => {
+	const acpServiceState = useACPServiceState()
+
+	let content: React.ReactNode
+	if (acpServiceState.error) {
+		content = <div className="text-void-fg-3 text-sm mt-2">
+			{acpServiceState.error}
+		</div>
+	}
+	else {
+		const entries = Object.entries(acpServiceState.acpServerOfName)
+		if (entries.length === 0) {
+			content = <div className="text-void-fg-3 text-sm mt-2">
+				No ACP servers configured
+			</div>
+		}
+		else {
+			content = entries.map(([name, server]) => (
+				<ACPServerComponent key={name} name={name} server={server} />
+			))
+		}
+	}
+
+	return <div className="my-2">{content}</div>
+};
+
 // Skill registry entry interface
 interface SkillRegistryEntry {
 	id: string;
@@ -2815,6 +2915,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 		{ tab: 'mediaGeneration', label: 'Images & Media', icon: ImageIcon },
 		{ tab: 'general', label: 'System', icon: Settings2 },
 		{ tab: 'mcp', label: 'MCP Tools', icon: Plug },
+		{ tab: 'acp', label: 'ACP Agents', icon: Bot },
 		{ tab: 'composio', label: 'App Integrations', icon: Store },
 		{ tab: 'skills', label: 'AI Skills', icon: Zap },
 		{ tab: 'mobileApi', label: 'API & Mobile', icon: Smartphone },
@@ -2833,6 +2934,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 	const chatThreadsService = accessor.get('IChatThreadService')
 	const notificationService = accessor.get('INotificationService')
 	const mcpService = accessor.get('IMCPService')
+	const acpService = accessor.get('IACPService')
 	const storageService = accessor.get('IStorageService')
 	const metricsService = accessor.get('IMetricsService')
 	const whatsNewModalService = accessor.get('IWhatsNewModalService')
@@ -3733,6 +3835,33 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 								>
 									<SettingBox>
 										<MCPServersList />
+									</SettingBox>
+								</SettingCard>
+							</section>
+						</ErrorBoundary>
+					</div>
+
+					{/* ACP section */}
+					<div className={shouldShowTab('acp') ? 'space-y-8' : 'hidden'}>
+						<ErrorBoundary>
+							<section className="space-y-6">
+								<div className="mb-6 flex items-center justify-between">
+									<div>
+											<h2 className="text-xl font-medium text-void-fg-1">ACP Agents</h2>
+											<p className="text-sm text-void-fg-3 mt-1">Connect to external agents via the Agent Communication Protocol.</p>
+									</div>
+									<SettingsButton className='px-4 py-2' variant="primary" onClick={async () => { await acpService.revealACPConfigFile() }}>
+										Configure ACP
+									</SettingsButton>
+								</div>
+
+								<SettingCard
+									isDark={isDark}
+									title="Active Servers"
+									description="Connect your AI to external agents and services."
+								>
+									<SettingBox>
+										<ACPServersList />
 									</SettingBox>
 								</SettingCard>
 							</section>

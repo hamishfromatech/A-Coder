@@ -14,6 +14,7 @@ import { Event } from '../../../../base/common/event.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { IVoidSettingsService } from './voidSettingsService.js';
 import { IMCPService } from './mcpService.js';
+import { IACPService } from './acpService.js';
 import { IComposioService } from './composioService.js';
 import { InternalToolInfo } from './prompt/prompts.js';
 
@@ -69,6 +70,7 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 		@IVoidSettingsService private readonly voidSettingsService: IVoidSettingsService,
 		// @INotificationService private readonly notificationService: INotificationService,
 		@IMCPService private readonly mcpService: IMCPService,
+		@IACPService private readonly acpService: IACPService,
 		@IComposioService private readonly composioService: IComposioService,
 	) {
 		super()
@@ -126,6 +128,7 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 		const { settingsOfProvider, globalSettings } = this.voidSettingsService.state
 
 		const mcpTools = this.mcpService.getMCPTools()
+		this.acpService.getACPAgents() // just trigger discovery
 
 		// Get Composio meta tools if API key is configured
 		// Using Tool Router approach: agent self-manages connections via meta tools

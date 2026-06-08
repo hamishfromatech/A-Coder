@@ -127,6 +127,9 @@ export type InternalToolInfo = {
 	},
 	// Only if the tool is from an MCP server
 	mcpServerName?: string,
+	// Only if the tool is from an ACP server
+	acpServerName?: string,
+	acpAgentName?: string,
 }
 
 
@@ -1578,7 +1581,7 @@ const studentModeTools: BuiltinToolName[] = [
 	'edit_file',
 ]
 
-export const availableTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined, composioTools: InternalToolInfo[] | undefined, options?: { enableMorphFastContext?: boolean; enableMediaGeneration?: boolean }) => {
+export const availableTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined, composioTools: InternalToolInfo[] | undefined, acpTools?: InternalToolInfo[] | undefined, options?: { enableMorphFastContext?: boolean; enableMediaGeneration?: boolean }) => {
 
 	// Select tools based on mode
 	// - chat (Chat): No tools - pure conversation
@@ -1606,12 +1609,15 @@ export const availableTools = (chatMode: ChatMode | null, mcpTools: InternalTool
 	const effectiveMCPTools = (chatMode === 'code' || chatMode === 'plan') ? mcpTools : undefined
 	// Composio tools available in both plan and code modes
 	const effectiveComposioTools = (chatMode === 'code' || chatMode === 'plan') ? composioTools : undefined
+	// ACP tools available in both plan and code modes
+	const effectiveACPTools = (chatMode === 'code' || chatMode === 'plan') ? acpTools : undefined
 
-	const tools: InternalToolInfo[] | undefined = !(filteredBuiltinToolNames || effectiveMCPTools || effectiveComposioTools) ? undefined
+	const tools: InternalToolInfo[] | undefined = !(filteredBuiltinToolNames || effectiveMCPTools || effectiveComposioTools || effectiveACPTools) ? undefined
 		: [
 			...effectiveBuiltinTools ?? [],
 			...effectiveMCPTools ?? [],
 			...effectiveComposioTools ?? [],
+			...effectiveACPTools ?? [],
 		]
 
 	return tools
@@ -1759,7 +1765,7 @@ function newFunction() {
 // ======================================================== chat (normal, gather, agent) ========================================================
 
 
-export const chat_systemMessage = ({ workspaceFolders, openedURIs, activeURI, persistentTerminalIDs, directoryStr, chatMode: mode, mcpTools, composioTools, specialToolFormat, studentLevel, enableMorphFastContext, enableMediaGeneration }: { workspaceFolders: string[], directoryStr: string, openedURIs: string[], activeURI: string | undefined, persistentTerminalIDs: string[], chatMode: ChatMode, mcpTools: InternalToolInfo[] | undefined, composioTools: InternalToolInfo[] | undefined, specialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' | 'marker-style' | undefined, studentLevel?: 'beginner' | 'intermediate' | 'advanced', enableMorphFastContext?: boolean, enableMediaGeneration?: boolean }) => {
+export const chat_systemMessage = ({ workspaceFolders, openedURIs, activeURI, persistentTerminalIDs, directoryStr, chatMode: mode, mcpTools, composioTools, acpTools, specialToolFormat, studentLevel, enableMorphFastContext, enableMediaGeneration }: { workspaceFolders: string[], directoryStr: string, openedURIs: string[], activeURI: string | undefined, persistentTerminalIDs: string[], chatMode: ChatMode, mcpTools: InternalToolInfo[] | undefined, composioTools: InternalToolInfo[] | undefined, acpTools?: InternalToolInfo[] | undefined, specialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' | 'marker-style' | undefined, studentLevel?: 'beginner' | 'intermediate' | 'advanced', enableMorphFastContext?: boolean, enableMediaGeneration?: boolean }) => {
 
 	// ============ IDENTITY ============
 	const identityRole = mode === 'code' ? 'agent' : mode === 'learn' ? 'tutor' : 'assistant'
@@ -1820,7 +1826,7 @@ ${persistentTerminalIDs.join(', ')}` : ''}
 </communication>`
 
 	// ============ TOOL CALLING ============
-	const allTools = availableTools(mode, mcpTools, composioTools, { enableMorphFastContext, enableMediaGeneration })
+	const allTools = availableTools(mode, mcpTools, composioTools, acpTools, { enableMorphFastContext, enableMediaGeneration })
 	let toolCalling = ''
 
 	if (allTools && allTools.length > 0 && (mode === 'code' || mode === 'plan' || mode === 'learn')) {

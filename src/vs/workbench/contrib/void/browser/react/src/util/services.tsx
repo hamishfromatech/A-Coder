@@ -53,10 +53,10 @@ import { ITerminalService } from '../../../../../terminal/browser/terminal.js'
 import { ISearchService } from '../../../../../../services/search/common/search.js'
 import { IExtensionManagementService } from '../../../../../../../platform/extensionManagement/common/extensionManagement.js'
 import { IMCPService } from '../../../../common/mcpService.js';
+import { IACPService } from '../../../../common/acpService.js';
 import { IMCPModalService } from '../../../mcpModalService.js';
 import { IStorageService, StorageScope } from '../../../../../../../platform/storage/common/storage.js'
 import { ISoundService } from '../../../soundService.js'
-import { OPT_OUT_KEY } from '../../../../common/storageKeys.js'
 import { IAgentManagerService } from '../../../agentManager.contribution.js'
 import { ILearningProgressService } from '../../../../common/learningProgressService.js'
 import { IStandaloneSessionService } from '../../../standaloneSessionService.js'
@@ -93,6 +93,11 @@ const commandBarURIStateListeners: Set<(uri: URI) => void> = new Set();
 const activeURIListeners: Set<(uri: URI | null) => void> = new Set();
 
 const mcpListeners: Set<() => void> = new Set()
+
+// ACP service state
+import { ACPAgentOfServerName, ACPAgentState } from '../../../../common/acpServiceTypes.js'
+let acpState: { acpServerOfName: ACPAgentOfServerName; error: string | undefined } = { acpServerOfName: {}, error: undefined }
+const acpListeners: Set<() => void> = new Set()
 
 // Composio service state
 import { ComposioServiceState } from '../../../../common/composioService.js'
@@ -223,6 +228,7 @@ export const _registerServices = (accessor: ServicesAccessor) => {
 		voidCommandBarService: accessor.get(IVoidCommandBarService),
 		modelService: accessor.get(IModelService),
 		mcpService: accessor.get(IMCPService),
+		acpService: accessor.get(IACPService),
 		standaloneSessionService: accessor.get(IStandaloneSessionService),
 		// aCoderOAuthService: accessor.get(IACoderOAuthService),
 	}
@@ -299,6 +305,16 @@ export const _registerServices = (accessor: ServicesAccessor) => {
 	disposables.push(
 		mcpService.onDidChangeState(() => {
 			mcpListeners.forEach(l => l())
+		})
+	)
+
+	// ACP service state
+	const acpService = accessor.get(IACPService)
+	acpState = acpService.state
+	disposables.push(
+		acpService.onDidChangeState(() => {
+			acpState = acpService.state
+			acpListeners.forEach(l => l())
 		})
 	)
 
@@ -594,6 +610,18 @@ export const useMCPServiceState = () => {
 		const listener = () => { ss(mcpService.state) }
 		mcpListeners.add(listener);
 		return () => { mcpListeners.delete(listener) };
+	}, []);
+	return s
+}
+
+export const useACPServiceState = () => {
+	const accessor = useAccessor()
+	const acpService = accessor.get('IACPService')
+	const [s, ss] = useState(acpState)
+	useEffect(() => {
+		const listener = () => { ss(acpState) }
+		acpListeners.add(listener);
+		return () => { acpListeners.delete(listener) };
 	}, []);
 	return s
 }

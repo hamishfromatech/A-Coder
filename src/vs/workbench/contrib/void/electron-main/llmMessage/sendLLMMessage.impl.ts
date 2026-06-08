@@ -96,6 +96,7 @@ type SendChatParams_Internal = InternalCommonMessageParams & {
 	separateSystemMessage: string | undefined;
 	chatMode: ChatMode | null;
 	mcpTools: InternalToolInfo[] | undefined;
+	acpTools?: InternalToolInfo[] | undefined;
 	composioTools: InternalToolInfo[] | undefined;
 }
 type SendFIMParams_Internal = InternalCommonMessageParams & { messages: LLMFIMMessage; separateSystemMessage: string | undefined; }
@@ -354,8 +355,8 @@ const toOpenAICompatibleTool = (toolInfo: InternalToolInfo) => {
 	} satisfies OpenAI.Chat.Completions.ChatCompletionTool
 }
 
-const openAITools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined, composioTools: InternalToolInfo[] | undefined, options?: { enableMorphFastContext?: boolean; enableMediaGeneration?: boolean }) => {
-	const allowedTools = availableTools(chatMode, mcpTools, composioTools, options)
+const openAITools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined, acpTools: InternalToolInfo[] | undefined, composioTools: InternalToolInfo[] | undefined, options?: { enableMorphFastContext?: boolean; enableMediaGeneration?: boolean }) => {
+	const allowedTools = availableTools(chatMode, mcpTools, composioTools, acpTools, options)
 	if (!allowedTools || Object.keys(allowedTools).length === 0) return null
 
 	const openAITools: OpenAI.Chat.Completions.ChatCompletionTool[] = []
@@ -500,7 +501,7 @@ const sanitizeOpenAIMessages = (messages: any[]): any[] => {
 // ------------ OPENAI-COMPATIBLE ------------
 
 
-const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onError, settingsOfProvider, globalSettings, modelSelectionOptions, modelName: modelName_, _setAborter, providerName, chatMode, separateSystemMessage, overridesOfModel, mcpTools, composioTools }: SendChatParams_Internal) => {
+const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onError, settingsOfProvider, globalSettings, modelSelectionOptions, modelName: modelName_, _setAborter, providerName, chatMode, separateSystemMessage, overridesOfModel, mcpTools, acpTools, composioTools }: SendChatParams_Internal) => {
 	const {
 		modelName,
 		reasoningCapabilities,
@@ -527,7 +528,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 
 	// tools - only send if model supports native tool calling (specialToolFormat === 'openai-style')
 	// Models without specialToolFormat will use XML tool calling instead
-	const potentialTools = openAITools(chatMode, mcpTools, composioTools, {
+	const potentialTools = openAITools(chatMode, mcpTools, acpTools, composioTools, {
 		enableMorphFastContext: (modelSelectionOptions?.morphFastContext ?? globalSettings.enableMorphFastContext) && !!globalSettings.morphApiKey,
 		enableMediaGeneration: globalSettings.enableMediaGeneration,
 	})
@@ -1031,8 +1032,8 @@ const toAnthropicTool = (toolInfo: InternalToolInfo) => {
 	} satisfies Anthropic.Messages.Tool
 }
 
-const anthropicTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined, composioTools: InternalToolInfo[] | undefined, options?: { enableMorphFastContext?: boolean; enableMediaGeneration?: boolean }) => {
-	const allowedTools = availableTools(chatMode, mcpTools, composioTools, options)
+const anthropicTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined, acpTools: InternalToolInfo[] | undefined, composioTools: InternalToolInfo[] | undefined, options?: { enableMorphFastContext?: boolean; enableMediaGeneration?: boolean }) => {
+	const allowedTools = availableTools(chatMode, mcpTools, composioTools, acpTools, options)
 	if (!allowedTools || Object.keys(allowedTools).length === 0) return null
 
 	const anthropicTools: Anthropic.Messages.ToolUnion[] = []
@@ -1045,7 +1046,7 @@ const anthropicTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] 
 
 
 // ------------ ANTHROPIC ------------
-const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessage, onError, settingsOfProvider, globalSettings, modelSelectionOptions, overridesOfModel, modelName: modelName_, _setAborter, separateSystemMessage, chatMode, mcpTools, composioTools }: SendChatParams_Internal) => {
+const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessage, onError, settingsOfProvider, globalSettings, modelSelectionOptions, overridesOfModel, modelName: modelName_, _setAborter, separateSystemMessage, chatMode, mcpTools, acpTools, composioTools }: SendChatParams_Internal) => {
 	const {
 		modelName,
 		specialToolFormat,
@@ -1062,7 +1063,7 @@ const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessag
 	const maxTokens = getReservedOutputTokenSpace(providerName, modelName_, { isReasoningEnabled: !!reasoningInfo?.isReasoningEnabled, overridesOfModel })
 
 	// tools
-	const potentialTools = anthropicTools(chatMode, mcpTools, composioTools, {
+	const potentialTools = anthropicTools(chatMode, mcpTools, acpTools, composioTools, {
 		enableMorphFastContext: (modelSelectionOptions?.morphFastContext ?? globalSettings.enableMorphFastContext) && !!globalSettings.morphApiKey,
 		enableMediaGeneration: globalSettings.enableMediaGeneration,
 	})
@@ -1332,8 +1333,8 @@ const toGeminiFunctionDecl = (toolInfo: InternalToolInfo) => {
 	} satisfies FunctionDeclaration
 }
 
-const geminiTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined, composioTools: InternalToolInfo[] | undefined, options?: { enableMorphFastContext?: boolean; enableMediaGeneration?: boolean }): GeminiTool[] | null => {
-	const allowedTools = availableTools(chatMode, mcpTools, composioTools, options)
+const geminiTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined, acpTools: InternalToolInfo[] | undefined, composioTools: InternalToolInfo[] | undefined, options?: { enableMorphFastContext?: boolean; enableMediaGeneration?: boolean }): GeminiTool[] | null => {
+	const allowedTools = availableTools(chatMode, mcpTools, composioTools, acpTools, options)
 	if (!allowedTools || Object.keys(allowedTools).length === 0) return null
 	const functionDecls: FunctionDeclaration[] = []
 	for (const t in allowedTools ?? {}) {
@@ -1347,12 +1348,12 @@ const geminiTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | u
 
 // Enhanced Ollama chat with fallback for better tool calling reliability
 const _sendOllamaChatWithFallback = async (params: SendChatParams_Internal) => {
-	const { chatMode, mcpTools, composioTools, modelName, globalSettings, modelSelectionOptions } = params
+	const { chatMode, mcpTools, acpTools, composioTools, modelName, globalSettings, modelSelectionOptions } = params
 
 	// Check if model supports native tool calling
 	const { specialToolFormat } = getModelCapabilities('ollama', modelName, params.overridesOfModel)
 	const hasNativeTools = specialToolFormat === 'openai-style'
-	const potentialTools = openAITools(chatMode, mcpTools, composioTools, {
+	const potentialTools = openAITools(chatMode, mcpTools, acpTools, composioTools, {
 		enableMorphFastContext: (modelSelectionOptions?.morphFastContext ?? globalSettings.enableMorphFastContext) && !!globalSettings.morphApiKey,
 		enableMediaGeneration: globalSettings.enableMediaGeneration,
 	})
@@ -1440,6 +1441,7 @@ const sendGeminiChat = async ({
 	modelSelectionOptions,
 	chatMode,
 	mcpTools,
+	acpTools,
 	composioTools,
 }: SendChatParams_Internal) => {
 
@@ -1469,7 +1471,7 @@ const sendGeminiChat = async ({
 	})
 
 	// tools
-	const potentialTools = geminiTools(chatMode, mcpTools, composioTools, {
+	const potentialTools = geminiTools(chatMode, mcpTools, acpTools, composioTools, {
 		enableMorphFastContext: (modelSelectionOptions?.morphFastContext ?? globalSettings.enableMorphFastContext) && !!globalSettings.morphApiKey,
 		enableMediaGeneration: globalSettings.enableMediaGeneration,
 	})
