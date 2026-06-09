@@ -12,7 +12,7 @@
   "contributes": {
     "themes": [
       {
-        "id": "Tomorrow Night Blue",
+        "id": "Deeka's Midnight Blue",
         "label": "%themeLabel%",
         "uiTheme": "vs-dark",
         "path": "./themes/tomorrow-night-blue-color-theme.json"
