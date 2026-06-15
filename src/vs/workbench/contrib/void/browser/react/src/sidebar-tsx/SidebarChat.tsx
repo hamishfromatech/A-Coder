@@ -23,8 +23,8 @@ import { ICommandService } from '../../../../../../../platform/commands/common/c
 import { WarningBox } from '../void-settings-tsx/WarningBox.js';
 import { getModelCapabilities, getIsReasoningEnabledState } from '../../../../common/modelCapabilities.js';
 import { AlertTriangle, ChevronRight, ChevronDown, X, Copy as CopyIcon, CircleEllipsis, Play, Settings, ArrowUp, ArrowDown, Trash2, Send, Circle, Loader2, Brain, Check, Pencil, CirclePlus, File as FileIcon, Folder as FolderIcon, Text as TextIcon, SkipForward, MessageCircle, RotateCw, FileText, FileCode, FileJson, Target, CheckCircle, Lightbulb, Trophy, Mic } from 'lucide-react';
-import { ChatMessage, CheckpointEntry, StagingSelectionItem, ToolMessage, ImageAttachment } from '../../../../common/chatThreadServiceTypes.js';
-import { BuiltinToolName, ToolName, IsRunningType, approvalTypeOfBuiltinToolName } from '../../../../common/toolsServiceTypes.js';
+import { ChatMessage, CheckpointEntry, StagingSelectionItem, ToolMessage, ImageAttachment, isToolMessage, hasParallelBatchId } from '../../../../common/chatThreadServiceTypes.js';
+import { BuiltinToolName, ToolName, IsRunningType, approvalTypeOfBuiltinToolName, LintErrorItem } from '../../../../common/toolsServiceTypes.js';
 import { CopyButton, EditToolAcceptRejectButtonsHTML, IconShell1, StatusIndicator, useEditToolStreamState } from '../markdown/ApplyBlockHoverButtons.js';
 import { AUTO_CONTINUE_CHAR_THRESHOLD } from '../../../chatThreadService.js';
 import { builtinToolNames, isABuiltinToolName, MAX_FILE_CHARS_PAGE } from '../../../../common/prompt/prompts.js';
@@ -1316,12 +1316,11 @@ export const SelectedFiles = (
 						: selection.type === 'Folder' ? selection.type + selection.language + selection.state + selection.uri.fsPath
 							: i
 
-				const SelectionIcon = (
+				const SelectionIcon =
 					selection.type === 'File' ? FileIcon
 						: selection.type === 'Folder' ? FolderIcon
 							: selection.type === 'CodeSelection' ? TextIcon
-								: (undefined as never)
-				)
+								: FileIcon
 
 				return <div // container for summarybox and code
 					key={thisKey}
@@ -1503,7 +1502,7 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 
 	// Context menu state
 	const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
-	const timeAgo = formatTimeAgo((chatMessage as any)._timestamp)
+	const timeAgo = formatTimeAgo(chatMessage._timestamp)
 
 	const handleContextMenu = (e: React.MouseEvent) => {
 		e.preventDefault()
@@ -1680,7 +1679,7 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 									<span
 										className="text-[10px] text-void-fg-4/50 ml-1.5 cursor-default"
 										data-tooltip-id="void-tooltip"
-										data-tooltip-content={formatFullTimestamp((chatMessage as any)._timestamp)}
+										data-tooltip-content={formatFullTimestamp(chatMessage._timestamp)}
 										data-tooltip-place="top"
 										data-tooltip-delay-show={500}
 									>
@@ -1796,7 +1795,7 @@ const AssistantMessageComponent = React.memo(({ chatMessage, isCheckpointGhost, 
 	const isDoneReasoning = !!chatMessage.displayContent
 	const thread = chatThreadsService.getCurrentThread()
 
-	const timeAgo = formatTimeAgo((chatMessage as any)._timestamp)
+	const timeAgo = formatTimeAgo(chatMessage._timestamp)
 
 	// Context menu state
 	const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
@@ -1888,7 +1887,7 @@ const AssistantMessageComponent = React.memo(({ chatMessage, isCheckpointGhost, 
 						<span
 							className="text-[10px] text-void-fg-4/50 cursor-default"
 							data-tooltip-id="void-tooltip"
-							data-tooltip-content={formatFullTimestamp((chatMessage as any)._timestamp)}
+							data-tooltip-content={formatFullTimestamp(chatMessage._timestamp)}
 							data-tooltip-place="top"
 							data-tooltip-delay-show={500}
 						>
@@ -2172,7 +2171,7 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 				componentParams.onClick = () => { voidOpenFileFn(params.uri, accessor) }
 				componentParams.children = toolMessage.result.lintErrors && toolMessage.result.lintErrors.length > 0 ?
 					<div className='flex flex-col gap-1'>
-						{toolMessage.result.lintErrors.map((error: any, i: number) => (
+						{toolMessage.result.lintErrors.map((error: LintErrorItem, i: number) => (
 							<div key={i} className='text-void-fg-2 text-xs whitespace-nowrap'>Lines {error.startLineNumber}-{error.endLineNumber}: {error.message}</div>
 						))}
 					</div>
@@ -2460,8 +2459,10 @@ const CommandBarInChat = () => {
 				if (runningTitle) {
 					// Extract text from the loading wrapper if it exists
 					if (typeof runningTitle === 'object' && runningTitle && 'props' in runningTitle) {
-						const props = runningTitle.props as any
-						return props.children?.[0] || 'Running tool...'
+						const props = runningTitle.props as React.PropsWithChildren<{ children?: React.ReactNode }>
+						const childrenArray = React.Children.toArray(props.children)
+						const firstChild = childrenArray[0]
+						return typeof firstChild === 'string' ? firstChild : 'Running tool...'
 					}
 					return String(runningTitle)
 				}
@@ -2474,8 +2475,10 @@ const CommandBarInChat = () => {
 			const runningTitle = titleOfBuiltinToolName[generatingToolName]?.running
 			if (runningTitle) {
 				if (typeof runningTitle === 'object' && runningTitle && 'props' in runningTitle) {
-					const props = runningTitle.props as any
-					return props.children?.[0] || 'Generating tool...'
+					const props = runningTitle.props as React.PropsWithChildren<{ children?: React.ReactNode }>
+					const childrenArray = React.Children.toArray(props.children)
+					const firstChild = childrenArray[0]
+					return typeof firstChild === 'string' ? firstChild : 'Generating tool...'
 				}
 				return String(runningTitle)
 			}
@@ -3046,12 +3049,7 @@ export const SidebarChat = () => {
 				;(async () => {
 					try {
 						const soundService = accessor.get('ISoundService')
-						const dataUrl = await soundService.playSound(soundSetting)
-						if (dataUrl) {
-							const audio = new Audio(dataUrl)
-							audio.volume = 0.5
-							audio.play().catch(() => { })
-						}
+						await soundService.playSound(soundSetting)
 					} catch (e) {
 						console.warn('[A-Coder] Failed to play notification sound:', e)
 					}
@@ -3265,7 +3263,7 @@ export const SidebarChat = () => {
 		if (lastNonCheckpointMessage?.role !== 'assistant') return
 
 		// Get the message ID to track if we've already triggered for this message
-		const messageId = (lastNonCheckpointMessage as any).id || `${currentThread?.messages?.length}`
+		const messageId = lastNonCheckpointMessage._timestamp ? `${lastNonCheckpointMessage._timestamp}` : `${currentThread?.messages?.length}`
 
 		// Don't trigger if we already triggered for this exact message
 		if (lastTriggeredMessageIdRef.current === messageId) return
@@ -3328,17 +3326,18 @@ export const SidebarChat = () => {
 						while (i < filteredMessages.length) {
 							const { message, originalIdx } = filteredMessages[i];
 
-							if (message.role === 'tool' && (message as any).parallelBatchId) {
-								const batchId = (message as any).parallelBatchId;
-								const batchMessages: (ChatMessage & { role: 'tool' })[] = [];
+							if (isToolMessage(message) && hasParallelBatchId(message)) {
+								const batchId = message.parallelBatchId;
+								const batchMessages: ToolMessage<ToolName>[] = [];
 								const batchIndices: number[] = [];
 
 								while (
 									i < filteredMessages.length &&
-									filteredMessages[i].message.role === 'tool' &&
-									(filteredMessages[i].message as any).parallelBatchId === batchId
+									isToolMessage(filteredMessages[i].message) &&
+									hasParallelBatchId(filteredMessages[i].message) &&
+									filteredMessages[i].message.parallelBatchId === batchId
 								) {
-									batchMessages.push(filteredMessages[i].message as any);
+									batchMessages.push(filteredMessages[i].message);
 									batchIndices.push(filteredMessages[i].originalIdx);
 									i++;
 								}
@@ -3347,7 +3346,7 @@ export const SidebarChat = () => {
 									elements.push(
 										<NestedToolGroup
 											key={`batch-${batchId}`}
-											toolMessages={batchMessages}
+											toolMessages={batchMessages as (ChatMessage & { role: 'tool' })[]}
 											indices={batchIndices}
 											currCheckpointIdx={currCheckpointIdx}
 											chatIsRunning={isRunning}
@@ -3486,7 +3485,7 @@ export const SidebarChat = () => {
 
 	const generatingTool = shouldShowToolUI && (toolCallsToRender.length > 0 || isReActActionPhase) ? (
 		<div className="flex flex-col gap-2">
-			{(toolCallsToRender.length > 0 ? toolCallsToRender : (isReActActionPhase ? [{ name: 'detecting...', rawParams: {}, doneParams: [], id: 'detecting', isDone: false } as any] : [])).map((tc, idx) => {
+			{(toolCallsToRender.length > 0 ? toolCallsToRender : (isReActActionPhase ? [{ name: 'detecting...', rawParams: {}, doneParams: [], id: 'detecting', isDone: false }] : [])).map((tc, idx) => {
 				const tcName = tc.name;
 				const tcParams = tc.rawParams;
 				
@@ -3619,7 +3618,7 @@ export const SidebarChat = () => {
 	useEffect(() => {
 		const msgs = previousMessages
 			.filter(m => m.role === 'user')
-			.map(m => (m as any).displayContent || '')
+			.map(m => ('displayContent' in m ? m.displayContent : '') || '')
 			.filter((text: string) => text.trim().length > 0);
 		inputHistoryRef.current = msgs;
 	}, [previousMessages]);
@@ -3766,6 +3765,19 @@ export const SidebarChat = () => {
 		chatThreadsService.setCurrentThreadState({ voiceModeActive: false });
 	}, [chatThreadsService]);
 
+	// Voice mode is a transient UI state, not something that should persist across
+	// thread switches or sessions. Reset it whenever the active thread changes or
+	// this component unmounts.
+	useEffect(() => {
+		if (currentThread?.state?.voiceModeActive) {
+			chatThreadsService.setCurrentThreadState({ voiceModeActive: false });
+		}
+		return () => {
+			chatThreadsService.setCurrentThreadState({ voiceModeActive: false });
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [threadId, chatThreadsService]);
+
 	const inputChatArea = <div
 		onDragOver={handleDragOver}
 		onDragLeave={handleDragLeave}
@@ -3866,6 +3878,7 @@ export const SidebarChat = () => {
 				<button
 					className="flex items-center justify-center w-8 h-8 rounded-md transition-colors cursor-pointer text-void-fg-3 hover:text-void-fg-1 hover:bg-void-bg-3"
 					onClick={enterVoiceMode}
+					data-tooltip-id='void-tooltip'
 					data-tooltip-content="Voice mode"
 					aria-label="Enable voice mode"
 				>

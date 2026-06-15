@@ -21,7 +21,7 @@ import { isWindows } from '../../../../base/common/platform.js';
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
 import { FeatureName } from '../common/voidSettingsTypes.js';
 import { IConvertToLLMMessageService } from './convertToLLMMessageService.js';
-// import { IContextGatheringService } from './contextGatheringService.js';
+import { IContextGatheringService } from './contextGatheringService.js';
 
 
 
@@ -88,15 +88,15 @@ class LRUCache<K, V> {
 		}
 		// If cache is full, remove least recently used item
 		else if (this.items.size >= this.maxSize) {
-			const key = this.keyOrder[0];
-			const value = this.items.get(key);
+			const lruKey = this.keyOrder[0];
+			const lruValue = this.items.get(lruKey);
 
 			// Call dispose callback if it exists
-			if (this.disposeCallback && value !== undefined) {
-				this.disposeCallback(value, key);
+			if (this.disposeCallback && lruValue !== undefined) {
+				this.disposeCallback(lruValue, lruKey);
 			}
 
-			this.items.delete(key);
+			this.items.delete(lruKey);
 			this.keyOrder.shift();
 		}
 
@@ -105,13 +105,17 @@ class LRUCache<K, V> {
 		this.keyOrder.push(key);
 	}
 
-	delete(key: K): boolean {
-		const value = this.items.get(key);
+	get(key: K): V | undefined {
+		return this.items.get(key);
+	}
 
-		if (value !== undefined) {
+	delete(key: K): boolean {
+		const storedValue = this.items.get(key);
+
+		if (storedValue !== undefined) {
 			// Call dispose callback if it exists
 			if (this.disposeCallback) {
-				this.disposeCallback(value, key);
+				this.disposeCallback(storedValue, key);
 			}
 
 			this.items.delete(key);
@@ -170,6 +174,8 @@ const DEBOUNCE_TIME = 500
 const TIMEOUT_TIME = 60000
 const MAX_CACHE_SIZE = 20
 const MAX_PENDING_REQUESTS = 2
+const MAX_CONTEXT_SNIPPETS = 4
+const MAX_CONTEXT_CHARS = 1200
 
 // postprocesses the result
 const processStartAndEndSpaces = (result: string) => {
@@ -443,7 +449,7 @@ const getPrefixAndSuffixInfo = (model: ITextModel, position: Position): PrefixAn
 }
 
 const getIndex = (str: string, line: number, char: number) => {
-	return str.split(_ln).slice(0, line).join(_ln).length + (line > 0 ? 1 : 0) + char;
+	return str.split(_ln).slice(0, line).join(_ln).length + (line > 0 ? _ln.length : 0) + char;
 }
 const getLastLine = (s: string): string => {
 	const matches = s.match(new RegExp(`[^${_ln}]*$`))
@@ -550,8 +556,12 @@ const getCompletionOptions = (prefixAndSuffix: PrefixAndSuffixInfo, relevantCont
 	const isLinePrefixEmpty = removeAllWhitespace(prefixToTheLeftOfCursor).length === 0
 	const isLineSuffixEmpty = removeAllWhitespace(suffixToTheRightOfCursor).length === 0
 
-	// NOTE: Consider injecting semantic context (e.g. from codebase search) into prefix for better completions
-	// llmPrefix = '\n\n/* Relevant context:\n' + relevantContext + '\n*/\n' + llmPrefix
+	const applyRelevantContext = (llmPrefix: string): string => {
+		if (!relevantContext.trim()) {
+			return llmPrefix;
+		}
+		return `\n\n/* Relevant context:\n${relevantContext}\n*/\n\n${llmPrefix}`;
+	}
 
 	// if we just accepted an autocompletion, predict a multiline completion starting on the next line
 	if (justAcceptedAutocompletion && isLineSuffixEmpty) {
@@ -559,7 +569,7 @@ const getCompletionOptions = (prefixAndSuffix: PrefixAndSuffixInfo, relevantCont
 		completionOptions = {
 			predictionType: 'multi-line-start-on-next-line',
 			shouldGenerate: true,
-			llmPrefix: prefixWithNewline,
+			llmPrefix: applyRelevantContext(prefixWithNewline),
 			llmSuffix: suffix,
 			stopTokens: [`${_ln}${_ln}`] // double newlines
 		}
@@ -569,7 +579,7 @@ const getCompletionOptions = (prefixAndSuffix: PrefixAndSuffixInfo, relevantCont
 		completionOptions = {
 			predictionType: 'single-line-fill-middle',
 			shouldGenerate: true,
-			llmPrefix: prefix,
+			llmPrefix: applyRelevantContext(prefix),
 			llmSuffix: suffix,
 			stopTokens: allLinebreakSymbols
 		}
@@ -581,7 +591,7 @@ const getCompletionOptions = (prefixAndSuffix: PrefixAndSuffixInfo, relevantCont
 		completionOptions = {
 			predictionType: 'single-line-redo-suffix',
 			shouldGenerate: true,
-			llmPrefix: prefix,
+			llmPrefix: applyRelevantContext(prefix),
 			llmSuffix: suffixStringIgnoringThisLine,
 			stopTokens: allLinebreakSymbols
 		}
@@ -591,7 +601,7 @@ const getCompletionOptions = (prefixAndSuffix: PrefixAndSuffixInfo, relevantCont
 		completionOptions = {
 			predictionType: 'single-line-fill-middle',
 			shouldGenerate: true,
-			llmPrefix: prefix,
+			llmPrefix: applyRelevantContext(prefix),
 			llmSuffix: suffix,
 			stopTokens: allLinebreakSymbols
 		}
@@ -599,7 +609,7 @@ const getCompletionOptions = (prefixAndSuffix: PrefixAndSuffixInfo, relevantCont
 		completionOptions = {
 			predictionType: 'do-not-predict',
 			shouldGenerate: false,
-			llmPrefix: prefix,
+			llmPrefix: applyRelevantContext(prefix),
 			llmSuffix: suffix,
 			stopTokens: []
 		}
@@ -638,7 +648,7 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 		const isEnabled = this._settingsService.state.globalSettings.enableAutocomplete
 		if (!isEnabled) return []
 
-		const docUriStr = model.uri.fsPath;
+		const docUriStr = model.uri.toString();
 
 		const prefixAndSuffix = getPrefixAndSuffixInfo(model, position)
 		const { prefix, suffix } = prefixAndSuffix
@@ -676,19 +686,12 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 		// if there is a cached autocompletion, return it
 		if (cachedAutocompletion && autocompletionMatchup) {
 
-			console.log('AA')
-
-
-			// console.log('id: ' + cachedAutocompletion.id)
-
 			if (cachedAutocompletion.status === 'finished') {
-				console.log('A1')
 
 				const inlineCompletions = toInlineCompletions({ autocompletionMatchup, autocompletion: cachedAutocompletion, prefixAndSuffix, position, debug: true })
 				return inlineCompletions
 
 			} else if (cachedAutocompletion.status === 'pending') {
-				console.log('A2')
 
 				try {
 					await cachedAutocompletion.llmPromise;
@@ -701,9 +704,7 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 				}
 
 			} else if (cachedAutocompletion.status === 'error') {
-				console.log('A3')
-			} else {
-				console.log('A4')
+				// keep error autocompletion out of the UI
 			}
 
 			return []
@@ -752,11 +753,7 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 
 
 		// gather relevant context from the code around the user's selection and definitions
-		// const relevantSnippetsList = await this._contextGatheringService.readCachedSnippets(model, position, 3);
-		// const relevantSnippetsList = this._contextGatheringService.getCachedSnippets();
-		// const relevantSnippets = relevantSnippetsList.map((text) => `${text}`).join('\n-------------------------------\n')
-		// console.log('@@---------------------\n' + relevantSnippets)
-		const relevantContext = ''
+		const relevantContext = await this._getRelevantContext(model, position)
 
 		const { shouldGenerate, predictionType, llmPrefix, llmSuffix, stopTokens } = getCompletionOptions(prefixAndSuffix, relevantContext, justAcceptedAutocompletion)
 
@@ -780,8 +777,6 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 			requestId: null,
 			_newlineCount: 0,
 		}
-
-		console.log('starting autocomplete...', predictionType)
 
 		const featureName: FeatureName = 'Autocomplete'
 		const overridesOfModel = this._settingsService.state.overridesOfModel
@@ -851,9 +846,12 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 			})
 			newAutocompletion.requestId = requestId
 
-			// if the request hasnt resolved in TIMEOUT_TIME seconds, reject it
+			// if the request hasnt resolved in TIMEOUT_TIME seconds, abort it and reject it
 			setTimeout(() => {
 				if (newAutocompletion.status === 'pending') {
+					if (requestId) {
+						this._llmMessageService.abort(requestId)
+					}
 					reject('Timeout receiving message to LLM.')
 				}
 			}, TIMEOUT_TIME)
@@ -882,14 +880,35 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 
 	}
 
+	private async _getRelevantContext(model: ITextModel, position: Position): Promise<string> {
+		// Refresh semantic context cache with a short deadline so typing isn't blocked.
+		await Promise.race([
+			this._contextGatheringService.updateCache(model, position),
+			new Promise<void>(resolve => setTimeout(resolve, 250)),
+		]);
+
+		const snippets = this._contextGatheringService.getCachedSnippets();
+		if (snippets.length === 0) {
+			return '';
+		}
+
+		const joined = snippets
+			.slice(0, MAX_CONTEXT_SNIPPETS)
+			.join('\n-------------------------------\n')
+			.slice(0, MAX_CONTEXT_CHARS)
+			.trim();
+
+		return joined;
+	}
+
 	constructor(
 		@ILanguageFeaturesService private _langFeatureService: ILanguageFeaturesService,
 		@ILLMMessageService private readonly _llmMessageService: ILLMMessageService,
 		@IEditorService private readonly _editorService: IEditorService,
 		@IModelService private readonly _modelService: IModelService,
 		@IVoidSettingsService private readonly _settingsService: IVoidSettingsService,
-		@IConvertToLLMMessageService private readonly _convertToLLMMessageService: IConvertToLLMMessageService
-		// @IContextGatheringService private readonly _contextGatheringService: IContextGatheringService,
+		@IConvertToLLMMessageService private readonly _convertToLLMMessageService: IConvertToLLMMessageService,
+		@IContextGatheringService private readonly _contextGatheringService: IContextGatheringService,
 	) {
 		super()
 
@@ -912,7 +931,7 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 				if (!resource) return;
 				const model = this._modelService.getModel(resource)
 				if (!model) return;
-				const docUriStr = resource.fsPath;
+				const docUriStr = resource.toString();
 				if (!this._autocompletionsOfDocument[docUriStr]) return;
 
 				const { prefix, } = getPrefixAndSuffixInfo(model, position)
@@ -925,7 +944,6 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 					const matchup = removeAllWhitespace(prefix) === removeAllWhitespace(autocompletion.prefix + autocompletion.insertText)
 
 					if (matchup) {
-						console.log('ACCEPT', autocompletion.id)
 						this._lastCompletionAccept = Date.now()
 						this._autocompletionsOfDocument[docUriStr].delete(autocompletion.id);
 					}

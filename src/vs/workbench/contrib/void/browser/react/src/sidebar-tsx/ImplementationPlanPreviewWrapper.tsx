@@ -7,18 +7,27 @@ import React, { useState, useEffect } from 'react'
 import { useAccessor } from '../util/services.js'
 import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js'
 import { ToolName } from '../../../../common/toolsServiceTypes.js'
+import { ToolMessage, isToolMessage } from '../../../../common/chatThreadServiceTypes.js'
+import { WrapperProps } from './ToolResultHelpers.js'
 
-interface ImplementationPlanPreviewWrapperProps {
-	toolMessage: {
-		name: ToolName
-		params: any
-		content: string
-		result?: any
-		id: string
-	}
-	messageIdx: number
-	threadId: string
+type ImplementationPlanStep = {
+	status?: string;
+	title?: string;
+	description?: string;
+	files?: string[];
+	notes?: string;
 }
+type ImplementationPlanResult = {
+	planId?: string;
+	summary?: string;
+	steps?: ImplementationPlanStep[];
+	details?: string;
+	createdAt?: number;
+	updatedAt?: number;
+	error?: string;
+}
+
+type ImplementationPlanPreviewWrapperProps = WrapperProps<ToolName>
 
 const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrapperProps> = ({
 	toolMessage,
@@ -26,9 +35,8 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 	threadId
 }) => {
 	const accessor = useAccessor()
-	const commandService = accessor.get('ICommandService')
 	const chatThreadsService = accessor.get('IChatThreadService')
-	const agentManagerService = accessor.get('IAgentManagerService') as any
+	const agentManagerService = accessor.get('IAgentManagerService')
 	const voidSettingsService = accessor.get('IVoidSettingsService')
 
 	const [refreshKey, setRefreshKey] = useState(0)
@@ -45,8 +53,8 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 
 			const messages = thread.messages || []
 			// Filter for tool messages with implementation plan names
-			const planMessages = messages.filter((m: any) =>
-				m.name && (
+			const planMessages = messages.filter((m): m is ToolMessage<ToolName> & { name: 'create_implementation_plan' | 'preview_implementation_plan' | 'execute_implementation_plan' | 'update_implementation_step' | 'get_implementation_status' } =>
+				isToolMessage(m) && (
 					m.name === 'create_implementation_plan' ||
 					m.name === 'preview_implementation_plan' ||
 					m.name === 'execute_implementation_plan' ||
@@ -66,8 +74,8 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 		checkForUpdates()
 	}, [threadId, toolMessage.id, chatThreadsService, chatThreadsService?.state?.allThreads?.[threadId]?.messages?.length])
 
-	const result = latestPlan.result
-	if (!result) {
+	const planResult = latestPlan.result as ImplementationPlanResult
+	if (!planResult) {
 		return (
 			<div className="implementation-plan-result w-full rounded-xl overflow-hidden border border-void-border-2 bg-void-bg-2 shadow-sm">
 				<div className="flex items-center gap-2 px-3 py-2">
@@ -90,50 +98,50 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 			case 'create_implementation_plan':
 				return {
 					title: 'Implementation Plan Created',
-					summary: result.summary || 'Plan created successfully',
-					planId: result.planId,
+					summary: planResult.summary || 'Plan created successfully',
+					planId: planResult.planId,
 					canApprove: true
 				}
 			case 'preview_implementation_plan':
 				return {
 					title: 'Implementation Plan Preview',
-					summary: result.summary || 'Plan preview',
-					planId: result.planId,
-					canApprove: result.planId && result.planId !== ''
+					summary: planResult.summary || 'Plan preview',
+					planId: planResult.planId,
+					canApprove: planResult.planId && planResult.planId !== ''
 				}
 			case 'execute_implementation_plan':
 				return {
 					title: 'Executing Implementation Plan',
-					summary: result.summary || 'Step execution started',
-					planId: result.planId || '',
+					summary: planResult.summary || 'Step execution started',
+					planId: planResult.planId || '',
 					canApprove: false
 				}
 			case 'update_implementation_step':
 				return {
 					title: 'Implementation Step Updated',
-					summary: result.summary || 'Step updated',
+					summary: planResult.summary || 'Step updated',
 					planId: '',
 					canApprove: false
 				}
 			case 'get_implementation_status':
 				return {
 					title: 'Implementation Status',
-					summary: result.summary || 'Plan status',
+					summary: planResult.summary || 'Plan status',
 					planId: '',
 					canApprove: false
 				}
 			default:
 				return {
 					title: 'Implementation Plan',
-					summary: result.summary || 'Operation completed',
-					planId: result.planId || '',
+					summary: planResult.summary || 'Operation completed',
+					planId: planResult.planId || '',
 					canApprove: false
 				}
 		}
 	}
 
 	const planInfo = getPlanInfo()
-	const isSuccess = result && !result.error
+	const isSuccess = result && !planResult.error
 
 	const getToolIcon = () => {
 		switch (toolMessage.name) {
@@ -198,7 +206,7 @@ Please begin execution now.`
 
 		try {
 			// Get settings service to ensure we stay in Plan mode for revisions
-			const voidSettingsService = accessor.get('IVoidSettingsService') as any
+			const voidSettingsService = accessor.get('IVoidSettingsService')
 
 			// Stay in Plan mode (gather) for revisions - don't switch to agent
 			if (voidSettingsService?.setGlobalSetting) {
@@ -255,13 +263,13 @@ My requested changes:`
 		}
 
 		// Add steps if available - with visual progress
-		if (result.steps && Array.isArray(result.steps)) {
-			const completedCount = result.steps.filter((s: any) => s.status === 'completed').length
-			const totalCount = result.steps.length
+		if (planResult.steps && Array.isArray(planResult.steps)) {
+			const completedCount = planResult.steps.filter((s) => s.status === 'completed').length
+			const totalCount = planResult.steps.length
 
 			markdown += `## \u{1F4CB} Steps (${completedCount}/${totalCount} complete)\n\n`
 
-			result.steps.forEach((step: any, index: number) => {
+			planResult.steps.forEach((step, index: number) => {
 				const status = step.status || 'pending'
 				const statusIcon = status === 'completed' ? '\u{2705}' : status === 'in_progress' ? '\u{1F504}' : status === 'failed' ? '\u{274C}' : '\u{2B1C}'
 				const statusBadge = status === 'completed' ? ' *(completed)*' :
@@ -295,18 +303,18 @@ My requested changes:`
 		}
 
 		// Add any additional details
-		if (result.details) {
-			markdown += `## Additional Details\n\n${result.details}\n\n`
+		if (planResult.details) {
+			markdown += `## Additional Details\n\n${planResult.details}\n\n`
 		}
 
 		// Add timestamps if available
-		if (result.createdAt || result.updatedAt) {
+		if (planResult.createdAt || planResult.updatedAt) {
 			markdown += `---\n\n`
-			if (result.createdAt) {
-				markdown += `*Created: ${new Date(result.createdAt).toLocaleString()}*\n`
+			if (planResult.createdAt) {
+				markdown += `*Created: ${new Date(planResult.createdAt).toLocaleString()}*\n`
 			}
-			if (result.updatedAt) {
-				markdown += `*Last updated: ${new Date(result.updatedAt).toLocaleString()}*\n`
+			if (planResult.updatedAt) {
+				markdown += `*Last updated: ${new Date(planResult.updatedAt).toLocaleString()}*\n`
 			}
 		}
 
@@ -368,11 +376,11 @@ My requested changes:`
 					{/* Plan Content */}
 					<div className="p-3">
 						{/* Render steps if available */}
-						{result.steps && Array.isArray(result.steps) && result.steps.length > 0 && (
+						{planResult.steps && Array.isArray(planResult.steps) && planResult.steps.length > 0 && (
 							<div className="mb-4">
 								<div className="text-sm font-medium text-void-fg-2 mb-2">Steps:</div>
 								<div className="space-y-2">
-									{result.steps.map((step: any, index: number) => {
+									{planResult.steps.map((step, index: number) => {
 										const status = step.status || 'pending'
 										const statusIcon = status === 'completed' ? '\u{2705}' : status === 'in_progress' ? '\u{1F504}' : status === 'failed' ? '\u{274C}' : '\u{2B1C}'
 										const statusColor = status === 'completed' ? 'text-green-400' : status === 'in_progress' ? 'text-blue-400' : status === 'failed' ? 'text-red-400' : 'text-void-fg-3'

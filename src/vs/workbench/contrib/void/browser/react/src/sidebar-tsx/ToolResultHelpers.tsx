@@ -85,7 +85,7 @@ export const voidOpenFileFn = (
 ) => {
 	const commandService = accessor.get('ICommandService')
 	const editorService = accessor.get('ICodeEditorService')
-	const agentManagerService = accessor.get('IAgentManagerService') as any
+	const agentManagerService = accessor.get('IAgentManagerService')
 
 	agentManagerService.openFile(uri)
 
@@ -187,7 +187,7 @@ export const titleOfBuiltinToolName = {
 	'search_web': { done: 'Web search complete', proposed: 'Search web', running: loadingTitleWrapper('Searching web') },
 	'browse_resources': { done: 'Resources browsed', proposed: 'Browse resources', running: loadingTitleWrapper('Browsing resources') },
 	'type_into_element': { done: 'Typed into element', proposed: 'Type into element', running: loadingTitleWrapper('Typing into element') },
-} as const satisfies Record<BuiltinToolName, { done: any, proposed: any, running: any }>
+} as const satisfies Record<BuiltinToolName, { done: React.ReactNode, proposed: React.ReactNode, running: React.ReactNode }>
 
 export const getTitle = (toolMessage: Pick<ChatMessage & { role: 'tool' }, 'name' | 'type' | 'mcpServerName'>): React.ReactNode => {
 	const t = toolMessage

@@ -105,11 +105,11 @@ export interface LessonTheme {
 function generateTheme(lessonId: string): LessonTheme {
 	// Seeded random from lesson ID
 	const seed = lessonId.split('').reduce((acc, char) => ((acc << 5) - acc + char.charCodeAt(0)) | 0, 0);
+	let seededOffset = 0;
 	const random = () => {
-		const x = Math.sin(seed + (random.seededOffset++)) * 10000;
+		const x = Math.sin(seed + (seededOffset++)) * 10000;
 		return x - Math.floor(x);
 	};
-	random.seededOffset = 0;
 
 	// Beautiful color palettes
 	const palettes = [
@@ -150,60 +150,95 @@ function escapeHtml(text: string): string {
 		.replace(/'/g, '&#039;');
 }
 
-// Escape for use inside single-quoted JS strings (e.g. onclick='...')
+// Escape for use inside a double-quoted HTML attribute that contains a single-quoted JS string.
+// e.g. onclick="toggleSection('${escaped}')"
 function escapeJs(text: string): string {
 	return text
 		.replace(/\\/g, '\\\\')
 		.replace(/'/g, "\\'")
-		.replace(/"/g, '\\"')
+		.replace(/"/g, '\\x22')
 		.replace(/\n/g, '\\n')
 		.replace(/\r/g, '\\r');
 }
 
-// Convert markdown to HTML (simplified)
+// Serialize an object for safe embedding inside a <script> tag.
+function serializeToHtml(obj: unknown): string {
+	return JSON.stringify(obj)
+		.replace(/</g, '\\u003c')
+		.replace(/>/g, '\\u003e')
+		.replace(/\\u2028/g, '\\u2028')
+		.replace(/\\u2029/g, '\\u2029');
+}
+
+// Apply inline formatting (bold, italic, code, links) to a plain-text block.
+function applyInlineFormatting(text: string): string {
+	// Inline code first so it doesn't get caught by bold/italic regexes.
+	let html = text
+		.replace(/`([^`]+)`/g, '<code class="px-1.5 py-0.5 rounded bg-slate-700/50 text-pink-400 font-mono text-sm">$1</code>')
+		.replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold text-white">$1</strong>')
+		.replace(/\*(.+?)\*/g, '<em class="italic">$1</em>')
+		.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-[var(--primary)] hover:underline" target="_blank" rel="noopener">$1</a>');
+	return escapeHtml(html).replace(/&lt;(strong|em|code|a)(\s[^>]*)?&gt;/g, '<$1$2>').replace(/&lt;\/(strong|em|code|a)&gt;/g, '</$1>');
+}
+
+// Convert markdown to HTML. Keeps code blocks intact and avoids corrupting them
+// with paragraph/heading transforms.
 function markdownToHtml(markdown: string): string {
 	if (!markdown) return '';
 
-	let html = markdown;
-
-	// Code blocks with language
-	html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, (_, lang, code) => {
+	// Pull out fenced code blocks first so later transforms never touch them.
+	const codeBlocks: { placeholder: string; html: string }[] = [];
+	let html = markdown.replace(/^(\s*)(`{3,}|~{3,})(\w+)?\s*[\s\S]*?^(\s*)\2\s*$/gm, (match, _indent, fence, lang) => {
+		const lines = match.split('\n');
+		// Remove the fence lines.
+		const code = lines.slice(1, -1).join('\n').trim();
 		const language = lang || 'plaintext';
-		const escapedCode = escapeHtml(code.trim());
-		return `<pre class="rounded-lg overflow-hidden"><code class="language-${language}">${escapedCode}</code></pre>`;
+		const placeholder = `__VOID_CODE_BLOCK_${codeBlocks.length}__`;
+		codeBlocks.push({
+			placeholder,
+			html: `<pre class="rounded-lg overflow-hidden"><code class="language-${language}">${escapeHtml(code)}</code></pre>`,
+		});
+		return placeholder;
 	});
 
-	// Inline code
-	html = html.replace(/`([^`]+)`/g, '<code class="px-1.5 py-0.5 rounded bg-slate-700/50 text-pink-400 font-mono text-sm">$1</code>');
-
 	// Headers
-	html = html.replace(/^### (.+)$/gm, '<h3 class="text-lg font-semibold text-white mt-6 mb-3">$1</h3>');
-	html = html.replace(/^## (.+)$/gm, '<h2 class="text-xl font-bold text-white mt-8 mb-4">$1</h2>');
-	html = html.replace(/^# (.+)$/gm, '<h1 class="text-2xl font-bold text-white mb-4">$1</h1>');
-
-	// Bold and italic
-	html = html.replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold text-white">$1</strong>');
-	html = html.replace(/\*(.+?)\*/g, '<em class="italic">$1</em>');
-
-	// Links
-	html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-[var(--primary)] hover:underline" target="_blank" rel="noopener">$1</a>');
-
-	// Lists
-	html = html.replace(/^- (.+)$/gm, '<li class="ml-4 text-gray-300">$1</li>');
-	html = html.replace(/^(\d+)\. (.+)$/gm, '<li class="ml-4 text-gray-300"><span class="text-[var(--primary)] mr-2">$1.</span>$2</li>');
-
-	// Wrap consecutive list items
-	html = html.replace(/(<li[^>]*>.*?<\/li>\n?)+/g, '<ul class="space-y-2 my-4">$&</ul>');
+	html = html.replace(/^### (.+)$/gm, (_, title) => `<h3 class="text-lg font-semibold text-white mt-6 mb-3">${applyInlineFormatting(title)}</h3>`);
+	html = html.replace(/^## (.+)$/gm, (_, title) => `<h2 class="text-xl font-bold text-white mt-8 mb-4">${applyInlineFormatting(title)}</h2>`);
+	html = html.replace(/^# (.+)$/gm, (_, title) => `<h1 class="text-2xl font-bold text-white mb-4">${applyInlineFormatting(title)}</h1>`);
 
 	// Blockquotes
-	html = html.replace(/^> (.+)$/gm, '<blockquote class="border-l-4 border-[var(--primary)] pl-4 my-4 text-gray-400 italic">$1</blockquote>');
+	html = html.replace(/^> (.+)$/gm, (_, quote) =>
+		`<blockquote class="border-l-4 border-[var(--primary)] pl-4 my-4 text-gray-400 italic">${applyInlineFormatting(quote)}</blockquote>`);
 
 	// Horizontal rules
 	html = html.replace(/^---$/gm, '<hr class="border-t border-gray-700 my-6">');
 
-	// Paragraphs
-	html = html.replace(/\n\n/g, '</p><p class="text-gray-300 mb-4">');
-	html = `<p class="text-gray-300 mb-4">${html}</p>`;
+	// Lists – wrap ordered and unordered items in their own containers.
+	html = html.replace(/^- (.+)$/gm, (_, item) =>
+		`<li class="void-list-unordered ml-4 text-gray-300">${applyInlineFormatting(item)}</li>`);
+	html = html.replace(/^(\d+)\. (.+)$/gm, (_, num, item) =>
+		`<li class="void-list-ordered ml-4 text-gray-300" value="${num}">${applyInlineFormatting(item)}</li>`);
+
+	html = html.replace(/(<li class="void-list-unordered"[^>]*>[\s\S]*?<\/li>\n?)+/g, '<ul class="space-y-2 my-4">$&</ul>');
+	html = html.replace(/(<li class="void-list-ordered"[^>]*>[\s\S]*?<\/li>\n?)+/g, '<ol class="space-y-2 my-4 list-decimal ml-4 text-gray-300">$&</ol>');
+
+	// Paragraphs: apply inline formatting, but don't wrap headers, lists, blockquotes or code placeholders.
+	html = html
+		.split(/\n\n+/)
+		.map(paragraph => {
+			const trimmed = paragraph.trim();
+			if (!trimmed) return '';
+			if (/^<(h[1-6]|pre|blockquote|ul|ol|hr|li)/.test(trimmed)) return trimmed;
+			if (/^__VOID_CODE_BLOCK_\d+__$/.test(trimmed)) return trimmed;
+			return `<p class="text-gray-300 mb-4">${applyInlineFormatting(trimmed)}</p>`;
+		})
+		.filter(Boolean)
+		.join('\n');
+
+	// Restore code blocks
+	for (const { placeholder, html: blockHtml } of codeBlocks) {
+		html = html.replace(placeholder, blockHtml);
+	}
 
 	return html;
 }
@@ -745,6 +780,8 @@ export function generateLessonHtml(data: LessonData, course?: CourseData): strin
 				<button
 					class="section-header w-full px-5 py-4 flex items-center gap-4 hover:bg-void-bg-3/50 transition-colors text-left"
 					onclick="toggleSection('${escapeJs(section.id)}')"
+					aria-expanded="${idx === 0 ? 'true' : 'false'}"
+					aria-controls="section-${escapeHtml(section.id)}"
 				>
 					<div class="flex items-center justify-center w-10 h-10 rounded-xl ${idx === 0 ? 'bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)]' : 'bg-void-bg-3'} transition-all">
 						<span class="section-icon ${idx === 0 ? 'text-white' : 'text-gray-400'}">
@@ -845,8 +882,8 @@ export function generateLessonHtml(data: LessonData, course?: CourseData): strin
 	<script>
 		// Lesson state management
 		const lessonId = '${lessonId}';
-		const lessonData = ${JSON.stringify(data)};
-		const courseData = ${course ? JSON.stringify(course) : 'null'};
+		const lessonData = ${serializeToHtml(data)};
+		const courseData = ${course ? serializeToHtml(course) : 'null'};
 		const storageKey = \`lesson-progress-\${lessonId}\`;
 
 		// Default state
@@ -898,9 +935,13 @@ export function generateLessonHtml(data: LessonData, course?: CourseData): strin
 			const section = document.querySelector(\`[data-section-id="\${sectionId}"]\`);
 			const content = section.querySelector('.section-content');
 			const chevron = section.querySelector('.chevron');
+			const headerBtn = section.querySelector('.section-header');
 
 			content.classList.toggle('expanded');
 			chevron.classList.toggle('rotate-180');
+			if (headerBtn) {
+				headerBtn.setAttribute('aria-expanded', content.classList.contains('expanded').toString());
+			}
 
 			state.sections[sectionId].expanded = content.classList.contains('expanded');
 			saveState(state);

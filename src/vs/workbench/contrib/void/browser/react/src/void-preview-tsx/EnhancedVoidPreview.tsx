@@ -133,10 +133,6 @@ export const EnhancedVoidPreview: React.FC<EnhancedVoidPreviewProps> = ({
 		setNewCommentText('');
 	}, [activeCommentSection, newCommentText]);
 
-	const removeComment = useCallback((id: string) => {
-		setComments(prev => prev.filter(c => i.id !== id));
-	}, []);
-
 	// ============================================
 	// Action Handlers
 	// ============================================

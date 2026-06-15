@@ -182,8 +182,8 @@ const isLineRange = (result: FindTextResult | readonly [number, number] | 'Not f
 const findTextInCode = (
 	text: string,
 	fileContents: string,
-	_canFallbackToNormalization: boolean,
-	opts: { startingAtLine?: number, returnType: 'lines' | 'full' } = { returnType: 'lines' }
+	tryFuzzyMatching: boolean,
+	opts: { startingAtLine?: number, returnType: 'lines' | 'full', expectedLineRange?: readonly [number, number] } = { returnType: 'lines' }
 ): FindTextResult | readonly [number, number] | 'Not found' | 'Not unique' => {
 
 	// ========== Helper functions ==========
@@ -209,29 +209,106 @@ const findTextInCode = (
 			: returnAns(fileContents, startCharIdx, matchedText);
 	};
 
-	const startingAtLineIdx = (fileContents: string) =>
+	const startingAtLineIdx = (contents: string) =>
 		opts?.startingAtLine !== undefined
-			? fileContents.split('\n').slice(0, opts.startingAtLine).join('\n').length
+			? contents.split('\n').slice(0, opts.startingAtLine).join('\n').length
 			: 0;
 
-	// ========== EXACT MATCH ONLY ==========
+	const charIdxToLine = (contents: string, idx: number) => contents.substring(0, idx).split('\n').length;
+
+	const mapNormalizedMatchToOriginal = (normContents: string, normIdx: number, normText: string, originalContents: string): FindTextResult => {
+		const startLine = normContents.substring(0, normIdx).split('\n').length;
+		const numLines = normText.split('\n').length;
+		const endLine = startLine + numLines - 1;
+		const originalLines = originalContents.split('\n');
+		const startChar = originalLines.slice(0, startLine - 1).join('\n').length + (startLine > 1 ? 1 : 0);
+		const endChar = originalLines.slice(0, endLine).join('\n').length;
+		const matchedText = originalContents.substring(startChar, endChar);
+		return { startLine, endLine, startChar, endChar, matchedText };
+	};
+
+	const filterOccurrencesByExpectedRange = (occurrences: number[], contents: string, expectedRange: readonly [number, number], tolerance: number = 5): number[] => {
+		const [expectedStart, expectedEnd] = expectedRange;
+		return occurrences.filter(idx => {
+			const line = charIdxToLine(contents, idx);
+			return line >= expectedStart - tolerance && line <= expectedEnd + tolerance;
+		});
+	};
+
+	const findAllOccurrences = (search: string, contents: string): number[] => {
+		const positions: number[] = [];
+		let cursor = 0;
+		while (true) {
+			const pos = contents.indexOf(search, cursor);
+			if (pos === -1) break;
+			positions.push(pos);
+			cursor = pos + 1;
+		}
+		return positions;
+	};
+
+	// ========== EXACT MATCH ==========
 
 	const startIdx = startingAtLineIdx(fileContents);
 	const idx = fileContents.indexOf(text, startIdx);
 
-	if (idx === -1) {
-		return 'Not found' as const;
-	}
+	if (idx !== -1) {
+		const lastIdx = fileContents.lastIndexOf(text);
+		if (lastIdx === idx) {
+			return returnBasedOnType(fileContents, idx, text);
+		}
 
-	// Verify uniqueness - text must appear exactly once
-	const lastIdx = fileContents.lastIndexOf(text);
-	if (lastIdx !== idx) {
+		// Not unique: try to disambiguate with an expected line range
+		if (opts.expectedLineRange) {
+			const occurrences = findAllOccurrences(text, fileContents);
+			const inRange = filterOccurrencesByExpectedRange(occurrences, fileContents, opts.expectedLineRange);
+			if (inRange.length === 1) {
+				return returnBasedOnType(fileContents, inRange[0], text);
+			}
+		}
+
 		return 'Not unique' as const;
 	}
 
-	return returnBasedOnType(fileContents, idx, text);
-}
+	// ========== FUZZY FALLBACK ==========
 
+	if (tryFuzzyMatching) {
+		// 1. Try exact search after normalizing line endings (searches the whole file)
+		const normalizedText = normalizeLineEndings(text);
+		const normalizedContents = normalizeLineEndings(fileContents);
+		const normIdx = normalizedContents.indexOf(normalizedText);
+
+		if (normIdx !== -1) {
+			const normLastIdx = normalizedContents.lastIndexOf(normalizedText);
+			if (normIdx === normLastIdx) {
+				const mapped = mapNormalizedMatchToOriginal(normalizedContents, normIdx, normalizedText, fileContents);
+				return returnBasedOnType(fileContents, mapped.startChar, mapped.matchedText);
+			}
+
+			if (opts.expectedLineRange) {
+				const normOccurrences = findAllOccurrences(normalizedText, normalizedContents);
+				const inRange = filterOccurrencesByExpectedRange(normOccurrences, normalizedContents, opts.expectedLineRange);
+				if (inRange.length === 1) {
+					const mapped = mapNormalizedMatchToOriginal(normalizedContents, inRange[0], normalizedText, fileContents);
+					return returnBasedOnType(fileContents, mapped.startChar, mapped.matchedText);
+				}
+			}
+		}
+
+		// 2. Try a line-by-line similar-block fallback when the text is not present exactly
+		const similar = findSimilarBlocks(text, fileContents, 1);
+		if (similar.length > 0) {
+			const candidate = similar[0];
+			const candidateIdx = fileContents.indexOf(candidate);
+			const candidateLastIdx = fileContents.lastIndexOf(candidate);
+			if (candidateIdx !== -1 && candidateIdx === candidateLastIdx) {
+				return returnBasedOnType(fileContents, candidateIdx, candidate);
+			}
+		}
+	}
+
+	return 'Not found' as const;
+}
 
 
 // line/col is the location, originalCodeStartLine is the start line of the original code being displayed
@@ -2680,7 +2757,8 @@ ${problematicCode}
 							// update stream state to the first line of original if some portion of original has been written
 							if (shouldUpdateOrigStreamStyle && block.orig.trim().length >= 20) {
 								const startingAtLine = diffZone._streamState.line ?? 1 // dont go backwards if already have a stream line
-								const originalRange = findTextInCode(block.orig, originalFileCode, false, { startingAtLine, returnType: 'lines' })
+								const expectedLineRange: readonly [number, number] = [startingAtLine, startingAtLine + block.orig.split('\n').length]
+								const originalRange = findTextInCode(block.orig, originalFileCode, false, { startingAtLine, returnType: 'lines', expectedLineRange })
 								if (isLineRange(originalRange)) {
 									const [startLine, _] = convertOriginalRangeToFinalRange(originalRange)
 									diffZone._streamState.line = startLine
@@ -2706,7 +2784,9 @@ ${problematicCode}
 						// if this is the first time we're seeing this block, add it as a diffarea so we can start streaming in it
 						if (!(blockNum in addedTrackingZoneOfBlockNum)) {
 
-							const originalBounds = findTextInCode(block.orig, originalFileCode, true, { returnType: 'lines' })
+							const expectedStartLine = diffZone._streamState.line ?? 1
+							const expectedLineRange: readonly [number, number] = [expectedStartLine, expectedStartLine + block.orig.split('\n').length]
+							const originalBounds = findTextInCode(block.orig, originalFileCode, true, { returnType: 'lines', expectedLineRange })
 							// if error (string), handle it
 							if (typeof originalBounds === 'string') {
 								const errorMessage = originalBounds

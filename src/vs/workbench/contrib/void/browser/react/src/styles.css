@@ -1,6 +1,6 @@
 /*--------------------------------------------------------------------------------------
  *  Copyright 2026 The A-Tech Corporation PTY LTD. All rights reserved.
- *  Licensed under the Apache License, Version 2.0. See LICENSE.void-txt for more information.
+ *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
 @tailwind base;
@@ -161,7 +161,7 @@
 
 	--void-ring-color: var(--vscode-focusBorder);
 	--void-link-color: var(--vscode-textLink-foreground);
-	--void-warning: var(--void-warning);
+	--void-warning: var(--vscode-problemsWarningIcon-foreground, #f59e0b);
 	--void-accent-glow: var(--void-glow-accent);
 	--void-accent-glow-subtle: var(--void-glow-subtle);
 	--void-accent-glow-strong: var(--void-glow-accent);
@@ -215,8 +215,14 @@
 	color: var(--void-fg-3);
 }
 
-* {
-	outline: none !important;
+/* Focus outlines - only remove when custom focus styles are provided */
+.void-focus:focus {
+	outline: none;
+}
+
+.void-focus:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 2px var(--void-ring-color), var(--void-glow-subtle);
 }
 
 .void-inherit-bg-all-restyle > * {
@@ -1658,7 +1664,8 @@
 .void-stagger-item:nth-child(6) { animation-delay: 300ms; }
 .void-stagger-item:nth-child(7) { animation-delay: 360ms; }
 .void-stagger-item:nth-child(8) { animation-delay: 420ms; }
-.void-stagger-item:nth-child(8) { animation-delay: 560ms; }
+.void-stagger-item:nth-child(9) { animation-delay: 480ms; }
+.void-stagger-item:nth-child(10) { animation-delay: 540ms; }
 
 /* Message transitions - Spring physics */
 .void-message-enter {
@@ -1878,115 +1885,16 @@
 	);
 }
 
-/* Gradient text */
-.void-text-gradient {
-	background: var(--void-accent-gradient);
-	-webkit-background-clip: text;
-	background-clip: text;
-	color: transparent;
-}
-
 /* ============================================
    PREMIUM CARD SYSTEM
-   Smooth rounded corners and shadows
    ============================================ */
 
 /* Premium card with subtle depth */
-.void-card {
-	border-radius: 12px;
-	background: var(--void-depth-elevated);
-	border: 1px solid var(--void-border-2);
-	box-shadow: var(--void-shadow-sm);
-	transition: all 0.2s ease-out;
-}
-
-.void-card:hover {
-	box-shadow: var(--void-shadow-md);
-}
-
-/* Elevated card for modals/dropdowns */
 .void-card-elevated {
 	border-radius: 12px;
 	background: var(--void-depth-floating);
 	border: 1px solid var(--void-border-2);
 	box-shadow: var(--void-shadow-lg);
-}
-
-/* Premium button - primary */
-.void-btn-primary {
-	border-radius: 10px;
-	padding: 8px 16px;
-	font-weight: 500;
-	background: var(--void-accent-gradient);
-	color: white;
-	box-shadow: var(--void-shadow-sm), var(--void-accent-glow-subtle);
-	transition: all 0.2s ease-out;
-}
-
-.void-btn-primary:hover {
-	background: var(--void-accent-gradient-hover);
-	box-shadow: var(--void-shadow-md), var(--void-accent-glow);
-	transform: translateY(-1px);
-}
-
-.void-btn-primary:active {
-	transform: translateY(0);
-}
-
-/* Premium button - secondary */
-.void-btn-secondary {
-	border-radius: 12px;
-	padding: 8px 16px;
-	font-weight: 500;
-	background: var(--void-depth-elevated);
-	color: var(--void-fg-1);
-	border: 1px solid var(--void-border-2);
-	transition: all 0.2s ease-out;
-}
-
-.void-btn-secondary:hover {
-	background: var(--void-bg-2-hover);
-	border-color: var(--void-border-1);
-}
-
-/* Input fields */
-.void-input {
-	border-radius: 8px;
-	padding: 8px 12px;
-	background: var(--void-bg-1);
-	border: 1px solid var(--void-border-2);
-	color: var(--void-fg-1);
-	transition: all 0.15s ease-out;
-}
-
-.void-input:focus {
-	outline: none;
-	border-color: var(--void-border-1);
-	box-shadow: none;
-}
-
-.void-input::placeholder {
-	color: var(--void-fg-3);
-}
-
-/* ============================================
-   PREMIUM CARD UTILITIES - Replace harsh borders
-   ============================================ */
-
-/* Premium card with subtle border, rounded corners, and shadow */
-.void-card {
-	border-radius: 12px;
-	border: 1px solid var(--void-border-2);
-	background: var(--void-depth-elevated);
-	box-shadow: var(--void-shadow-sm);
-}
-
-/* Premium elevated card - more prominent */
-.void-card-elevated {
-	border-radius: 12px;
-	border: 1px solid var(--void-border-1);
-	background: var(--void-depth-elevated);
-	box-shadow: var(--void-shadow-md);
 }
 
 /* Premium card with accent border */
@@ -2004,36 +1912,12 @@
 	box-shadow: var(--void-shadow-lg);
 }
 
-/* Button styles */
-.void-btn-primary {
-	border-radius: 12px;
-	font-weight: 500;
-	transition: all 0.2s ease-out;
+/* Gradient text */
+.void-text-gradient {
 	background: var(--void-accent-gradient);
-	box-shadow: var(--void-shadow-sm), var(--void-accent-glow-subtle);
-}
-
-.void-btn-primary:hover {
-	background: var(--void-accent-gradient-hover);
-	box-shadow: var(--void-shadow-md), var(--void-accent-glow);
-	transform: translateY(-1px);
-}
-
-.void-btn-primary:active {
-	transform: translateY(0);
-}
-
-.void-btn-secondary {
-	border-radius: 12px;
-	font-weight: 500;
-	transition: all 0.2s ease-out;
-	background: var(--void-depth-elevated);
-	border: 1px solid var(--void-border-2);
-}
-
-.void-btn-secondary:hover {
-	background: var(--void-bg-2-hover);
-	border-color: var(--void-border-1);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
 }
 
 /* Focus ring */
@@ -2058,7 +1942,7 @@
 }
 
 /* Ensure text is selectable in React components */
-.@@void-scope {
+* {
 	user-select: text;
 	-webkit-user-select: text;
 	-moz-user-select: text;
@@ -2066,35 +1950,31 @@
 }
 
 /* Code blocks selection */
-.@@void-scope pre::selection,
-.@@void-scope code::selection {
+pre::selection,
+code::selection {
 	background: color-mix(in srgb, var(--vscode-button-background) 35%, transparent);
 }
 
-.@@void-scope pre::-moz-selection,
-.@@void-scope code::-moz-selection {
+pre::-moz-selection,
+code::-moz-selection {
 	background: color-mix(in srgb, var(--vscode-button-background) 35%, transparent);
 }
 
 /* Void icon - logo background image */
-.@@void-icon,
-.@@void-void-icon {
+.void-icon,
+.void-void-icon {
 	background-size: contain;
 	background-position: center;
 	background-repeat: no-repeat;
-	background-image: url('../../../../../../browser/parts/editor/media/void_cube_noshadow.png');
+	background-image: url('../../../workbench/browser/parts/editor/media/void_cube_noshadow.png');
 }
 
-/* Dark theme - same image works on dark backgrounds */
-.@@void-scope.void-dark .@@void-icon,
-.@@void-scope.void-dark .@@void-void-icon {
-	background-image: url('../../../../../../browser/parts/editor/media/void_cube_noshadow.png');
-}
-
-/* Light theme - use inverted image */
-.@@void-scope:not(.dark) .@@void-icon,
-.@@void-scope:not(.dark) .@@void-void-icon {
-	background-image: url('../../../../../../browser/parts/editor/media/void_cube_noshadow_inverted.png');
+/* Light theme - use inverted image for OS light mode */
+@media (prefers-color-scheme: light) {
+	.void-icon,
+	.void-void-icon {
+		background-image: url('../../../workbench/browser/parts/editor/media/void_cube_noshadow_inverted.png');
+	}
 }
 
 /* ============================================

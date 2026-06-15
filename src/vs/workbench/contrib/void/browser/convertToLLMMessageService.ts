@@ -604,7 +604,7 @@ const prepareMessages = (params: {
 export interface IConvertToLLMMessageService {
 	readonly _serviceBrand: undefined;
 	prepareLLMSimpleMessages: (opts: { simpleMessages: SimpleLLMMessage[], systemMessage: string, modelSelection: ModelSelection | null, featureName: FeatureName }) => { messages: LLMChatMessage[], separateSystemMessage: string | undefined }
-	prepareLLMChatMessages: (opts: { chatMessages: ChatMessage[], chatMode: ChatMode, modelSelection: ModelSelection | null, loadedSkills?: { [name: string]: string }, orchestrationResult?: { suggestions: Array<{ toolName: string; toolParams?: Record<string, any>; reasoning: string; confidence: 'high' | 'medium' | 'low'; }>; reasoning: string; summary: string; } }) => Promise<{ messages: LLMChatMessage[], separateSystemMessage: string | undefined, tokenUsage: { used: number, total: number, percentage: number } }>
+	prepareLLMChatMessages: (opts: { chatMessages: ChatMessage[], chatMode: ChatMode, modelSelection: ModelSelection | null, loadedSkills?: { [name: string]: string }, orchestrationResult?: { suggestions: Array<{ toolName: string; toolParams?: Record<string, unknown>; reasoning: string; confidence: 'high' | 'medium' | 'low'; }>; reasoning: string; summary: string; } }) => Promise<{ messages: LLMChatMessage[], separateSystemMessage: string | undefined, tokenUsage: { used: number, total: number, percentage: number } }>
 	prepareFIMMessage(opts: { messages: LLMFIMMessage, }): { prefix: string, suffix: string, stopTokens: string[] }
 	updateTokenRatio(modelName: string, estimatedTokens: number, actualTokens: number): void
 }

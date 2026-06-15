@@ -179,10 +179,10 @@ export const InlineExerciseBlock: React.FC<InlineExerciseBlockProps> = ({
 			if (threadId && learningProgressService) {
 				await learningProgressService.updateExerciseAttempt(threadId, exerciseId, {
 					exerciseId,
+					type,
 					solved: feedbackResult.isCorrect,
-					attempts: 1, // Service handles incrementing in full impl
 					timeSpent: Math.floor((Date.now() - startTime) / 1000),
-					lastAttempted: Date.now(),
+					lastAttemptTime: Date.now(),
 					code: studentCode
 				});
 
@@ -227,7 +227,7 @@ export const InlineExerciseBlock: React.FC<InlineExerciseBlockProps> = ({
 			if (threadId && learningProgressService) {
 				await learningProgressService.addHintUsage(threadId, {
 					exerciseId,
-					level: hintLevel,
+					hintLevel: hintLevel,
 					timestamp: Date.now()
 				});
 			}

@@ -29,6 +29,16 @@ export type ToolMessage<T extends ToolName> = {
 		| { type: 'rejected', result: null, name: T, params: ToolCallParams<T> }
 	) // user rejected
 
+/** Type predicate: returns true when a ChatMessage is a ToolMessage (built-in or MCP). */
+export const isToolMessage = (message: ChatMessage): message is ToolMessage<ToolName> => {
+	return message.role === 'tool'
+}
+
+/** Type predicate: returns true when a ToolMessage has a parallelBatchId. */
+export const hasParallelBatchId = (message: ToolMessage<ToolName>): message is ToolMessage<ToolName> & { parallelBatchId: string } => {
+	return typeof message.parallelBatchId === 'string'
+}
+
 export type DecorativeCanceledTool = {
 	role: 'interrupted_streaming_tool';
 	name: ToolName;

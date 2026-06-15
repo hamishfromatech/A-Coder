@@ -3,7 +3,7 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronDown, ChevronUp, CheckCircle, Circle, Bookmark, BookmarkCheck, MoreVertical } from 'lucide-react';
 import { useLessonTheme } from '../util/LessonThemeProvider.js';
 
@@ -44,8 +44,10 @@ export const CollapsibleLessonSection: React.FC<CollapsibleLessonSectionProps> =
 	const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 	const [isMarkedComplete, setIsMarkedComplete] = useState(isCompleted);
 	const [isBookmarkedLocal, setIsBookmarkedLocal] = useState(isBookmarked);
-	const [showMenu, setShowMenu] = useState(false);
-	const menuRef = useRef<HTMLDivElement>(null);
+
+	// Keep local UI state in sync with external prop changes.
+	useEffect(() => setIsMarkedComplete(isCompleted), [isCompleted]);
+	useEffect(() => setIsBookmarkedLocal(isBookmarked), [isBookmarked]);
 
 	// Handle expand/collapse
 	const handleToggle = () => {
@@ -65,23 +67,6 @@ export const CollapsibleLessonSection: React.FC<CollapsibleLessonSectionProps> =
 		onToggleBookmark?.(id);
 	};
 
-	// Close menu when clicking outside
-	useEffect(() => {
-		const handleClickOutside = (event: MouseEvent) => {
-			if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-				setShowMenu(false);
-			}
-		};
-
-		if (showMenu) {
-			document.addEventListener('mousedown', handleClickOutside);
-		}
-
-		return () => {
-			document.removeEventListener('mousedown', handleClickOutside);
-		};
-	}, [showMenu]);
-
 	const sectionProgressColor = progress >= 100 ? getColor('success') : progress >= 50 ? getColor('accent') : getColor('warning');
 
 	return (
@@ -93,84 +78,97 @@ export const CollapsibleLessonSection: React.FC<CollapsibleLessonSectionProps> =
 			}}
 		>
 			{/* Section Header */}
-			<button
-				onClick={handleToggle}
-				className="w-full px-4 py-3 flex items-center gap-3 bg-void-bg-2 hover:bg-void-bg-3 transition-colors"
+			<div
+				className="flex items-center gap-1 bg-void-bg-2 hover:bg-void-bg-3 transition-colors"
 				style={{
 					borderRadius: getBorderRadius(),
 					boxShadow: isExpanded ? getShadow('light') : 'none',
 				}}
 			>
-				{/* Status Icon */}
+				{/* Expand/collapse toggle region */}
 				<div
-					className="flex-shrink-0 w-6 h-6 flex items-center justify-center"
-					style={{ color: isMarkedComplete ? getColor('success') : getColor('text-muted') }}
+					role="button"
+					tabIndex={0}
+					aria-expanded={isExpanded}
+					onClick={handleToggle}
+					onKeyDown={(e) => {
+						if (e.key === 'Enter' || e.key === ' ') {
+							e.preventDefault();
+							handleToggle();
+						}
+					}}
+					className="flex-1 px-4 py-3 flex items-center gap-3 min-w-0 cursor-pointer"
 				>
-					{isMarkedComplete ? <CheckCircle size={20} /> : <Circle size={20} />}
-				</div>
-
-				{/* Section Icon (if provided) */}
-				{icon && <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">{icon}</div>}
-
-				{/* Order Number (if provided) */}
-				{order !== undefined && (
+					{/* Status Icon */}
 					<div
-						className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
-						style={{
-							backgroundColor: getColor('accent'),
-							color: 'white',
-						}}
+						className="flex-shrink-0 w-6 h-6 flex items-center justify-center"
+						style={{ color: isMarkedComplete ? getColor('success') : getColor('text-muted') }}
 					>
-						{order}
+						{isMarkedComplete ? <CheckCircle size={20} /> : <Circle size={20} />}
 					</div>
-				)}
 
-				{/* Title */}
-				<div className="flex-1 text-left">
-					<h4
-						className={`text-sm font-semibold ${isMarkedComplete ? 'line-through opacity-60' : ''}`}
-						style={{ color: getColor('text') }}
-					>
-						{title}
-					</h4>
-					{showProgress && progress > 0 && (
-						<div className="mt-1 flex items-center gap-2">
-							<div className="flex-1 h-1.5 bg-void-bg-4 rounded-full overflow-hidden">
-								<div
-									className="h-full transition-all duration-300"
-									style={{
-										width: `${Math.min(progress, 100)}%`,
-										backgroundColor: sectionProgressColor,
-									}}
-								/>
-							</div>
-							<span className="text-xs" style={{ color: getColor('text-muted') }}>
-								{Math.round(progress)}%
-							</span>
+					{/* Section Icon (if provided) */}
+					{icon && <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center">{icon}</div>}
+
+					{/* Order Number (if provided) */}
+					{order !== undefined && (
+						<div
+							className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
+							style={{
+								backgroundColor: getColor('accent'),
+								color: 'white',
+							}}
+						>
+							{order}
 						</div>
 					)}
+
+					{/* Title */}
+					<div className="flex-1 text-left min-w-0">
+						<h4
+							className={`text-sm font-semibold ${isMarkedComplete ? 'line-through opacity-60' : ''}`}
+							style={{ color: getColor('text') }}
+						>
+							{title}
+						</h4>
+						{showProgress && progress > 0 && (
+							<div className="mt-1 flex items-center gap-2">
+								<div className="flex-1 h-1.5 bg-void-bg-4 rounded-full overflow-hidden">
+									<div
+										className="h-full transition-all duration-300"
+										style={{
+											width: `${Math.min(progress, 100)}%`,
+											backgroundColor: sectionProgressColor,
+										}}
+									/>
+								</div>
+								<span className="text-xs" style={{ color: getColor('text-muted') }}>
+									{Math.round(progress)}%
+								</span>
+							</div>
+						)}
+					</div>
+
+					{/* Expand/Collapse Icon */}
+					<div
+						className="flex-shrink-0 p-1"
+						style={{ color: getColor('text-muted') }}
+					>
+						{isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+					</div>
 				</div>
 
 				{/* Bookmark Icon */}
 				<button
-					onClick={(e) => {
-						e.stopPropagation();
-						handleToggleBookmark();
-					}}
-					className="flex-shrink-0 p-1 hover:bg-void-bg-4 rounded-md transition-colors"
+					onClick={handleToggleBookmark}
+					aria-pressed={isBookmarkedLocal}
+					aria-label={isBookmarkedLocal ? 'Remove bookmark' : 'Add bookmark'}
+					className="flex-shrink-0 p-2 mx-1 hover:bg-void-bg-4 rounded-md transition-colors"
 					style={{ color: isBookmarkedLocal ? getColor('accent') : getColor('text-muted') }}
 				>
 					{isBookmarkedLocal ? <BookmarkCheck size={18} /> : <Bookmark size={18} />}
 				</button>
-
-				{/* Expand/Collapse Icon */}
-				<div
-					className="flex-shrink-0 p-1"
-					style={{ color: getColor('text-muted') }}
-				>
-					{isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-				</div>
-			</button>
+			</div>
 
 			{/* Section Content */}
 			<div

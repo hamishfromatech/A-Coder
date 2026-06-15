@@ -78,7 +78,7 @@ export const CommandToolResultWrapper: ResultWrapper<'run_command' | 'run_persis
 	const divRef = useRef<HTMLDivElement | null>(null)
 
 	const title = getTitle(toolMessage)
-	const { desc1, desc1Info } = toolNameToDesc(toolMessage.name as any, toolMessage.params, accessor)
+	const { desc1, desc1Info } = toolNameToDesc(toolMessage.name as 'run_command' | 'run_persistent_command' | 'wait', toolMessage.params, accessor)
 	const isRejected = toolMessage.type === 'rejected'
 	const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError: false, icon: null, isRejected }
 
@@ -91,7 +91,8 @@ export const CommandToolResultWrapper: ResultWrapper<'run_command' | 'run_persis
 			if (disposed) return;
 			const container = divRef.current;
 			if (!container) return;
-			const terminal = terminalToolsService.getTemporaryTerminal((toolMessage.params as any).terminalId);
+			const runParams = toolMessage.name === 'run_command' ? toolMessage.params : undefined
+			const terminal = runParams?.terminalId ? terminalToolsService.getTemporaryTerminal(runParams.terminalId) : undefined
 			if (!terminal) return;
 			terminal.attachToElement(container);
 			terminal.setVisible(true);
@@ -115,12 +116,12 @@ export const CommandToolResultWrapper: ResultWrapper<'run_command' | 'run_persis
 	if (toolMessage.type === 'success') {
 		const { result } = toolMessage
 		let msg = "";
-		if (toolMessage.name === 'run_command') msg = toolsService.stringOfResult['run_command'](toolMessage.params as any, result as any)
-		else if (toolMessage.name === 'run_persistent_command') msg = toolsService.stringOfResult['run_persistent_command'](toolMessage.params as any, result as any)
-		else msg = toolsService.stringOfResult['wait'](toolMessage.params as any, result as any)
+		if (toolMessage.name === 'run_command') msg = toolsService.stringOfResult['run_command'](toolMessage.params, result)
+		else if (toolMessage.name === 'run_persistent_command') msg = toolsService.stringOfResult['run_persistent_command'](toolMessage.params, result)
+		else msg = toolsService.stringOfResult['wait'](toolMessage.params, result)
 
 		if (toolMessage.name === 'run_persistent_command' || toolMessage.name === 'wait') {
-			componentParams.info = persistentTerminalNameOfId((toolMessage.params as any).persistentTerminalId)
+			componentParams.info = persistentTerminalNameOfId(toolMessage.params.persistentTerminalId)
 		}
 
 		componentParams.children = <ToolChildrenWrapper className='whitespace-pre text-nowrap overflow-auto text-sm'>
@@ -132,8 +133,8 @@ export const CommandToolResultWrapper: ResultWrapper<'run_command' | 'run_persis
 		if (toolMessage.name === 'run_command') componentParams.children = <div ref={divRef} className='relative h-[300px] text-sm' />
 	} else if (toolMessage.type === 'tool_request') {
 		if (toolMessage.name === 'run_command' || toolMessage.name === 'run_persistent_command') {
-			const command = (toolMessage.params as any).command
-			const cwd = (toolMessage.params as any).cwd || null
+			const command = toolMessage.params.command
+			const cwd = toolMessage.params.cwd || null
 			return <TerminalCommandApproval command={command} cwd={cwd} threadId={threadId} toolId={toolMessage.id} />
 		}
 	}

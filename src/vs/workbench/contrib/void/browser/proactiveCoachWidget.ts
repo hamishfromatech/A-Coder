@@ -27,7 +27,7 @@ export class ProactiveCoachContribution extends Disposable implements IEditorCon
 
 	// React
 	private _rootHTML: HTMLElement;
-	private _rerender: (props?: any) => void = () => {};
+	private _rerender: (props?: ProactiveCoachProps) => void = () => {};
 	private _reactComponentDisposable: IDisposable | null = null;
 
 	// Internal
@@ -53,8 +53,6 @@ export class ProactiveCoachContribution extends Disposable implements IEditorCon
 		root.style.display = 'none';
 		root.style.pointerEvents = 'none';
 		root.style.zIndex = '1000';
-		root.style.top = '16px';
-		root.style.right = '16px';
 
 		// Initialize React component
 		this._instantiationService.invokeFunction(accessor => {
@@ -169,15 +167,25 @@ export class ProactiveCoachContribution extends Disposable implements IEditorCon
 	}
 
 	private _updatePosition(): void {
-		if (!this._isVisible) {
+		if (!this._isVisible || !this._currentObservation) {
 			return;
 		}
 
-		const top = 16;
-		const right = 16;
+		const lineNumber = this._currentObservation.lineNumber;
+		const topPx = this._editor.getTopForLineNumber(lineNumber) - this._editor.getScrollTop();
 
-		this._rootHTML.style.top = `${top}px`;
-		this._rootHTML.style.right = `${right}px`;
+		// If the relevant line is scrolled out of view, hide the bubble
+		const layoutInfo = this._editor.getLayoutInfo();
+		if (topPx < 0 || topPx > layoutInfo.height) {
+			this._hideBubble();
+			return;
+		}
+
+		// Keep the bubble to the right of the code, clear of the minimap and scrollbar
+		const rightPx = layoutInfo.minimap.minimapWidth + layoutInfo.verticalScrollbarWidth + 16;
+
+		this._rootHTML.style.top = `${topPx}px`;
+		this._rootHTML.style.right = `${rightPx}px`;
 	}
 
 	private async _handleDiscuss(): Promise<void> {
@@ -212,9 +220,17 @@ export class ProactiveCoachContribution extends Disposable implements IEditorCon
 		const thread = this._chatThreadService.getCurrentThread();
 		const mountedInfo = thread.state.mountedInfo;
 		if (mountedInfo) {
+			let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 			const ui = await Promise.race([
-				mountedInfo.whenMounted,
-				new Promise<null>(resolve => setTimeout(() => resolve(null), 1000)),
+				mountedInfo.whenMounted.then(value => {
+					if (timeoutHandle) {
+						clearTimeout(timeoutHandle);
+					}
+					return value;
+				}),
+				new Promise<null>(resolve => {
+					timeoutHandle = setTimeout(() => resolve(null), 1000);
+				}),
 			]);
 			if (ui?.textAreaRef?.current) {
 				ui.textAreaRef.current.value = `I was writing code and got a suggestion: ${message}`;

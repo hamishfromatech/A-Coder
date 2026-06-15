@@ -86,23 +86,19 @@ function parseLessonContent(content: string): LessonSection[] {
 
 		if (!matchedPattern && currentSection) {
 			currentContent.push(line);
-		} else if (!matchedPattern && !currentSection) {
+		} else if (!matchedPattern && line.trim()) {
 			// Content before first header goes into intro section
-			if (line.trim()) {
-				if (sections.length === 0 || sections[0].type !== 'content') {
-					sections.unshift({
-						id: 'section-intro',
-						title: 'Introduction',
-						content: line,
-						type: 'content',
-						order: 0,
-					});
-					currentSection = sections[0];
-					currentContent = [line];
-				} else {
-					sections[0].content += '\n' + line;
-				}
+			if (!currentSection) {
+				currentSection = {
+					id: 'section-intro',
+					title: 'Introduction',
+					content: '',
+					type: 'content',
+					order: 0,
+				};
+				currentContent = [];
 			}
+			currentContent.push(line);
 		}
 	}
 
@@ -3253,7 +3249,9 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 			},
 
 			display_lesson: (params, result) => {
-				return result.success ? '\u{2705} Lesson displayed successfully in a new tab.' : '\u{274C} Failed to display lesson.'
+				return result.success
+					? `\u{2705} Lesson displayed successfully in a new tab.\n\n\u{1F4C1} ${result.filePath}`
+					: '\u{274C} Failed to display lesson.'
 			},
 
 			create_lesson_plan: (params, result) => {

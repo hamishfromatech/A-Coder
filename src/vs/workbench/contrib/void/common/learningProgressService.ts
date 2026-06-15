@@ -32,7 +32,7 @@ export interface ILearningProgressService {
 	getThreadProgress(threadId: string): ThreadLearningProgress | null;
 	updateThreadProgress(threadId: string, progress: ThreadLearningProgress): Promise<void>;
 	updateLessonProgress(threadId: string, lessonId: string, progress: Partial<LessonProgress>): Promise<void>;
-	updateExerciseAttempt(threadId: string, exerciseId: string, attempt: ExerciseAttempt): Promise<void>;
+	updateExerciseAttempt(threadId: string, exerciseId: string, attempt: Partial<ExerciseAttempt>): Promise<void>;
 	addQuizResult(threadId: string, result: QuizResult): Promise<void>;
 	addHintUsage(threadId: string, hint: HintUsage): Promise<void>;
 	updateStreak(threadId: string): Promise<void>;
@@ -95,14 +95,16 @@ export class LearningProgressService extends Disposable implements ILearningProg
 			const encryptedState = await this._encryptionService.encrypt(stateStr);
 			this._storageService.store(LEARNING_PROGRESS_STORAGE_KEY, encryptedState, StorageScope.APPLICATION, StorageTarget.USER);
 			this._onDidChangeState.fire(this._state);
-			this._checkBadges(); // Automatically check for new badges on save
 		} catch (error) {
 			console.error('[LearningProgressService] Failed to save state:', error);
 		}
 	}
 
-	private _checkBadges() {
+	private _checkBadges(threadId: string) {
 		const stats = this._state.globalStats;
+		const threadProgress = this._state.threads[threadId];
+		if (!threadProgress) return;
+
 		const badgesToUnlock: string[] = [];
 
 		if (stats.totalLessonsCompleted >= 1) badgesToUnlock.push('first-lesson');
@@ -112,8 +114,31 @@ export class LearningProgressService extends Disposable implements ILearningProg
 		if (stats.currentStreak >= 3) badgesToUnlock.push('streak-3');
 		if (stats.currentStreak >= 7) badgesToUnlock.push('streak-7');
 
-		// In a real implementation, we'd find the current threadId to award these to, 
-		// but for now we'll just track them globally in the state if we add a global badges field.
+		for (const badgeId of badgesToUnlock) {
+			this._unlockBadgeInternal(threadProgress, badgeId);
+		}
+	}
+
+	private _unlockBadgeInternal(threadProgress: ThreadLearningProgress, badgeId: string): void {
+		const alreadyHasBadge = threadProgress.badges.some(b => b.id === badgeId);
+		if (alreadyHasBadge) return;
+
+		let category: Badge['category'] = 'milestones';
+		if (badgeId.includes('lesson')) category = 'lessons';
+		else if (badgeId.includes('exercise') || badgeId.includes('practice')) category = 'exercises';
+		else if (badgeId.includes('quiz')) category = 'quizzes';
+		else if (badgeId.includes('streak')) category = 'streaks';
+
+		threadProgress.badges.push({
+			id: badgeId,
+			name: badgeId.replace(/-/g, ' '),
+			description: 'Unlocked badge',
+			icon: '🏅',
+			unlockedAt: Date.now(),
+			category,
+		});
+		threadProgress.lastUpdated = Date.now();
+		this._state.globalStats.lastUpdated = Date.now();
 	}
 
 	getThreadProgress(threadId: string): ThreadLearningProgress | null {
@@ -155,35 +180,54 @@ export class LearningProgressService extends Disposable implements ILearningProg
 
 		threadProgress.lastUpdated = Date.now();
 		this._state.globalStats.lastUpdated = Date.now();
+		this._checkBadges(threadId);
 		await this._saveState();
 	}
 
-	async updateExerciseAttempt(threadId: string, exerciseId: string, attempt: ExerciseAttempt): Promise<void> {
+	async updateExerciseAttempt(threadId: string, exerciseId: string, attempt: Partial<ExerciseAttempt>): Promise<void> {
 		this._ensureThreadExists(threadId);
 		const threadProgress = this._state.threads[threadId];
 		const previousAttempt = threadProgress.exercises[exerciseId];
 
-		threadProgress.exercises[exerciseId] = attempt;
+		const now = Date.now();
+		const merged: ExerciseAttempt = {
+			...previousAttempt,
+			...attempt,
+			exerciseId,
+			type: attempt.type ?? previousAttempt?.type ?? 'write_function',
+			attempts: (previousAttempt?.attempts ?? 0) + 1,
+			firstAttemptTime: previousAttempt?.firstAttemptTime ?? now,
+			lastAttemptTime: now,
+			timeSpent: Math.max(attempt.timeSpent ?? previousAttempt?.timeSpent ?? 0, previousAttempt?.timeSpent ?? 0),
+		};
 
-		if (attempt.solved && (!previousAttempt || !previousAttempt.solved)) {
+		threadProgress.exercises[exerciseId] = merged;
+
+		if (merged.solved && (!previousAttempt || !previousAttempt.solved)) {
 			this._state.globalStats.totalExercisesSolved++;
 			threadProgress.totalExercisesSolved++;
 		}
 
-		threadProgress.totalTimeSpent += (attempt.timeSpent - (previousAttempt?.timeSpent || 0));
-		this._state.globalStats.totalTimeSpent += (attempt.timeSpent - (previousAttempt?.timeSpent || 0));
-		threadProgress.lastUpdated = Date.now();
-		this._state.globalStats.lastUpdated = Date.now();
+		const timeDelta = Math.max(0, merged.timeSpent - (previousAttempt?.timeSpent || 0));
+		threadProgress.totalTimeSpent += timeDelta;
+		this._state.globalStats.totalTimeSpent += timeDelta;
+		threadProgress.lastUpdated = now;
+		this._state.globalStats.lastUpdated = now;
+		this._checkBadges(threadId);
 		await this._saveState();
 	}
 
 	async addQuizResult(threadId: string, result: QuizResult): Promise<void> {
 		this._ensureThreadExists(threadId);
 		const threadProgress = this._state.threads[threadId];
+		const isFirstCompletion = !threadProgress.quizzes.some(q => q.quizId === result.quizId);
 		threadProgress.quizzes.push(result);
-		this._state.globalStats.totalQuizzesTaken++;
+		if (isFirstCompletion) {
+			this._state.globalStats.totalQuizzesTaken++;
+		}
 		threadProgress.lastUpdated = Date.now();
 		this._state.globalStats.lastUpdated = Date.now();
+		this._checkBadges(threadId);
 		await this._saveState();
 	}
 
@@ -226,36 +270,15 @@ export class LearningProgressService extends Disposable implements ILearningProg
 		this._state.globalStats.lastLearningDate = Date.now();
 		threadProgress.lastUpdated = Date.now();
 		this._state.globalStats.lastUpdated = Date.now();
+		this._checkBadges(threadId);
 		await this._saveState();
 	}
 
 	async unlockBadge(threadId: string, badgeId: string): Promise<void> {
 		this._ensureThreadExists(threadId);
 		const threadProgress = this._state.threads[threadId];
-		const alreadyHasBadge = threadProgress.badges.some(b => b.id === badgeId);
-
-		if (!alreadyHasBadge) {
-			// Find the badge definition (placeholder for now)
-			// Determine category based on ID
-			let category: Badge['category'] = 'milestones';
-			if (badgeId.includes('lesson')) category = 'lessons';
-			else if (badgeId.includes('exercise') || badgeId.includes('practice')) category = 'exercises';
-			else if (badgeId.includes('quiz')) category = 'quizzes';
-			else if (badgeId.includes('streak')) category = 'streaks';
-
-			const badge: Badge = {
-				id: badgeId,
-				name: badgeId.replace(/-/g, ' '),
-				description: 'Unlocked badge',
-				icon: '🏅',
-				unlockedAt: Date.now(),
-				category
-			};
-			threadProgress.badges.push(badge);
-			threadProgress.lastUpdated = Date.now();
-			this._state.globalStats.lastUpdated = Date.now();
-			await this._saveState();
-		}
+		this._unlockBadgeInternal(threadProgress, badgeId);
+		await this._saveState();
 	}
 
 	async updateSettings(settings: Partial<LearningSettings>): Promise<void> {

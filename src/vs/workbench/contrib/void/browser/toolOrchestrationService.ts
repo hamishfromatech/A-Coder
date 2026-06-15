@@ -13,7 +13,7 @@ import { orchestration_systemMessage } from '../common/prompt/prompts.js';
 
 export type OrchestrationToolSuggestion = {
 	toolName: string;
-	toolParams?: Record<string, any>;
+	toolParams?: Record<string, unknown>;
 	reasoning: string;
 	confidence: 'high' | 'medium' | 'low';
 	skipOrchestration?: boolean; // Set to true if orchestration model decides main LLM should handle everything
@@ -83,8 +83,6 @@ class ToolOrchestrationService extends Disposable implements IToolOrchestrationS
 
 		// Call orchestration model
 		return new Promise<OrchestrationResult>((resolve, reject) => {
-			let fullResponse = '';
-
 			const requestId = this._llmMessageService.sendLLMMessage({
 				messagesType: 'chatMessages',
 				chatMode,
@@ -95,14 +93,13 @@ class ToolOrchestrationService extends Disposable implements IToolOrchestrationS
 				logging: { loggingName: 'ToolOrchestration', loggingExtras: { chatMode } },
 				separateSystemMessage: undefined,
 				onText: (params) => {
-					fullResponse = params.fullText ?? '';
 					if (params.fullReasoning) {
 						onProgress?.(params.fullReasoning);
 					}
 				},
 				onFinalMessage: (params) => {
 					console.log('[toolOrchestrationService] Orchestration response received');
-					const result = this._parseOrchestrationResponse(fullResponse);
+					const result = this._parseOrchestrationResponse(params.fullText);
 					resolve(result);
 				},
 				onError: (params) => {
@@ -124,54 +121,81 @@ class ToolOrchestrationService extends Disposable implements IToolOrchestrationS
 
 	private _parseOrchestrationResponse(response: string): OrchestrationResult {
 		try {
-			// Try to extract JSON from the response
-			const jsonMatch = response.match(/```json\s*([\s\S]*?)\s*```/) || response.match(/\{[\s\S]*\}/);
-			const jsonString = jsonMatch ? jsonMatch[1] || jsonMatch[0] : response;
-
-			// Parse JSON
-			let parsed: any;
-			try {
-				parsed = JSON.parse(jsonString);
-			} catch {
-				// If JSON parsing fails, try to extract key information from text
+			const parsed = this._extractJsonFromResponse(response);
+			const parsedObj = asUnknownRecord(parsed);
+			if (!parsedObj) {
 				return this._parseTextResponse(response);
 			}
 
 			// Validate and extract suggestions
 			const suggestions: OrchestrationToolSuggestion[] = [];
-			if (parsed.suggestions && Array.isArray(parsed.suggestions)) {
-				for (const suggestion of parsed.suggestions) {
-					if (suggestion.toolName) {
-						suggestions.push({
-							toolName: suggestion.toolName,
-							toolParams: suggestion.toolParams,
-							reasoning: suggestion.reasoning || '',
-							confidence: suggestion.confidence || 'medium',
-							skipOrchestration: suggestion.skipOrchestration,
-						});
+			if ('suggestions' in parsedObj && Array.isArray(parsedObj.suggestions)) {
+				for (const suggestion of parsedObj.suggestions) {
+					const suggestionObj = asUnknownRecord(suggestion);
+					if (!suggestionObj || typeof suggestionObj.toolName !== 'string') {
+						continue;
 					}
+					const toolParams = 'toolParams' in suggestionObj ? asUnknownRecord(suggestionObj.toolParams) : undefined;
+					suggestions.push({
+						toolName: suggestionObj.toolName,
+						toolParams: toolParams ?? undefined,
+						reasoning: typeof suggestionObj.reasoning === 'string' ? suggestionObj.reasoning : '',
+						confidence: isValidConfidence(suggestionObj.confidence) ? suggestionObj.confidence : 'medium',
+						skipOrchestration: suggestionObj.skipOrchestration === true,
+					});
 				}
 			}
 
 			// Check if orchestration decided to skip
-			if (parsed.skipOrchestration) {
+			if (parsedObj.skipOrchestration === true) {
 				return {
-					suggestions: [{ toolName: '__skip__', reasoning: parsed.reasoning || 'Main LLM should handle this request', confidence: 'high', skipOrchestration: true }],
-					reasoning: parsed.reasoning || '',
-					summary: parsed.summary || 'Orchestration skipped - delegating to main LLM',
+					suggestions: [{ toolName: '__skip__', reasoning: typeof parsedObj.reasoning === 'string' ? parsedObj.reasoning : 'Main LLM should handle this request', confidence: 'high', skipOrchestration: true }],
+					reasoning: typeof parsedObj.reasoning === 'string' ? parsedObj.reasoning : '',
+					summary: typeof parsedObj.summary === 'string' ? parsedObj.summary : 'Orchestration skipped - delegating to main LLM',
 				};
 			}
 
 			return {
 				suggestions,
-				reasoning: parsed.reasoning || accumulatedReasoningText(response),
-				summary: parsed.summary || '',
+				reasoning: typeof parsedObj.reasoning === 'string' ? parsedObj.reasoning : accumulatedReasoningText(response),
+				summary: typeof parsedObj.summary === 'string' ? parsedObj.summary : '',
 			};
 		} catch (error) {
 			console.error('[toolOrchestrationService] Error parsing orchestration response:', error);
 			// Return empty suggestions on parse error
 			return { suggestions: [], reasoning: '', summary: 'Failed to parse orchestration response' };
 		}
+	}
+
+	private _extractJsonFromResponse(response: string): unknown | undefined {
+		// Try parsing the raw response first
+		try {
+			return JSON.parse(response.trim());
+		} catch {
+			// fall through
+		}
+
+		// Try a fenced JSON block
+		const fencedMatch = response.match(/```json\s*([\s\S]*?)\s*```/);
+		if (fencedMatch) {
+			try {
+				return JSON.parse(fencedMatch[1].trim());
+			} catch {
+				// fall through
+			}
+		}
+
+		// Fall back to the largest JSON-like object in the response
+		const looseMatch = response.match(/\{[\s\S]*\}/);
+		if (looseMatch) {
+			try {
+				return JSON.parse(looseMatch[0]);
+			} catch {
+				// fall through
+			}
+		}
+
+		return undefined;
 	}
 
 	private _parseTextResponse(response: string): OrchestrationResult {
@@ -199,6 +223,17 @@ class ToolOrchestrationService extends Disposable implements IToolOrchestrationS
 		};
 	}
 }
+
+const asUnknownRecord = (value: unknown): Record<string, unknown> | null => {
+	if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+		return null;
+	}
+	return value as Record<string, unknown>;
+};
+
+const isValidConfidence = (value: unknown): value is 'high' | 'medium' | 'low' => {
+	return value === 'high' || value === 'medium' || value === 'low';
+};
 
 // Extract reasoning text from <reasoning> or ``` tags
 const accumulatedReasoningText = (response: string): string => {

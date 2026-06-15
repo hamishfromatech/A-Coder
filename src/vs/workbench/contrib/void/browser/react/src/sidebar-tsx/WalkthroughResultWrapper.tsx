@@ -8,41 +8,53 @@ import { URI } from '../../../../../../../base/common/uri.js'
 import { useAccessor } from '../util/services.js'
 import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js'
 import { ToolName } from '../../../../common/toolsServiceTypes.js'
+import { ToolMessage, isToolMessage } from '../../../../common/chatThreadServiceTypes.js'
+import { WrapperProps } from './ToolResultHelpers.js'
 
 // Configuration constants
 const PREVIEW_TRUNCATION_LENGTH = 1000 // Increased from 500 to 1000 chars
 const PREVIEW_TAB_SCHEME = 'void-preview'
 
-interface WalkthroughResultWrapperProps {
-	toolMessage: {
-		name: ToolName
-		params: any
-		content: string
-		result?: any
-		id: string
-		type?: string
-	}
-	messageIdx: number
-	threadId: string
+type WalkthroughResult = {
+	success: boolean;
+	preview: string;
+	filePath: string;
+	action?: 'created' | 'updated' | 'appended';
+	message?: string;
+	error?: string;
 }
 
-// Map to track open walkthrough preview tabs by file path
+const isWalkthroughResult = (value: unknown): value is WalkthroughResult => {
+	return typeof value === 'object' && value !== null &&
+		typeof (value as WalkthroughResult).preview === 'string' &&
+		typeof (value as WalkthroughResult).filePath === 'string'
+}
+
+type WalkthroughResultWrapperProps = WrapperProps<ToolName>
+
+// Map to track open walkthrough preview tabs by a unique tab ID.
+// Using a unique key prevents an older tab from overwriting a newer one
+// and stops unmounting one tab from killing another tab's refresh handler.
+let nextPreviewTabId = 0
 const openPreviewTabs = new Map<string, {
+	filePath: string
 	threadId: string
 	refreshFn: (filePath: string, preview: string) => void
 }>()
 
 // Function to register a preview tab's refresh function
 export const registerPreviewTab = (filePath: string, threadId: string, refreshFn: (filePath: string, preview: string) => void) => {
-	openPreviewTabs.set(filePath, { threadId, refreshFn })
-	return () => openPreviewTabs.delete(filePath) // Return cleanup function
+	const tabId = `preview-tab-${nextPreviewTabId++}`
+	openPreviewTabs.set(tabId, { filePath, threadId, refreshFn })
+	return () => openPreviewTabs.delete(tabId) // Return cleanup function
 }
 
 // Function to refresh all open preview tabs for a given file
 const refreshPreviewTabs = (filePath: string, preview: string) => {
-	const tabInfo = openPreviewTabs.get(filePath)
-	if (tabInfo) {
-		tabInfo.refreshFn(filePath, preview)
+	for (const tabInfo of openPreviewTabs.values()) {
+		if (tabInfo.filePath === filePath) {
+			tabInfo.refreshFn(filePath, preview)
+		}
 	}
 }
 
@@ -53,29 +65,28 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 }) => {
 	const accessor = useAccessor()
 	const commandService = accessor.get('ICommandService')
-	const chatThreadsService = accessor.get('IChatThreadService') as any
-	const agentManagerService = accessor.get('IAgentManagerService') as any
-	const editorService = accessor.get('IEditorService') as any
+	const chatThreadsService = accessor.get('IChatThreadService')
+	const agentManagerService = accessor.get('IAgentManagerService')
 
 	const [refreshKey, setRefreshKey] = useState(0)
 	const [isExpanded, setIsExpanded] = useState(true)
 	const [showFullPreview, setShowFullPreview] = useState(false)
 
 	// Track content from NEWER walkthrough updates in this thread (for showing latest content)
-	const [newerContent, setNewerContent] = useState<{ preview: string; filePath: string; action: string } | null>(null)
+	const [newerContent, setNewerContent] = useState<WalkthroughResult | null>(null)
 
 	// Ref to store the latest result to avoid stale closure in openWalkthrough
 	const latestResultRef = useRef(toolMessage.result)
 
 	// Update the ref when toolMessage.result changes
 	useEffect(() => {
-		if (toolMessage.result && typeof toolMessage.result === 'object' && toolMessage.result.preview) {
+		if (isWalkthroughResult(toolMessage.result)) {
 			latestResultRef.current = toolMessage.result
 		}
 	}, [toolMessage.result])
 
-	// Check for newer walkthrough updates in this thread
-	useEffect(() => {
+	// Recompute the latest walkthrough content when the thread state changes.
+	const computeNewerContent = useCallback(() => {
 		// Don't track updates for open_walkthrough_preview
 		if (toolMessage.name === 'open_walkthrough_preview') return
 		if (!chatThreadsService) return
@@ -86,21 +97,17 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 		const messages = thread.messages || []
 
 		// Find all update_walkthrough messages
-		const walkthroughMessages = messages.filter((m: any) => m.name === 'update_walkthrough')
+		const walkthroughMessages = messages.filter((m): m is ToolMessage<ToolName> & { name: 'update_walkthrough' } => isToolMessage(m) && m.name === 'update_walkthrough')
 
 		// Find if there's a newer message than ours
-		const currentIdx = walkthroughMessages.findIndex((m: any) => m.id === toolMessage.id)
+		const currentIdx = walkthroughMessages.findIndex((m) => m.id === toolMessage.id)
 		const latestIdx = walkthroughMessages.length - 1
 
 		// If there's a newer message after ours, track its content
 		if (currentIdx !== -1 && latestIdx > currentIdx) {
 			const newerMsg = walkthroughMessages[latestIdx]
-			if (newerMsg?.result?.preview && newerMsg?.result?.filePath) {
-				setNewerContent({
-					preview: newerMsg.result.preview,
-					filePath: newerMsg.result.filePath,
-					action: newerMsg.result.action
-				})
+			if (isWalkthroughResult(newerMsg?.result)) {
+				setNewerContent(newerMsg.result)
 				setRefreshKey(prev => prev + 1)
 
 				// Update the latest result ref
@@ -112,8 +119,17 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 		}
 	}, [chatThreadsService, threadId, toolMessage.id, toolMessage.name])
 
+	// Check for newer walkthrough updates in this thread
+	useEffect(() => {
+		computeNewerContent()
+		if (!chatThreadsService) return
+		const disposable = chatThreadsService.onDidChangeStreamState?.(() => computeNewerContent())
+		return () => disposable?.dispose?.()
+	}, [computeNewerContent, chatThreadsService])
+
 	// Get result - use newer content if available, otherwise use current tool's result
-	const result = newerContent || toolMessage.result
+	const currentResult = isWalkthroughResult(toolMessage.result) ? toolMessage.result : undefined
+	const result = newerContent ?? currentResult
 	const toolName = toolMessage.name
 	const toolType = toolMessage.type
 
@@ -125,7 +141,7 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 		}
 
 		const latestResult = latestResultRef.current
-		if (!latestResult?.filePath || !latestResult?.preview) {
+		if (!isWalkthroughResult(latestResult)) {
 			console.error('No valid walkthrough data to open')
 			return
 		}
@@ -190,6 +206,9 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 	if (toolType === 'rejected') {
 		return null // Don't show anything for rejected
 	}
+	if (!result) {
+		return null
+	}
 
 	// Handle open_walkthrough_preview tool result
 	if (toolName === 'open_walkthrough_preview') {
@@ -220,7 +239,22 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 		return null
 	}
 
-
+	// Surface backend-reported failures instead of pretending the update succeeded.
+	if (!result.success) {
+		return (
+			<div className="@@void-scope">
+				<div className="walkthrough-result border border-void-warning/50 rounded-lg overflow-hidden bg-void-warning/5 p-3">
+					<div className="flex items-start gap-2 text-void-fg-1">
+						<span className="text-lg">{'\u{26A0}\u{FE0F}'}</span>
+						<div className="flex flex-col">
+							<span className="text-sm font-medium text-void-warning">Walkthrough update failed</span>
+							<span className="text-xs text-void-fg-3 mt-1">{result.error || 'Unknown error'}</span>
+						</div>
+					</div>
+				</div>
+			</div>
+		)
+	}
 
 	const getActionIcon = () => {
 		switch (result.action) {

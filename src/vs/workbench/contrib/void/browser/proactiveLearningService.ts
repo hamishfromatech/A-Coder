@@ -39,8 +39,10 @@ export class ProactiveLearningService extends Disposable implements IProactiveLe
 	private readonly _onObservation = new Emitter<ProactiveCoachObservation>();
 	readonly onObservation = this._onObservation.event;
 
-	private readonly _debounceTimers = new Map<string, NodeJS.Timeout>();
+	private readonly _debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	private readonly _lastCheckTime = new Map<string, number>();
+	private readonly _dismissedMessages = new Set<string>();
+	private _lastObservationMessage: string | null = null;
 	private _currentRequestId: string | null = null;
 
 	constructor(
@@ -89,6 +91,34 @@ export class ProactiveLearningService extends Disposable implements IProactiveLe
 				this._onModelContentChanged(model);
 			})
 		);
+
+		this._register(
+			model.onWillDispose(() => {
+				this._cleanupModel(model);
+			})
+		);
+	}
+
+	private _cleanupModel(model: ITextModel): void {
+		const uriKey = model.uri.fsPath;
+		const timer = this._debounceTimers.get(uriKey);
+		if (timer) {
+			clearTimeout(timer);
+			this._debounceTimers.delete(uriKey);
+		}
+		this._lastCheckTime.delete(uriKey);
+	}
+
+	override dispose(): void {
+		for (const timer of this._debounceTimers.values()) {
+			clearTimeout(timer);
+		}
+		this._debounceTimers.clear();
+		if (this._currentRequestId) {
+			this._llmMessageService.abort(this._currentRequestId);
+			this._currentRequestId = null;
+		}
+		super.dispose();
 	}
 
 	private _onModelContentChanged(model: ITextModel): void {
@@ -104,7 +134,7 @@ export class ProactiveLearningService extends Disposable implements IProactiveLe
 		const intervalMs = proactiveCoachIntervalSeconds * 1000;
 
 		// Rate limit
-		if (now - lastCheck < intervalMs) {
+		if (intervalMs <= 0 || now - lastCheck < intervalMs) {
 			return;
 		}
 
@@ -183,12 +213,16 @@ export class ProactiveLearningService extends Disposable implements IProactiveLe
 			chatMode: 'learn',
 			onText: () => {},
 			onFinalMessage: ({ fullText }) => {
+				this._currentRequestId = null;
 				this._handleLLMResponse(fullText, model.uri, position.lineNumber);
 			},
 			onError: ({ message }) => {
+				this._currentRequestId = null;
 				console.error('[ProactiveCoach] LLM error:', message);
 			},
-			onAbort: () => {},
+			onAbort: () => {
+				this._currentRequestId = null;
+			},
 			logging: {
 				loggingName: 'proactiveCoach',
 				loggingExtras: { uri: model.uri.fsPath },
@@ -258,6 +292,11 @@ Respond with just your observation, or "CODE_LOOKS_GOOD" if everything looks fin
 			return;
 		}
 
+		// Skip observations the user has already dismissed
+		if (this._dismissedMessages.has(trimmed)) {
+			return;
+		}
+
 		// Determine severity based on keywords
 		let severity: 'info' | 'warning' | 'error' = 'info';
 		const lower = trimmed.toLowerCase();
@@ -266,6 +305,8 @@ Respond with just your observation, or "CODE_LOOKS_GOOD" if everything looks fin
 		} else if (lower.includes('consider') || lower.includes('might') || lower.includes('could') || lower.includes('suggestion')) {
 			severity = 'warning';
 		}
+
+		this._lastObservationMessage = trimmed;
 
 		const observation: ProactiveCoachObservation = {
 			message: trimmed,
@@ -279,7 +320,11 @@ Respond with just your observation, or "CODE_LOOKS_GOOD" if everything looks fin
 	}
 
 	dismissObservation(): void {
-		// Called when user dismisses the bubble
+		// Remember the dismissed message so we don't show it again immediately
+		if (this._lastObservationMessage) {
+			this._dismissedMessages.add(this._lastObservationMessage);
+			this._lastObservationMessage = null;
+		}
 	}
 }
 

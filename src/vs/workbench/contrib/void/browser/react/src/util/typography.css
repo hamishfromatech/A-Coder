@@ -1,0 +1,85 @@
+/*--------------------------------------------------------------------------------------
+ *  Copyright 2026 The A-Tech Corporation PTY LTD. All rights reserved.
+ *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
+ *--------------------------------------------------------------------------------------*/
+
+/* ============================================
+   HEADING DISPLAY SYSTEM
+   Premium typography hierarchy
+   ============================================ */
+
+.void-heading-display {
+	font-size: var(--void-text-3xl);
+	font-weight: 700;
+	letter-spacing: var(--void-tracking-tight);
+	line-height: var(--void-leading-tight);
+	color: var(--void-fg-0);
+}
+
+.void-heading-section {
+	font-size: var(--void-text-xl);
+	font-weight: 600;
+	letter-spacing: var(--void-tracking-tight);
+	line-height: var(--void-leading-tight);
+	color: var(--void-fg-1);
+}
+
+.void-heading-sub {
+	font-size: var(--void-text-base);
+	font-weight: 600;
+	letter-spacing: var(--void-tracking-normal);
+	line-height: var(--void-leading-tight);
+	color: var(--void-fg-2);
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+.void-tabular-nums {
+	font-variant-numeric: tabular-nums;
+}
+
+.void-text-balance {
+	text-wrap: balance;
+}
+
+.void-text-pretty {
+	text-wrap: pretty;
+}
+
+.void-truncate-2 {
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.void-truncate-3 {
+	display: -webkit-box;
+	-webkit-line-clamp: 3;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.void-label {
+	font-size: var(--void-text-xs);
+	font-weight: 600;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: var(--void-fg-4);
+}
+
+.void-label-sm {
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--void-fg-4);
+}
+
+.void-code-label {
+	font-family: var(--void-font-mono);
+	font-size: var(--void-text-xs);
+	color: var(--void-fg-3);
+}

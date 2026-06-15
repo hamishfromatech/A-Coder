@@ -360,7 +360,7 @@ class MCPService extends Disposable implements IMCPService {
 		this._setMCPServerState(serverName, { status: 'loading', tools: [] })
 
 		await this.voidSettingsService.setMCPServerState(serverName, { isOn });
-		this.channel.call('toggleMCPServer', { serverName, isOn })
+		await this.channel.call('toggleMCPServer', { serverName, isOn })
 	}
 
 

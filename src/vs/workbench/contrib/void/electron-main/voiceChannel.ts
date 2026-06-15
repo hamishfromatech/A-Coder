@@ -36,6 +36,20 @@ interface TTSResponse {
 	error?: string;
 }
 
+interface TTSRequestBody {
+	model: string;
+	input: string;
+	voice: string;
+	response_format: string;
+	speed?: number;
+}
+
+const DEFAULT_TIMEOUT_MS = 60_000;
+const STT_ENDPOINT = '/audio/transcriptions';
+const TTS_ENDPOINT = '/audio/speech';
+
+const isNonEmptyString = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
+
 /**
  * IPC Channel for Voice (STT + TTS)
  * Handles speech-to-text and text-to-speech requests from renderer process
@@ -45,12 +59,12 @@ export class VoiceChannel implements IServerChannel {
 	async call(_: unknown, command: string, arg?: any): Promise<any> {
 		switch (command) {
 			case 'transcribe': {
-				const { baseUrl, model, apiKey, audioBase64, language } = arg as STTRequest;
-				return this.handleSTT({ baseUrl, model, apiKey, audioBase64, language });
+				const request = arg as STTRequest;
+				return this.handleSTT(request);
 			}
 			case 'synthesize': {
-				const { baseUrl, model, voice, apiKey, text, responseFormat, speed } = arg as TTSRequest;
-				return this.handleTTS({ baseUrl, model, voice, apiKey, text, responseFormat, speed });
+				const request = arg as TTSRequest;
+				return this.handleTTS(request);
 			}
 			default:
 				throw new Error(`Unknown command: ${command}`);
@@ -65,11 +79,53 @@ export class VoiceChannel implements IServerChannel {
 		// Nothing to dispose
 	}
 
+	private async fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<Response> {
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), timeoutMs);
+		try {
+			const response = await fetch(url, { ...init, signal: controller.signal });
+			return response;
+		} finally {
+			clearTimeout(timeout);
+		}
+	}
+
+	private validateSTTRequest(request: STTRequest): string | null {
+		if (!isNonEmptyString(request.baseUrl)) {
+			return 'STT server URL is missing';
+		}
+		if (!isNonEmptyString(request.model)) {
+			return 'STT model is missing';
+		}
+		if (!isNonEmptyString(request.audioBase64)) {
+			return 'No audio data provided';
+		}
+		return null;
+	}
+
+	private validateTTSRequest(request: TTSRequest): string | null {
+		if (!isNonEmptyString(request.baseUrl)) {
+			return 'TTS server URL is missing';
+		}
+		if (!isNonEmptyString(request.model)) {
+			return 'TTS model is missing';
+		}
+		if (!isNonEmptyString(request.text)) {
+			return 'No text provided to speak';
+		}
+		return null;
+	}
+
 	private async handleSTT(request: STTRequest): Promise<STTResponse> {
+		const validationError = this.validateSTTRequest(request);
+		if (validationError) {
+			return { success: false, error: validationError };
+		}
+
 		const { baseUrl, model, apiKey, audioBase64, language } = request;
 
 		try {
-			const url = `${baseUrl}/audio/transcriptions`;
+			const url = `${baseUrl}${STT_ENDPOINT}`;
 
 			// Convert base64 to Buffer for multipart form data
 			const audioBuffer = Buffer.from(audioBase64, 'base64');
@@ -111,10 +167,10 @@ export class VoiceChannel implements IServerChannel {
 
 			console.log('[VoiceChannel] STT request to:', url);
 
-			const response = await fetch(url, {
+			const response = await this.fetchWithTimeout(url, {
 				method: 'POST',
 				headers,
-				body: body as any,
+				body,
 			});
 
 			if (!response.ok) {
@@ -122,13 +178,13 @@ export class VoiceChannel implements IServerChannel {
 				console.error('[VoiceChannel] STT failed:', response.status, errorText);
 				return {
 					success: false,
-					error: `STT failed: ${response.status} ${response.statusText} - ${errorText}`,
+					error: `STT failed: ${response.status} ${response.statusText}${errorText ? ` - ${errorText}` : ''}`,
 				};
 			}
 
-			const data = await response.json();
+			const data = await response.json() as { text?: unknown };
 
-			if (!data.text) {
+			if (!isNonEmptyString(data.text)) {
 				return {
 					success: false,
 					error: 'No transcription returned from API',
@@ -141,21 +197,31 @@ export class VoiceChannel implements IServerChannel {
 				text: data.text,
 			};
 		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown STT error';
+			if (error instanceof Error && error.name === 'AbortError') {
+				console.error('[VoiceChannel] STT timed out');
+				return { success: false, error: 'STT request timed out — check your server' };
+			}
 			console.error('[VoiceChannel] STT error:', error);
 			return {
 				success: false,
-				error: error instanceof Error ? error.message : 'Unknown STT error',
+				error: `STT error: ${message}`,
 			};
 		}
 	}
 
 	private async handleTTS(request: TTSRequest): Promise<TTSResponse> {
+		const validationError = this.validateTTSRequest(request);
+		if (validationError) {
+			return { success: false, error: validationError };
+		}
+
 		const { baseUrl, model, voice, apiKey, text, responseFormat, speed } = request;
 
 		try {
-			const url = `${baseUrl}/audio/speech`;
+			const url = `${baseUrl}${TTS_ENDPOINT}`;
 
-			const requestBody: any = {
+			const requestBody: TTSRequestBody = {
 				model,
 				input: text,
 				voice,
@@ -175,7 +241,7 @@ export class VoiceChannel implements IServerChannel {
 
 			console.log('[VoiceChannel] TTS request to:', url);
 
-			const response = await fetch(url, {
+			const response = await this.fetchWithTimeout(url, {
 				method: 'POST',
 				headers,
 				body: JSON.stringify(requestBody),
@@ -186,7 +252,7 @@ export class VoiceChannel implements IServerChannel {
 				console.error('[VoiceChannel] TTS failed:', response.status, errorText);
 				return {
 					success: false,
-					error: `TTS failed: ${response.status} ${response.statusText} - ${errorText}`,
+					error: `TTS failed: ${response.status} ${response.statusText}${errorText ? ` - ${errorText}` : ''}`,
 				};
 			}
 
@@ -201,10 +267,15 @@ export class VoiceChannel implements IServerChannel {
 				audioBase64,
 			};
 		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown TTS error';
+			if (error instanceof Error && error.name === 'AbortError') {
+				console.error('[VoiceChannel] TTS timed out');
+				return { success: false, error: 'TTS request timed out — check your server' };
+			}
 			console.error('[VoiceChannel] TTS error:', error);
 			return {
 				success: false,
-				error: error instanceof Error ? error.message : 'Unknown TTS error',
+				error: `TTS error: ${message}`,
 			};
 		}
 	}

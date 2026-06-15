@@ -300,7 +300,7 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 	const [showDashboard, setShowDashboard] = useState(false);
 	const [exporting, setExporting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const timerRef = useRef<NodeJS.Timeout | null>(null);
+	const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
 	const parsedSections = useMemo(
 		() => providedSections || parseContentIntoSections(content),

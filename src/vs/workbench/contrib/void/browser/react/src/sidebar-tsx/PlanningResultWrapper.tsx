@@ -6,23 +6,18 @@
 import React, { useState } from 'react'
 import { useAccessor } from '../util/services.js'
 import { ToolName } from '../../../../common/toolsServiceTypes.js'
+import { WrapperProps } from './ToolResultHelpers.js'
 
 interface TaskItem {
 	text: string
 	status: 'complete' | 'in_progress' | 'pending'
 }
 
-interface PlanningResultWrapperProps {
-	toolMessage: {
-		name: ToolName
-		params: any
-		content: string
-		result?: any
-		id: string
-	}
-	messageIdx: number
-	threadId: string
+type PlanningResult = {
+	summary?: string | null;
 }
+
+type PlanningResultWrapperProps = WrapperProps<ToolName>
 
 // Parse markdown checklist into task items
 const parseMarkdownTasks = (markdown: string): { tasks: TaskItem[], goal: string } => {
@@ -118,13 +113,12 @@ const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 	threadId
 }) => {
 	const accessor = useAccessor()
-	const agentManagerService = accessor.get('IAgentManagerService') as any
 
 	const [isExpanded, setIsExpanded] = useState(false) // Start collapsed like Cascade
 
 	// Use the toolMessage result directly - no need to track updates
 	// Each planning tool call renders its own wrapper with its own result
-	const result = toolMessage.result
+	const result = toolMessage.result as PlanningResult | undefined
 	const toolName = toolMessage.name
 
 	// Get action text based on tool name

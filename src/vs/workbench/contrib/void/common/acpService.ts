@@ -143,9 +143,8 @@ class ACPService extends Disposable implements IACPService {
 
 	// Create the file/directory if it doesn't exist
 	private async _createACPConfigFile(acpConfigUri: URI): Promise<void> {
-		await this.fileService.createFile(acpConfigUri.with({ path: acpConfigUri.path }));
 		const buffer = VSBuffer.fromString(ACP_CONFIG_SAMPLE_STRING);
-		await this.fileService.writeFile(acpConfigUri, buffer);
+		await this.fileService.createFile(acpConfigUri, buffer);
 	}
 
 
@@ -291,7 +290,7 @@ class ACPService extends Disposable implements IACPService {
 		this._setACPServerState(serverName, { status: 'loading', agents: [] })
 
 		await this.voidSettingsService.setMCPServerState(serverName, { isOn });
-		this.channel.call('toggleACPServer', { serverName, isOn })
+		await this.channel.call('toggleACPServer', { serverName, isOn })
 	}
 
 

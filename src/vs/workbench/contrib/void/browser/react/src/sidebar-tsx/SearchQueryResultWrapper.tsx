@@ -7,6 +7,7 @@ import React from 'react';
 import { Loader2 } from 'lucide-react';
 import { useAccessor, useChatThreadsStreamState } from '../util/services.js';
 import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js';
+import { BuiltinToolName } from '../../../../common/toolsServiceTypes.js';
 import {
 	ToolHeaderWrapper,
 	ToolChildrenWrapper,
@@ -29,7 +30,7 @@ export const SearchQueryResultWrapper: ResultWrapper<'ls_dir' | 'search_pathname
 	const toolsService = accessor.get('IToolsService')
 
 	const title = getTitle(toolMessage)
-	const { desc1, desc1Info } = toolNameToDesc(toolMessage.name as any, toolMessage.params, accessor)
+	const { desc1, desc1Info } = toolNameToDesc(toolMessage.name as BuiltinToolName, toolMessage.params, accessor)
 	const isRejected = toolMessage.type === 'rejected'
 	const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError: false, icon: null, isRejected }
 
@@ -94,7 +95,7 @@ export const SearchQueryResultWrapper: ResultWrapper<'ls_dir' | 'search_pathname
 				componentParams.hasNextPage = result.hasNextPage
 				componentParams.children = !result.children || result.children.length === 0 ? undefined
 					: <ToolChildrenWrapper>
-						{result.children.map((child: any, i: number) => (
+						{result.children.map((child, i) => (
 							<ListableToolItem key={i}
 								name={`${child.name}${child.isDirectory ? '/' : ''}`}
 								className='w-full overflow-auto'
@@ -111,7 +112,7 @@ export const SearchQueryResultWrapper: ResultWrapper<'ls_dir' | 'search_pathname
 				componentParams.hasNextPage = result.hasNextPage
 				componentParams.children = result.uris.length === 0 ? undefined
 					: <ToolChildrenWrapper>
-						{result.uris.map((uri: any, i: number) => (
+						{result.uris.map((uri, i) => (
 							<ListableToolItem key={i}
 								name={getBasename(uri.fsPath)}
 								className='w-full overflow-auto'
@@ -139,7 +140,7 @@ export const SearchQueryResultWrapper: ResultWrapper<'ls_dir' | 'search_pathname
 					<ToolChildrenWrapper>
 						<div className='flex flex-col gap-2'>
 							{contexts.length === 0 && <SmallProseWrapper>No contexts found.</SmallProseWrapper>}
-							{contexts.map((ctx: any, i: number) => (
+							{contexts.map((ctx, i) => (
 								<div key={i} className='rounded border border-void-border-2 bg-void-bg-2/60 px-3 py-2 space-y-1'>
 									<div className='flex items-center justify-between gap-2 text-sm text-void-fg-2'>
 										<span className='font-medium truncate'>{ctx.file}</span>
@@ -159,7 +160,7 @@ export const SearchQueryResultWrapper: ResultWrapper<'ls_dir' | 'search_pathname
 					<ToolChildrenWrapper>
 						<div className='flex flex-col gap-2'>
 							{searchResults.length === 0 && <SmallProseWrapper>No results found.</SmallProseWrapper>}
-							{searchResults.map((res: any, i: number) => (
+							{searchResults.map((res, i) => (
 								<div key={i} className='rounded border border-void-border-2 bg-void-bg-2/60 px-3 py-2 space-y-1'>
 									<div className='flex items-center justify-between gap-2 text-sm text-void-fg-2'>
 										<span className='font-medium truncate'>{res.filepath}</span>

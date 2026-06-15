@@ -34,7 +34,7 @@ import { truncate } from '../../../../base/common/strings.js';
 import { THREAD_STORAGE_KEY, THREAD_STORAGE_VERSION_KEY, CURRENT_THREAD_STORAGE_VERSION } from '../common/storageKeys.js';
 import { IVisionService } from './visionService.js';
 import { IConvertToLLMMessageService } from './convertToLLMMessageService.js';
-import { IToolOrchestrationService } from './toolOrchestrationService.js';
+import { IToolOrchestrationService, OrchestrationResult } from './toolOrchestrationService.js';
 import { timeout } from '../../../../base/common/async.js';
 import { deepClone } from '../../../../base/common/objects.js';
 import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
@@ -911,12 +911,12 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				if (thread && 'filesWithUserChanges' in thread) {
 					// Convert Set to array if serialized as object
 					if (!(thread.filesWithUserChanges instanceof Set)) {
-						const arr = thread.filesWithUserChanges as any;
-						if (Array.isArray(arr)) {
-							thread.filesWithUserChanges = new Set(arr);
-						} else if (typeof arr === 'object' && arr !== null) {
+						const raw = thread.filesWithUserChanges as unknown as string[] | Record<string, string> | null;
+						if (Array.isArray(raw)) {
+							thread.filesWithUserChanges = new Set(raw);
+						} else if (typeof raw === 'object' && raw !== null) {
 							// Handle object serialization of Set
-							thread.filesWithUserChanges = new Set(Object.values(arr));
+							thread.filesWithUserChanges = new Set(Object.values(raw));
 						}
 					}
 				}
@@ -1601,7 +1601,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 						throw new Error(`ACP tool "${toolName}" is missing server or agent name`)
 					}
 
-					const input = (toolParams as any).input as string
+					const input = (toolParams as { input: string }).input
 					toolResult = (await this._acpService.callACPAgent({
 						serverName: acpTool.acpServerName,
 						agentName: acpTool.acpAgentName,
@@ -1714,8 +1714,11 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		this._updateToolMessage(threadId, { role: 'tool', type: 'success', params: toolParams, result: toolResult, name: toolName, content: toolResultStr, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature, parallelBatchId }, !!parallelMode)
 
 		// SIDE EFFECT: if it's load_skill, update the thread's loadedSkills
-		if (toolName === 'load_skill' && (toolResult as any).success) {
-			this.loadSkill(threadId, (toolResult as any).skill_name, (toolResult as any).instructions);
+		if (toolName === 'load_skill') {
+			const loadSkillResult = toolResult as { success: boolean; skill_name: string; instructions: string };
+			if (loadSkillResult.success) {
+				this.loadSkill(threadId, loadSkillResult.skill_name, loadSkillResult.instructions);
+			}
 		}
 
 		// Update history
@@ -1826,7 +1829,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 				const lastMsg = chatMessages[chatMessages.length - 1];
 				console.log(`[_runChatAgent] Last message role: ${lastMsg.role}`);
 				if (lastMsg.role === 'user') {
-					console.log(`[_runChatAgent] Last user message content length: ${(lastMsg as any).content?.length || 0}`);
+					console.log(`[_runChatAgent] Last user message content length: ${lastMsg.content?.length || 0}`);
 				}
 			}
 			let { messages, separateSystemMessage, tokenUsage } = await this._convertToLLMMessagesService.prepareLLMChatMessages({
@@ -1906,8 +1909,9 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 						}
 
 						// Backward compatibility for Main process running old code
-						if (!toolCalls && (params as any).toolCall) {
-							toolCalls = [(params as any).toolCall];
+						const legacyToolCall = (params as { toolCall?: RawToolCallObj }).toolCall;
+						if (!toolCalls && legacyToolCall) {
+							toolCalls = [legacyToolCall];
 						}
 
 						let parsed: { displayText: string, reasoningText: string };
@@ -2014,8 +2018,9 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 					onFinalMessage: async (params) => {
 						let { fullText, fullReasoning, toolCalls, anthropicReasoning, usage } = params;
 						// Backward compatibility for Main process running old code
-						if (!toolCalls && (params as any).toolCall) {
-							toolCalls = [(params as any).toolCall];
+						const legacyToolCall = (params as { toolCall?: RawToolCallObj }).toolCall;
+						if (!toolCalls && legacyToolCall) {
+							toolCalls = [legacyToolCall];
 						}
 
 						console.log(`[chatThreadService] onFinalMessage received - fullReasoning length: ${fullReasoning?.length ?? 0}, toolCalls: ${toolCalls?.length ?? 0}`)
@@ -2339,7 +2344,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 				// Handle text-only responses (no tool call)
 				// Following Claude Code / Continue pattern: If no tool call, task is complete.
 				// The LLM knows when it needs to use tools - if it responds with just text, it's done.
-				else if (!isEmptyResponse && (textContent.length > 0 && textContent !== '(empty message)' || info.fullReasoning)) {
+				else if (!isEmptyResponse) {
 					if (chatMode === 'code') {
 						const thread = this.state.allThreads[threadId];
 						const workflow = thread?.state.activeWorkflow;
@@ -2999,7 +3004,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		let finalContent = await chat_userMessageContent(messageContent, currSelns, { directoryStrService: this._directoryStringService, fileService: this._fileService })
 
 		// Tool Orchestration: Get tool suggestions before adding user message to thread
-		let orchestrationResult: any = { suggestions: [], reasoning: '', summary: '' };
+		let orchestrationResult: OrchestrationResult = { suggestions: [], reasoning: '', summary: '' };
 		const chatMode = this._settingsService.state.globalSettings.chatMode;
 
 		// NEW: Auto-create workflow for complex requests in code mode
@@ -3030,7 +3035,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 			try {
 				orchestrationResult = await this._orchestrationService.orchestrate({
 					userMessage: userMessage,
-					chatMode: chatMode as any,
+					chatMode,
 					onProgress: (reasoning) => {
 						// Could show progress in UI if needed
 					},
@@ -3119,7 +3124,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		})
 
 		// re-add the message and stream it
-		this._addUserMessageAndStreamResponse({ userMessage, _chatSelections: currSelns, threadId })
+		await this._addUserMessageAndStreamResponse({ userMessage, _chatSelections: currSelns, threadId })
 	}
 
 	// ---------- Message Queue Methods ----------
@@ -3147,9 +3152,9 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		// MEMORY OPTIMIZATION: Limit queue size to prevent unbounded memory growth
 		if (this.messageQueue[threadId].length >= MAX_MESSAGE_QUEUE_PER_THREAD) {
 			console.warn(`[Memory] Message queue for thread ${threadId} is full (${MAX_MESSAGE_QUEUE_PER_THREAD}). Dropping oldest message.`);
-			const dropped = this.messageQueue[threadId].shift(); // Remove oldest message
-			// Fire event with dropped message info so UI can notify the user
-			this._onDidChangeMessageQueue.fire({ threadId, droppedMessage: dropped?.userMessage } as any);
+			this.messageQueue[threadId].shift(); // Remove oldest message
+			// Notify UI that the queue changed
+			this._onDidChangeMessageQueue.fire({ threadId });
 			return;
 		}
 		this.messageQueue[threadId].push(message);
@@ -3295,9 +3300,10 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		const fsPathsSet = new Set<string>()
 		const uris: URI[] = []
 		const addURI = (uri: URI) => {
-			if (!fsPathsSet.has(uri.fsPath)) uris.push(uri)
-			fsPathsSet.add(uri.fsPath)
-			uris.push(uri)
+			if (!fsPathsSet.has(uri.fsPath)) {
+				uris.push(uri)
+				fsPathsSet.add(uri.fsPath)
+			}
 		}
 
 		for (const m of thread.messages) {
@@ -3648,9 +3654,16 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 	setThreadName(threadId: string, name: string) {
 		const thread = this.state.allThreads[threadId]
 		if (!thread) return
-		thread.name = name
-		thread.lastModified = new Date().toISOString()
-		this._onDidChangeCurrentThread.fire()
+		const newThreads = {
+			...this.state.allThreads,
+			[threadId]: {
+				...thread,
+				name,
+				lastModified: new Date().toISOString(),
+			}
+		}
+		this._storeAllThreads(newThreads)
+		this._setState({ allThreads: newThreads })
 	}
 
 
@@ -3744,9 +3757,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 			if (resultStr.length > 100) {
 				const truncatedResult = resultStr.substring(0, 100) + `\n\n[... truncated for memory management - original size: ${(resultStr.length / 1024).toFixed(1)}KB]`;
-				truncatedMessage.result = typeof truncatedMessage.result === 'string'
-					? truncatedResult
-					: JSON.parse(truncatedResult);
+				truncatedMessage.result = truncatedResult;
 
 				console.log(`[Memory] Truncated tool result from ${(resultStr.length / 1024).toFixed(1)}KB to ${(truncatedResult.length / 1024).toFixed(1)}KB`);
 			}
@@ -3774,7 +3785,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 		// Add timestamp if not present
 		if (!('_timestamp' in message)) {
-			(message as any)._timestamp = Date.now();
+			message._timestamp = Date.now();
 		}
 
 		// SIZE-BASED LIMIT: Truncate message if it exceeds size limit before adding
@@ -4420,13 +4431,10 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		const msg = thread.messages[messageIdx]
 		if (!msg) return ''
 
-		if (msg.role === 'user') return (msg as any).displayContent || ''
-		if (msg.role === 'assistant') return (msg as any).displayContent || ''
+		if (msg.role === 'user' || msg.role === 'assistant') return msg.displayContent || ''
 		if (msg.role === 'tool') {
-			const t = msg as any
-			if (t.type === 'success' && typeof t.result === 'string') return t.result
-			if (t.type === 'tool_error') return t.content || ''
-			return t.content || ''
+			if (msg.type === 'success' && typeof msg.result === 'string') return msg.result
+			return msg.content || ''
 		}
 		return ''
 	}
