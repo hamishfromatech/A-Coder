@@ -3,7 +3,7 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Search, Wand2, Eraser, FileText, Lightbulb, Repeat } from 'lucide-react';
 
 export interface SlashCommand {
@@ -11,16 +11,39 @@ export interface SlashCommand {
 	label: string;
 	description: string;
 	icon: React.ReactNode;
+	/** What happens when the command is invoked. */
+	action: 'client-clear' | 'client-continue' | 'llm-search' | 'llm-fix' | 'llm-explain' | 'llm-summarize';
 }
 
 const SLASH_COMMANDS: SlashCommand[] = [
-	{ id: 'search', label: 'search', description: 'Search codebase for symbols, files, or definitions', icon: <Search size={14} /> },
-	{ id: 'summarize', label: 'summarize', description: 'Summarize current thread or selected code', icon: <FileText size={14} /> },
-	{ id: 'fix', label: 'fix', description: 'Fix lint errors or obvious bugs in selected code', icon: <Wand2 size={14} /> },
-	{ id: 'clear', label: 'clear', description: 'Clear the current chat thread', icon: <Eraser size={14} /> },
-	{ id: 'continue', label: 'continue', description: 'Continue the assistant response', icon: <Repeat size={14} /> },
-	{ id: 'explain', label: 'explain', description: 'Explain the current selection or code', icon: <Lightbulb size={14} /> },
+	{ id: 'search', label: 'search', description: 'Search codebase for symbols, files, or definitions', icon: <Search size={14} />, action: 'llm-search' },
+	{ id: 'summarize', label: 'summarize', description: 'Summarize current thread or selected code', icon: <FileText size={14} />, action: 'llm-summarize' },
+	{ id: 'fix', label: 'fix', description: 'Fix lint errors or obvious bugs in selected code', icon: <Wand2 size={14} />, action: 'llm-fix' },
+	{ id: 'clear', label: 'clear', description: 'Clear the current chat thread', icon: <Eraser size={14} />, action: 'client-clear' },
+	{ id: 'continue', label: 'continue', description: 'Continue the assistant response', icon: <Repeat size={14} />, action: 'client-continue' },
+	{ id: 'explain', label: 'explain', description: 'Explain the current selection or code', icon: <Lightbulb size={14} />, action: 'llm-explain' },
 ];
+
+export interface ParsedSlashCommand {
+	command: SlashCommand | null;
+	/** The text after the slash command word, trimmed. */
+	rest: string;
+	/** Whether the input started with a recognized slash command. */
+	isSlashCommand: boolean;
+}
+
+export const parseSlashCommand = (text: string): ParsedSlashCommand => {
+	const trimmed = text.trim();
+	if (!trimmed.startsWith('/')) {
+		return { command: null, rest: trimmed, isSlashCommand: false };
+	}
+	const withoutPrefix = trimmed.slice(1);
+	const firstSpaceIdx = withoutPrefix.search(/\s/);
+	const commandLabel = firstSpaceIdx === -1 ? withoutPrefix : withoutPrefix.slice(0, firstSpaceIdx);
+	const rest = firstSpaceIdx === -1 ? '' : withoutPrefix.slice(firstSpaceIdx + 1).trim();
+	const command = SLASH_COMMANDS.find(cmd => cmd.label === commandLabel.toLowerCase()) || null;
+	return { command, rest, isSlashCommand: true };
+};
 
 interface SlashCommandMenuProps {
 	query: string;
@@ -29,7 +52,7 @@ interface SlashCommandMenuProps {
 	onClose: () => void;
 }
 
-export const SlashCommandMenu: React.FC<SlashCommandMenuProps> = ({ query, isOpen, onSelect, onClose, inputRef }) => {
+export const SlashCommandMenu: React.FC<SlashCommandMenuProps> = ({ query, isOpen, onSelect, onClose }) => {
 	const [selectedIdx, setSelectedIdx] = useState(0);
 	const containerRef = useRef<HTMLDivElement>(null);
 	const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -48,23 +71,29 @@ export const SlashCommandMenu: React.FC<SlashCommandMenuProps> = ({ query, isOpe
 	useEffect(() => {
 		if (!isOpen) return;
 		const handleKeyDown = (e: KeyboardEvent) => {
+			if (!isOpen) return;
 			if (e.key === 'ArrowDown') {
 				e.preventDefault();
+				e.stopPropagation();
 				setSelectedIdx(prev => Math.min(prev + 1, filtered.length - 1));
 			} else if (e.key === 'ArrowUp') {
 				e.preventDefault();
+				e.stopPropagation();
 				setSelectedIdx(prev => Math.max(prev - 1, 0));
 			} else if (e.key === 'Enter') {
 				e.preventDefault();
+				e.stopPropagation();
 				if (filtered[selectedIdx]) {
 					onSelect(filtered[selectedIdx]);
 				}
 			} else if (e.key === 'Escape') {
+				e.preventDefault();
+				e.stopPropagation();
 				onClose();
 			}
 		};
-		document.addEventListener('keydown', handleKeyDown);
-		return () => document.removeEventListener('keydown', handleKeyDown);
+		document.addEventListener('keydown', handleKeyDown, true);
+		return () => document.removeEventListener('keydown', handleKeyDown, true);
 	}, [isOpen, filtered, selectedIdx, onSelect, onClose]);
 
 	// Close on click outside

@@ -38,7 +38,7 @@ import { MCPServerModal } from './MCPServerModal.js';
 import { TaskPlan } from '../../../chatThreadService.js';
 import { CheckpointTimeline } from './CheckpointTimeline.js';
 import { ImageLightbox } from './ImageLightbox.js';
-import { SlashCommandMenu, SlashCommand } from './SlashCommandMenu.js';
+import { SlashCommandMenu, SlashCommand, parseSlashCommand, ParsedSlashCommand } from './SlashCommandMenu.js';
 import { CompressionToast } from './CompressionToast.js';
 import { ToastNotification } from './ToastNotification.js';
 import { KeyboardShortcutsBanner } from '../util/KeyboardShortcutsBanner.js';
@@ -84,6 +84,21 @@ import { VoiceModePanel } from './VoiceModePanel.js';
 // Lazy-loaded components - MUST be at module level to avoid re-creating on every render
 const LazyPlanningResultWrapper = React.lazy(() => import('./PlanningResultWrapper.js'))
 const LazyImplementationPlanPreviewWrapper = React.lazy(() => import('./ImplementationPlanPreviewWrapper.js'))
+
+/** Expand a recognized slash command into the prompt text actually sent to the LLM. */
+const expandSlashCommand = (parsed: ParsedSlashCommand): string | null => {
+	const { command, rest } = parsed;
+	if (!command) return null;
+	switch (command.action) {
+		case 'client-clear': return null;
+		case 'client-continue': return rest ? `Continue: ${rest}` : 'Please continue your previous response.';
+		case 'llm-search': return `Search the codebase for: ${rest || 'relevant symbols, files, and definitions'}. Use search tools as needed.`;
+		case 'llm-fix': return `Fix the following code issues${rest ? `: ${rest}` : ''}. Identify and correct any bugs, lint errors, or obvious problems.`;
+		case 'llm-explain': return `Explain the following code${rest ? `: ${rest}` : ''}. Break down what it does and why.`;
+		case 'llm-summarize': return `Summarize ${rest || 'the current conversation thread and any selected code'}. Provide a concise overview.`;
+		default: return null;
+	}
+};
 
 // Image Preview Component
 const ImagePreview = ({ images, onRemove }: { images: ImageAttachment[], onRemove: (index: number) => void }) => {
@@ -3181,12 +3196,38 @@ export const SidebarChat = () => {
 
 	const onSubmit = useCallback(async (_forceSubmit?: string) => {
 
-		if (isDisabled && !_forceSubmit) return
-
 		const threadId = chatThreadsService.state.currentThreadId
 
 		// send message to LLM
-		const userMessage = _forceSubmit || textAreaRef.current?.value || ''
+		let userMessage = _forceSubmit || textAreaRef.current?.value || ''
+
+		// Handle slash commands typed by the user.
+		const parsedSlash = parseSlashCommand(userMessage);
+		if (parsedSlash.command) {
+			// Close slash menu in case it's still open.
+			setSlashMenuOpen(false);
+			setSlashQuery('');
+
+			if (parsedSlash.command.action === 'client-clear') {
+				// Stop any running stream before clearing the thread.
+				await chatThreadsService.abortRunning(threadId);
+				// Clear the current thread immediately without sending to the LLM.
+				chatThreadsService.deleteMessagesFromIndex(threadId, 0);
+				setSelections([]);
+				setAttachedImages([]);
+				textAreaFnsRef.current?.setValue('');
+				textAreaRef.current?.focus();
+				return;
+			}
+
+			const expanded = expandSlashCommand(parsedSlash);
+			if (expanded !== null) {
+				userMessage = expanded;
+			}
+		}
+
+		if (isDisabled && !userMessage) return
+
 		const imagesToSend = attachedImages.length > 0 ? attachedImages : undefined
 		const selectionsToSend = selections.length > 0 ? [...selections] : undefined // copy before clearing
 
@@ -3207,7 +3248,7 @@ export const SidebarChat = () => {
 			console.error('Error while sending message in chat:', e)
 		}
 
-	}, [chatThreadsService, isDisabled, textAreaRef, textAreaFnsRef, setSelections, attachedImages, selections])
+	}, [chatThreadsService, isDisabled, textAreaRef, textAreaFnsRef, setSelections, setSlashMenuOpen, setSlashQuery, attachedImages, selections])
 	// Note: settingsState and isRunng removed from deps - isDisabled already includes settingsState info
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 
@@ -3899,8 +3940,11 @@ export const SidebarChat = () => {
 					onSelect={(cmd) => {
 						setSlashMenuOpen(false);
 						setSlashQuery('');
+						const currentValue = textAreaRef.current?.value || '';
+						const parsed = parseSlashCommand(currentValue);
+						const rest = parsed.rest;
 						if (textAreaFnsRef.current) {
-							textAreaFnsRef.current.setValue('/' + cmd.label + ' ');
+							textAreaFnsRef.current.setValue('/' + cmd.label + ' ' + rest);
 						}
 						textAreaRef.current?.focus();
 					}}
@@ -3908,7 +3952,6 @@ export const SidebarChat = () => {
 						setSlashMenuOpen(false);
 						setSlashQuery('');
 					}}
-					inputRef={textAreaRef}
 				/>
 			</div>
 
