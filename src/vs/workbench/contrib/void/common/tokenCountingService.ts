@@ -6,6 +6,8 @@
 import { LLMChatMessage } from './sendLLMMessageTypes.js';
 import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
 import { CompressionConfig, CompressionStats } from './contextCompressionService.js';
+import { IVoidSettingsService } from './voidSettingsService.js';
+import { ProviderName, providerNames } from './voidSettingsTypes.js';
 
 /**
  * Service for counting tokens in messages and managing context windows.
@@ -35,6 +37,7 @@ export class TokenCountingService {
 
 	constructor(
 		@IMainProcessService private readonly mainProcessService: IMainProcessService,
+		@IVoidSettingsService private readonly voidSettingsService: IVoidSettingsService,
 	) {
 		console.log('[TokenCountingService] Using tiktoken via IPC with character-based fallback');
 		// Start cache cleanup interval
@@ -471,12 +474,46 @@ export class TokenCountingService {
 
 
 	/**
+	 * Parse a full model identifier into its provider and model name parts.
+	 * Handles "provider:model" and "provider:org/model:tag" formats.
+	 */
+	private _parseProviderAndModel(modelName: string): { providerName?: ProviderName; modelName: string } {
+		const parts = modelName.split(':');
+		let providerName: string | undefined;
+		let cleanName = modelName;
+
+		if (parts.length > 2) {
+			providerName = parts[0];
+			cleanName = parts.slice(1).join(':');
+		} else if (parts.length === 2) {
+			providerName = parts[0];
+			cleanName = parts[1];
+		}
+
+		if (providerName && providerNames.includes(providerName as ProviderName)) {
+			return { providerName: providerName as ProviderName, modelName: cleanName };
+		}
+
+		return { modelName: cleanName };
+	}
+
+	/**
 	 * Get the context window size for a model.
-	 * Checks dynamic cache first, then falls back to static mappings.
+	 * Checks user overrides first, then dynamic cache, then falls back to static mappings.
 	 * For models with unknown context windows, attempts to fetch dynamically.
 	 */
 	public getContextWindowSize(modelName: string): number {
-		// Check dynamic cache first
+		const { providerName, modelName: cleanModelName } = this._parseProviderAndModel(modelName);
+
+		// Respect user overrides from the Model Management page first
+		if (providerName) {
+			const override = this.voidSettingsService.state.overridesOfModel[providerName]?.[cleanModelName]?.contextWindow;
+			if (typeof override === 'number' && override > 0) {
+				return override;
+			}
+		}
+
+		// Check dynamic cache next
 		const cached = this._getDynamicContextWindow(modelName);
 		if (cached !== undefined) {
 			return cached;

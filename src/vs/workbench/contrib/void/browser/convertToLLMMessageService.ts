@@ -634,7 +634,7 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		super();
 
 		// Initialize token counting and compression services
-		this.tokenCountingService = new TokenCountingService(mainProcessService);
+		this.tokenCountingService = new TokenCountingService(mainProcessService, this.voidSettingsService);
 		this.compressionService = new ContextCompressionService(this.tokenCountingService);
 	}
 
