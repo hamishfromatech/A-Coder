@@ -112,33 +112,16 @@ const composioStateListeners: Set<(s: ComposioServiceState) => void> = new Set()
 // let aCoderModels: ACoderModelInfo[] = []
 // const aCoderModelsListeners: Set<(m: ACoderModelInfo[]) => void> = new Set()
 
-// Compression event state
-export interface CompressionEvent {
-	timestamp: number;
-	threadId: string;
-	originalMessages: number;
-	finalMessages: number;
-	originalTokens: number;
-	finalTokens: number;
-	compressionRatio: number;
-	messagesRemoved: number;
-	messagesSummarized: number;
-}
+import { CompressionEvent, updateCompressionEventState, getCompressionEventState, subscribeCompressionEvent } from './compressionState.js';
 
-let compressionEventState: CompressionEvent | null = null;
-const compressionEventListeners: Set<(event: CompressionEvent | null) => void> = new Set();
-
-export const updateCompressionEventState = (event: CompressionEvent | null) => {
-	compressionEventState = event;
-	compressionEventListeners.forEach(l => l(compressionEventState));
-};
+export type { CompressionEvent };
 
 export const useCompressionEvent = () => {
-	const [s, ss] = useState<CompressionEvent | null>(compressionEventState)
+	const [s, ss] = useState<CompressionEvent | null>(getCompressionEventState())
 	useEffect(() => {
-		ss(compressionEventState)
-		compressionEventListeners.add(ss)
-		return () => { compressionEventListeners.delete(ss) }
+		ss(getCompressionEventState())
+		const sub = subscribeCompressionEvent(ss)
+		return () => { sub.dispose() }
 	}, [ss])
 	return s
 };
@@ -163,7 +146,7 @@ export const triggerCompressionNotification = (stats: {
 		messagesRemoved: stats.messagesRemoved,
 		messagesSummarized: stats.messagesSummarized,
 	};
-    updateCompressionEventState(event);
+	updateCompressionEventState(event);
 };
 
 // Toast notification state

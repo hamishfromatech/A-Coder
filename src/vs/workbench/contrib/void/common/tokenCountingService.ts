@@ -8,12 +8,40 @@ import { IMainProcessService } from '../../../../platform/ipc/common/mainProcess
 import { CompressionConfig, CompressionStats } from './contextCompressionService.js';
 import { IVoidSettingsService } from './voidSettingsService.js';
 import { ProviderName, providerNames } from './voidSettingsTypes.js';
+import { Disposable, toDisposable } from '../../../../base/common/lifecycle.js';
+import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
+import { registerSingleton, InstantiationType } from '../../../../platform/instantiation/common/extensions.js';
+
+export interface ITokenCountingService {
+	readonly _serviceBrand: undefined;
+	countTextTokens(text: string, modelName: string): number;
+	countMessageTokens(message: LLMChatMessage, modelName: string): number;
+	countMessagesTokens(messages: LLMChatMessage[], modelName: string): number;
+	countTextTokensAsync(text: string, modelName: string): Promise<number>;
+	countMessageTokensAsync(message: LLMChatMessage, modelName: string): Promise<number>;
+	countMessagesTokensAsync(messages: LLMChatMessage[], modelName: string): Promise<number>;
+	getContextWindowSize(modelName: string): number;
+	getRemainingTokens(messages: LLMChatMessage[], modelName: string): number;
+	getRemainingTokensAsync(messages: LLMChatMessage[], modelName: string): Promise<number>;
+	fitsInContextWindow(messages: LLMChatMessage[], modelName: string): boolean;
+	fitsInContextWindowAsync(messages: LLMChatMessage[], modelName: string): Promise<boolean>;
+	needsCompressionAsync(messages: LLMChatMessage[], modelName: string, threshold?: number): Promise<boolean>;
+	getCompressionPreviewAsync(messages: LLMChatMessage[], modelName: string, config?: Partial<CompressionConfig>): Promise<CompressionStats>;
+	getLargeContextBuffer(contextWindow: number): number;
+	getEffectiveContextWindow(modelName: string): number;
+	setDynamicContextWindow(modelName: string, contextWindow: number): void;
+	updateTokenRatio(modelName: string, estimatedTokens: number, actualTokens: number): void;
+	clearExpiredCaches(): void;
+}
+
+export const ITokenCountingService = createDecorator<ITokenCountingService>('tokenCountingService');
 
 /**
  * Service for counting tokens in messages and managing context windows.
  * Uses tiktoken via IPC; falls back to character estimation if IPC fails.
  */
-export class TokenCountingService {
+export class TokenCountingService extends Disposable implements ITokenCountingService {
+	readonly _serviceBrand: undefined;
 	private readonly _modelRatios = new Map<string, number>();
 
 	// MEMORY OPTIMIZATION: Cache for recent counts to avoid redundant IPC
@@ -39,9 +67,11 @@ export class TokenCountingService {
 		@IMainProcessService private readonly mainProcessService: IMainProcessService,
 		@IVoidSettingsService private readonly voidSettingsService: IVoidSettingsService,
 	) {
+		super();
 		console.log('[TokenCountingService] Using tiktoken via IPC with character-based fallback');
 		// Start cache cleanup interval
-		setInterval(() => this._cleanupExpiredCache(), this.CACHE_TTL_MS / 2);
+		const interval = setInterval(() => this._cleanupExpiredCache(), this.CACHE_TTL_MS / 2);
+		this._register(toDisposable(() => clearInterval(interval)));
 	}
 
 	/**
@@ -519,23 +549,14 @@ export class TokenCountingService {
 			return cached;
 		}
 
-		// Strip provider prefix if present (e.g., "ollama:minimax-m2:cloud" → "minimax-m2:cloud")
-		// Also handle OpenRouter format (e.g., "openRouter:z-ai/glm-4.6:exacto" → "glm-4.6:exacto")
-		const lowerModelName = modelName.toLowerCase();
-		const isOpenRouter = lowerModelName.startsWith('openrouter:');
-
-		let cleanName = modelName;
-		if (modelName.includes(':') && modelName.split(':').length > 2) {
-			cleanName = modelName.split(':').slice(1).join(':');
-		} else if (modelName.includes(':')) {
-			// Handle "provider:model" format
-			cleanName = modelName.split(':')[1] || modelName;
-		}
+		// Use the model name already stripped of provider prefix by _parseProviderAndModel.
 		// Handle OpenRouter "org/model" format (e.g., "x-ai/grok-4.1-fast" → "grok-4.1-fast")
+		let cleanName = cleanModelName;
 		if (cleanName.includes('/')) {
 			cleanName = cleanName.split('/').pop() || cleanName;
 		}
 		const lowerName = cleanName.toLowerCase();
+		const isOpenRouter = providerName === 'openRouter';
 
 		// Common model context windows
 		const contextWindows: Record<string, number> = {
@@ -897,11 +918,14 @@ export class TokenCountingService {
 	/**
 	 * Dispose and clean up resources
 	 */
-	public dispose(): void {
+	override dispose(): void {
 		this._countCache.clear();
 		this._historyCache.clear();
 		this._cacheTimestamps.clear();
 		this._dynamicContextWindows.clear();
 		this._pendingAsyncCounts.clear();
+		super.dispose();
 	}
 }
+
+registerSingleton(ITokenCountingService, TokenCountingService, InstantiationType.Eager);

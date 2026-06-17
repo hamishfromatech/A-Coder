@@ -36,7 +36,7 @@ export const CompressionToast: React.FC = () => {
 	} = event;
 
 	const savedTokens = originalTokens - finalTokens;
-	const savedPercent = compressionRatio > 0 ? Math.round(compressionRatio * 100) : 0;
+	const savedPercent = compressionRatio > 0 ? Math.max(0, Math.round(100 - compressionRatio)) : 0;
 
 	return (
 		<div className="flex items-start gap-2 px-3 py-2 mx-2 mb-2 bg-void-bg-2 border border-void-border-2 rounded-xl shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300"

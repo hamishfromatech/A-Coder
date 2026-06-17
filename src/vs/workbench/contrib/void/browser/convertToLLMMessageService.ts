@@ -19,9 +19,8 @@ import { ToolName } from '../common/toolsServiceTypes.js';
 import { IMCPService } from '../common/mcpService.js';
 import { IACPService } from '../common/acpService.js';
 import { IComposioService } from '../common/composioService.js';
-import { TokenCountingService } from '../common/tokenCountingService.js';
+import { ITokenCountingService } from '../common/tokenCountingService.js';
 import { ContextCompressionService } from '../common/contextCompressionService.js';
-import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
 
 export const EMPTY_MESSAGE = '(empty message)'
 
@@ -604,7 +603,7 @@ const prepareMessages = (params: {
 export interface IConvertToLLMMessageService {
 	readonly _serviceBrand: undefined;
 	prepareLLMSimpleMessages: (opts: { simpleMessages: SimpleLLMMessage[], systemMessage: string, modelSelection: ModelSelection | null, featureName: FeatureName }) => { messages: LLMChatMessage[], separateSystemMessage: string | undefined }
-	prepareLLMChatMessages: (opts: { chatMessages: ChatMessage[], chatMode: ChatMode, modelSelection: ModelSelection | null, loadedSkills?: { [name: string]: string }, orchestrationResult?: { suggestions: Array<{ toolName: string; toolParams?: Record<string, unknown>; reasoning: string; confidence: 'high' | 'medium' | 'low'; }>; reasoning: string; summary: string; } }) => Promise<{ messages: LLMChatMessage[], separateSystemMessage: string | undefined, tokenUsage: { used: number, total: number, percentage: number } }>
+	prepareLLMChatMessages: (opts: { chatMessages: ChatMessage[], chatMode: ChatMode, modelSelection: ModelSelection | null, loadedSkills?: { [name: string]: string }, orchestrationResult?: { suggestions: Array<{ toolName: string; toolParams?: Record<string, unknown>; reasoning: string; confidence: 'high' | 'medium' | 'low'; }>; reasoning: string; summary: string; } }) => Promise<{ messages: LLMChatMessage[], separateSystemMessage: string | undefined, tokenUsage: { used: number, total: number, percentage: number }, compressionStats?: { originalMessageCount: number, finalMessageCount: number, originalTokens: number, finalTokens: number, compressionRatio: number, messagesRemoved: number, messagesSummarized: number } }>
 	prepareFIMMessage(opts: { messages: LLMFIMMessage, }): { prefix: string, suffix: string, stopTokens: string[] }
 	updateTokenRatio(modelName: string, estimatedTokens: number, actualTokens: number): void
 }
@@ -615,7 +614,7 @@ export const IConvertToLLMMessageService = createDecorator<IConvertToLLMMessageS
 class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMessageService {
 	_serviceBrand: undefined;
 
-	private readonly tokenCountingService: TokenCountingService;
+	private readonly tokenCountingService: ITokenCountingService;
 	private readonly compressionService: ContextCompressionService;
 
 	constructor(
@@ -629,12 +628,12 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		@IMCPService private readonly mcpService: IMCPService,
 		@IACPService private readonly acpService: IACPService,
 		@IComposioService private readonly composioService: IComposioService,
-		@IMainProcessService mainProcessService: IMainProcessService,
+		@ITokenCountingService tokenCountingService: ITokenCountingService,
 	) {
 		super();
 
 		// Initialize token counting and compression services
-		this.tokenCountingService = new TokenCountingService(mainProcessService, this.voidSettingsService);
+		this.tokenCountingService = tokenCountingService;
 		this.compressionService = new ContextCompressionService(this.tokenCountingService);
 	}
 
@@ -847,7 +846,7 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		return { messages, separateSystemMessage };
 	}
 	prepareLLMChatMessages: IConvertToLLMMessageService['prepareLLMChatMessages'] = async ({ chatMessages, chatMode, modelSelection, loadedSkills, orchestrationResult }) => {
-		if (modelSelection === null) return { messages: [], separateSystemMessage: undefined, tokenUsage: { used: 0, total: 0, percentage: 0 } }
+		if (modelSelection === null) return { messages: [], separateSystemMessage: undefined, tokenUsage: { used: 0, total: 0, percentage: 0 }, compressionStats: undefined }
 
 		const { overridesOfModel } = this.voidSettingsService.state
 
@@ -935,6 +934,7 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 			needsCompression = usage > compressionThreshold;
 		}
 
+		let compressionStats = undefined;
 		if (needsCompression) {
 			console.log(`[ConvertToLLMMessageService] Context window usage high (${(usage * 100).toFixed(1)}%), applying rolling window compression...`);
 
@@ -951,6 +951,16 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 				}
 			);
 
+			compressionStats = {
+				originalMessageCount: stats.originalMessageCount,
+				finalMessageCount: stats.finalMessageCount,
+				originalTokens: stats.originalTokens,
+				finalTokens: stats.finalTokens,
+				compressionRatio: stats.compressionRatio,
+				messagesRemoved: stats.messagesRemoved,
+				messagesSummarized: stats.messagesSummarized,
+			};
+
 			console.log(`[ConvertToLLMMessageService] Compression complete: ${stats.originalMessageCount} → ${stats.finalMessageCount} messages, ${stats.originalTokens} → ${stats.finalTokens} tokens (${stats.compressionRatio}% of original), removed ${stats.messagesRemoved}, summarized ${stats.messagesSummarized}`);
 
 			// Update token count after compression
@@ -959,10 +969,10 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 			} catch {
 				tokenCount = stats.finalTokens;
 			}
-			
+
 			messages = compressedMessages;
 		}
-		
+
 		// Final safety check - if still significantly over, log warning
 		const finalUsage = tokenCount / effectiveContext;
 		if (finalUsage > 0.95) {
@@ -977,7 +987,8 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 				used: tokenCount,
 				total: contextWindowSize,
 				percentage: usage * 100
-			}
+			},
+			compressionStats
 		};
 	}
 

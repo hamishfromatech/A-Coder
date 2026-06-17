@@ -47,6 +47,7 @@ import { RawMCPToolCall } from '../common/mcpServiceTypes.js';
 import { ACPRunAgentResponse } from '../common/acpServiceTypes.js';
 import { StreamingXMLParser, ReActPhase } from './streamingXMLParser.js';
 import { ToonService } from '../common/toonService.js';
+import { triggerCompressionNotification } from './react/src/util/compressionState.js';
 
 
 // related to retrying when LLM message has error
@@ -1832,13 +1833,18 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 					console.log(`[_runChatAgent] Last user message content length: ${lastMsg.content?.length || 0}`);
 				}
 			}
-			let { messages, separateSystemMessage, tokenUsage } = await this._convertToLLMMessagesService.prepareLLMChatMessages({
+			let { messages, separateSystemMessage, tokenUsage, compressionStats } = await this._convertToLLMMessagesService.prepareLLMChatMessages({
 				chatMessages,
 				modelSelection,
 				chatMode,
 				loadedSkills,
 				orchestrationResult
 			})
+
+			// Notify UI when compression happened
+			if (compressionStats) {
+				triggerCompressionNotification(compressionStats, threadId);
+			}
 
 			// Update stream state with token usage
 			this._setStreamState(threadId, { isRunning: 'idle', interrupt: idleInterruptor, tokenUsage })
@@ -2100,13 +2106,18 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 							modelSelection,
 							chatMode
 						});
-						
+
 						// Update messages and token usage for the retry
 						messages = newPrep.messages;
 						separateSystemMessage = newPrep.separateSystemMessage;
 						tokenUsage = newPrep.tokenUsage;
-						
-						// Update UI with new token usage
+
+
+						// Notify UI when compression happened on retry
+						if (newPrep.compressionStats) {
+							triggerCompressionNotification(newPrep.compressionStats, threadId);
+						}
+
 						this._setStreamState(threadId, { isRunning: 'idle', interrupt: idleInterruptor, tokenUsage });
 					}
 

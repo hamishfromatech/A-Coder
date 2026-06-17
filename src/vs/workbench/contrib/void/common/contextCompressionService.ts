@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------*/
 
 import { LLMChatMessage } from './sendLLMMessageTypes.js';
-import { TokenCountingService } from './tokenCountingService.js';
+import { ITokenCountingService } from './tokenCountingService.js';
 
 /**
  * Configuration for context compression with rolling window support
@@ -62,7 +62,7 @@ export interface CompressionStats {
  */
 export class ContextCompressionService {
 	constructor(
-		private tokenCountingService: TokenCountingService
+		private tokenCountingService: ITokenCountingService
 	) { }
 
 	/**

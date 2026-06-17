@@ -517,11 +517,16 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 		const { recognizedModelName, isUnrecognizedModel } = defaultModelCapabilities;
 
 		const partialDefaults: Partial<ModelOverrides> = {};
-		for (const k of modelOverrideKeys) { if (defaultModelCapabilities[k]) partialDefaults[k] = defaultModelCapabilities[k] as any; }
+		for (const k of modelOverrideKeys) {
+			const val = defaultModelCapabilities[k];
+			if (val !== undefined && val !== null && val !== '') {
+				partialDefaults[k] = val as ModelOverrides[typeof k];
+			}
+		}
 
 		const key = `${providerName}:${modelName}`;
 		// Show current overrides if they exist, otherwise show the defaults so user can see and edit them
-		const displayValue = currentOverrides
+		const displayValue = currentOverrides && Object.keys(currentOverrides).length > 0
 			? JSON.stringify(currentOverrides, null, 2)
 			: JSON.stringify(partialDefaults, null, 2);
 
@@ -553,10 +558,10 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 					if (k === 'contextWindow' || k === 'reservedOutputTokenSpace' || k === 'defaultTemperature') {
 						const num = Number(parsed[k]);
 						if (!Number.isNaN(num)) {
-							cleaned[k] = num as any;
+							cleaned[k] = num;
 						}
 					} else {
-						cleaned[k] = parsed[k] as any;
+						cleaned[k] = parsed[k] as ModelOverrides[typeof k];
 					}
 				}
 			}
