@@ -31,6 +31,9 @@ import '../styles.css'
 type Tab =
 	| 'models' | 'localProviders' | 'providers' | 'featureOptions' | 'mediaGeneration' | 'general' | 'mcp' | 'acp' | 'composio' | 'skills' | 'mobileApi' | 'about' | 'all';
 
+const TTS_RESPONSE_FORMATS = ['mp3', 'opus', 'aac', 'flac', 'wav', 'pcm'] as const;
+type TTSResponseFormat = typeof TTS_RESPONSE_FORMATS[number];
+
 // --- Shared Components ---
 
 export const SettingRow = ({
@@ -4161,6 +4164,20 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 															compact={true}
 														/>
 														<p className="text-[10px] text-void-fg-3/80 mt-1">Voice identifier (e.g. alloy, echo, fable, onyx, nova, shimmer).</p>
+													</div>
+													<div>
+														<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide mb-2 block">Audio Output Format</label>
+														<VoidCustomDropdownBox
+															options={[...TTS_RESPONSE_FORMATS]}
+															selectedOption={settingsState.globalSettings.ttsResponseFormat}
+															onChangeOption={(newVal) => voidSettingsService.setGlobalSetting('ttsResponseFormat', newVal)}
+															getOptionDisplayName={(format) => format.toUpperCase()}
+															getOptionDropdownName={(format) => format.toUpperCase()}
+															getOptionsEqual={(a, b) => a === b}
+															className="w-full bg-void-bg-1 border border-void-border-2 rounded-lg px-2 py-1.5 text-sm"
+															arrowTouchesText={false}
+														/>
+														<p className="text-[10px] text-void-fg-3/80 mt-1">Format sent to the TTS endpoint as response_format.</p>
 													</div>
 													<div>
 														<label className="text-xs font-medium text-void-fg-3 uppercase tracking-wide mb-2 block">API Key</label>

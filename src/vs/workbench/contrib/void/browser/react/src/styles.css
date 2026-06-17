@@ -1960,21 +1960,13 @@ code::-moz-selection {
 	background: color-mix(in srgb, var(--vscode-button-background) 35%, transparent);
 }
 
-/* Void icon - logo background image */
+/* Void icon - A-Coder logo background image */
 .void-icon,
 .void-void-icon {
 	background-size: contain;
 	background-position: center;
 	background-repeat: no-repeat;
-	background-image: url('../../../workbench/browser/parts/editor/media/void_cube_noshadow.png');
-}
-
-/* Light theme - use inverted image for OS light mode */
-@media (prefers-color-scheme: light) {
-	.void-icon,
-	.void-void-icon {
-		background-image: url('../../../workbench/browser/parts/editor/media/void_cube_noshadow_inverted.png');
-	}
+	background-image: url('../../../workbench/browser/parts/editor/media/a-coder-logo.png');
 }
 
 /* ============================================
@@ -3233,4 +3225,24 @@ code::-moz-selection {
 	color: color-mix(in srgb, var(--vscode-input-placeholderForeground) 70%, transparent);
 	margin-top: 8px;
 	line-height: 1.5;
+}
+
+/* Inline voice mode ring around the chat input */
+.voice-ring-active {
+	--voice-intensity: 0;
+	border-radius: 1rem;
+	animation: voice-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes voice-pulse {
+	0%, 100% {
+		box-shadow:
+			0 0 0 2px color-mix(in srgb, var(--void-accent-primary) calc(45% + var(--voice-intensity) * 30%), transparent),
+			0 0 10px color-mix(in srgb, var(--void-accent-primary) calc(var(--voice-intensity) * 35%), transparent);
+	}
+	50% {
+		box-shadow:
+			0 0 0 4px color-mix(in srgb, var(--void-accent-primary) calc(70% + var(--voice-intensity) * 25%), transparent),
+			0 0 18px color-mix(in srgb, var(--void-accent-primary) calc(var(--voice-intensity) * 55%), transparent);
+	}
 }

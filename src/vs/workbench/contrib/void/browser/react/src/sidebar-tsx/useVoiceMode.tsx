@@ -1,17 +1,29 @@
 /*--------------------------------------------------------------------------------------
- *  Copyright 2026 The A-Coder Corporation PTY LTD. All rights reserved.
+ *  Copyright 2026 The A-Tech Corporation PTY LTD. All rights reserved.
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Mic, Volume2, PhoneOff, Loader2, AlertCircle } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAccessor, useSettingsState } from '../util/services.js';
 
 export type VoicePhase = 'idle' | 'listening' | 'transcribing' | 'thinking' | 'speaking' | 'error';
 
-interface VoiceModePanelProps {
+interface UseVoiceModeOptions {
 	threadId: string;
-	exitVoiceMode: () => void;
+	/** Called when STT returns a transcription. The caller should place it in the input box. */
+	onTranscription: (text: string) => void;
+}
+
+interface UseVoiceModeReturn {
+	phase: VoicePhase;
+	audioLevel: number;
+	error: string | null;
+	isListening: boolean;
+	startListening: () => void;
+	stopListening: () => void;
+	stopAudioPlayback: () => void;
+	/** Call before sending a message that was composed via voice so the next assistant response is spoken (if TTS is enabled). */
+	prepareResponseTTS: () => void;
 }
 
 const PREFERRED_MIME_TYPE = 'audio/webm;codecs=opus';
@@ -31,10 +43,23 @@ const getSupportedMimeType = (): string => {
 	return DEFAULT_MIME_TYPE;
 };
 
-export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({ threadId, exitVoiceMode }) => {
+const mimeTypeOfTtsFormat = (format: string): string => {
+	switch (format) {
+		case 'opus': return 'audio/opus';
+		case 'aac': return 'audio/aac';
+		case 'flac': return 'audio/flac';
+		case 'wav': return 'audio/wav';
+		case 'pcm': return 'audio/wav';
+		case 'mp3':
+		default: return 'audio/mp3';
+	}
+};
+
+export const useVoiceMode = ({ threadId, onTranscription }: UseVoiceModeOptions): UseVoiceModeReturn => {
 	const accessor = useAccessor();
 	const settingsState = useSettingsState();
 	const chatThreadsService = accessor.get('IChatThreadService');
+
 	const [phase, setPhase] = useState<VoicePhase>('idle');
 	const [error, setError] = useState<string | null>(null);
 	const [audioLevel, setAudioLevel] = useState(0);
@@ -47,7 +72,18 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({ threadId, exitVo
 	const animationFrameRef = useRef<number | null>(null);
 	const inFlightRef = useRef({ stt: false, tts: false });
 	const hasSpokenRef = useRef(false);
+	const pendingTTSRef = useRef(false);
 	const mountedRef = useRef(true);
+
+	// Realtime STT state.
+	const isRecordingRef = useRef(false);
+	const isSendingRef = useRef(false);
+	const audioChunksRef = useRef<{ blob: Blob; index: number }[]>([]);
+	const transcriptRef = useRef('');
+	const nextChunkIndexRef = useRef(0);
+	const nextExpectedChunkIndexRef = useRef(0);
+	const onTranscriptionRef = useRef(onTranscription);
+	onTranscriptionRef.current = onTranscription;
 
 	// Safe state setters must be declared before any callback that depends on them.
 	const safeSetPhase = useCallback((next: VoicePhase) => {
@@ -70,6 +106,7 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({ threadId, exitVo
 	const ttsModel = voiceSettings.ttsModel ?? 'tts-1';
 	const ttsVoice = voiceSettings.ttsVoice ?? 'alloy';
 	const ttsApiKey = voiceSettings.ttsApiKey ?? '';
+	const ttsResponseFormat = voiceSettings.ttsResponseFormat ?? 'mp3';
 
 	const stopAudioPlayback = useCallback(() => {
 		if (audioRef.current) {
@@ -100,9 +137,18 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({ threadId, exitVo
 		stopMediaTracks();
 		inFlightRef.current = { stt: false, tts: false };
 		hasSpokenRef.current = false;
-	}, [stopAudioPlayback, stopMediaTracks]);
+		pendingTTSRef.current = false;
+		isRecordingRef.current = false;
+		isSendingRef.current = false;
+		audioChunksRef.current = [];
+		transcriptRef.current = '';
+		nextChunkIndexRef.current = 0;
+		nextExpectedChunkIndexRef.current = 0;
+		if (mountedRef.current) setPhase('idle');
+		if (mountedRef.current) setError(null);
+	}, [stopAudioPlayback, stopMediaTracks, safeSetPhase, safeSetError]);
 
-	// Cleanup everything when the panel unmounts or the user exits voice mode.
+	// Cleanup everything when the hook unmounts.
 	useEffect(() => {
 		mountedRef.current = true;
 		return () => {
@@ -110,18 +156,6 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({ threadId, exitVo
 			reset();
 		};
 	}, [reset]);
-
-	// Escape key exits voice mode.
-	useEffect(() => {
-		const handleKeyDown = (e: KeyboardEvent) => {
-			if (e.key === 'Escape') {
-				e.preventDefault();
-				exitVoiceMode();
-			}
-		};
-		document.addEventListener('keydown', handleKeyDown);
-		return () => document.removeEventListener('keydown', handleKeyDown);
-	}, [exitVoiceMode]);
 
 	const startMetering = useCallback((stream: MediaStream) => {
 		try {
@@ -148,10 +182,16 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({ threadId, exitVo
 		}
 	}, [safeSetAudioLevel]);
 
-	const handleTranscription = useCallback(async (base64Audio: string) => {
-		if (inFlightRef.current.stt) return;
-		inFlightRef.current.stt = true;
-		safeSetPhase('transcribing');
+	const blobToBase64 = useCallback((blob: Blob): Promise<string> => {
+		return new Promise((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve((reader.result as string).split(',')[1]);
+			reader.onerror = () => reject(new Error('Failed to read recorded audio'));
+			reader.readAsDataURL(blob);
+		});
+	}, []);
+
+	const sendAudioChunk = useCallback(async (base64Audio: string) => {
 		try {
 			const voiceService = accessor.get('IVoiceService');
 			const result = await voiceService.transcribe({
@@ -161,28 +201,59 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({ threadId, exitVo
 				audioBase64: base64Audio,
 			});
 			if (!result.success || !result.text) {
-				safeSetPhase('error');
 				safeSetError(result.error || "Couldn’t hear that — try again?");
 				return;
 			}
-			safeSetPhase(ttsEnabled ? 'thinking' : 'idle');
-			await chatThreadsService.addUserMessageAndStreamResponse({ userMessage: result.text, threadId });
-			hasSpokenRef.current = false;
+			// Append the new chunk to the running transcript and stream the full text back.
+			transcriptRef.current += (transcriptRef.current ? ' ' : '') + result.text.trim();
+			onTranscriptionRef.current(transcriptRef.current);
 		} catch (e) {
-			safeSetPhase('error');
 			safeSetError(e instanceof Error ? e.message : 'Audio error — check your microphone');
-		} finally {
-			inFlightRef.current.stt = false;
 		}
-	}, [threadId, sttServerUrl, sttModel, sttApiKey, ttsEnabled, accessor, chatThreadsService, safeSetPhase, safeSetError]);
+	}, [sttServerUrl, sttModel, sttApiKey, accessor, safeSetError]);
+
+	const processSendQueue = useCallback(async () => {
+		if (isSendingRef.current) return;
+		const next = audioChunksRef.current.find(c => c.index === nextExpectedChunkIndexRef.current);
+		if (!next) return;
+		isSendingRef.current = true;
+		try {
+			const base64 = await blobToBase64(next.blob);
+			await sendAudioChunk(base64);
+		} finally {
+			audioChunksRef.current = audioChunksRef.current.filter(c => c.index !== nextExpectedChunkIndexRef.current);
+			nextExpectedChunkIndexRef.current += 1;
+			isSendingRef.current = false;
+			// Continue draining the queue.
+			processSendQueue();
+			// If recording has stopped and the queue is empty, settle into the final phase.
+			if (!isRecordingRef.current && audioChunksRef.current.length === 0) {
+				safeSetPhase(ttsEnabled && pendingTTSRef.current ? 'thinking' : 'idle');
+			}
+		}
+	}, [blobToBase64, sendAudioChunk, safeSetPhase, ttsEnabled]);
 
 	const startListening = useCallback(async () => {
-		if (phase === 'listening' || phase === 'transcribing' || phase === 'thinking' || phase === 'speaking') {
+		if (!sttEnabled) {
+			safeSetError('Speech-to-text is disabled in settings');
 			return;
 		}
+		if (phase === 'listening' || phase === 'transcribing') {
+			return;
+		}
+		// Stop any previous playback before recording again.
+		stopAudioPlayback();
 		safeSetError(null);
 		safeSetAudioLevel(0);
 		safeSetPhase('listening');
+
+		// Reset streaming state for a fresh session.
+		isRecordingRef.current = false;
+		isSendingRef.current = false;
+		audioChunksRef.current = [];
+		transcriptRef.current = '';
+		nextChunkIndexRef.current = 0;
+		nextExpectedChunkIndexRef.current = 0;
 
 		try {
 			if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -199,38 +270,45 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({ threadId, exitVo
 			const mimeType = getSupportedMimeType();
 			const options = mimeType ? { mimeType } : undefined;
 			const mediaRecorder = options ? new MediaRecorder(stream, options) : new MediaRecorder(stream);
-			const chunks: BlobPart[] = [];
+
 			mediaRecorder.ondataavailable = (e) => {
-				if (e.data.size > 0) chunks.push(e.data);
+				if (e.data.size === 0) return;
+				const index = nextChunkIndexRef.current;
+				nextChunkIndexRef.current += 1;
+				audioChunksRef.current.push({ blob: e.data, index });
+				processSendQueue();
 			};
+
 			mediaRecorder.onstop = () => {
+				isRecordingRef.current = false;
 				stopMediaTracks();
-				const blobType = mimeType ? mimeType.split(';')[0] : 'audio/webm';
-				const blob = new Blob(chunks, { type: blobType });
-				const reader = new FileReader();
-				reader.onload = () => {
-					const base64Audio = (reader.result as string).split(',')[1];
-					void handleTranscription(base64Audio);
-				};
-				reader.onerror = () => {
-					safeSetPhase('error');
-					safeSetError('Failed to read recorded audio');
-				};
-				reader.readAsDataURL(blob);
+				// If no chunks are queued or in flight, reset immediately.
+				if (audioChunksRef.current.length === 0 && !isSendingRef.current) {
+					safeSetPhase(ttsEnabled && pendingTTSRef.current ? 'thinking' : 'idle');
+					return;
+				}
+				// Otherwise, drain the queue and let processSendQueue settle the phase.
+				safeSetPhase('transcribing');
+				processSendQueue();
 			};
+
 			mediaRecorder.onerror = () => {
+				isRecordingRef.current = false;
 				stopMediaTracks();
 				safeSetPhase('error');
 				safeSetError('Recorder error — try again');
 			};
+
 			mediaRecorderRef.current = mediaRecorder;
-			mediaRecorder.start();
+			isRecordingRef.current = true;
+			// Emit a new chunk every 1.5 seconds so transcription streams in realtime.
+			mediaRecorder.start(1500);
 		} catch (e) {
 			stopMediaTracks();
 			safeSetPhase('error');
 			safeSetError(e instanceof Error ? e.message : 'Microphone access denied — allow it in your browser settings');
 		}
-	}, [phase, startMetering, stopMediaTracks, handleTranscription, safeSetPhase, safeSetError, safeSetAudioLevel]);
+	}, [sttEnabled, phase, startMetering, stopMediaTracks, stopAudioPlayback, processSendQueue, safeSetPhase, safeSetError, safeSetAudioLevel, ttsEnabled]);
 
 	const stopListening = useCallback(() => {
 		const recorder = mediaRecorderRef.current;
@@ -239,22 +317,29 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({ threadId, exitVo
 		} else {
 			stopMediaTracks();
 		}
+		// The recorder.onstop handler will drain any remaining chunks and settle the phase.
 	}, [stopMediaTracks]);
 
-	// TTS: speak the latest committed assistant message after the user sends a voice message.
+	const prepareResponseTTS = useCallback(() => {
+		if (!ttsEnabled) return;
+		pendingTTSRef.current = true;
+		hasSpokenRef.current = false;
+	}, [ttsEnabled]);
+
+	// TTS: speak the latest committed assistant message after a voice message is sent.
 	useEffect(() => {
-		if (!ttsEnabled || phase !== 'thinking' || inFlightRef.current.tts || hasSpokenRef.current) {
+		if (!ttsEnabled || !pendingTTSRef.current || inFlightRef.current.tts || hasSpokenRef.current) {
 			return;
 		}
 		const disposable = chatThreadsService.onDidChangeCurrentThread(() => {
+			if (!pendingTTSRef.current || inFlightRef.current.tts || hasSpokenRef.current) {
+				return;
+			}
 			const thread = chatThreadsService.getThread(threadId);
 			if (!thread) return;
 			const msgs = thread.messages;
 			const lastMsg = msgs[msgs.length - 1];
 			if (lastMsg?.role !== 'assistant' || lastMsg.isStreaming) {
-				return;
-			}
-			if (inFlightRef.current.tts || hasSpokenRef.current) {
 				return;
 			}
 			inFlightRef.current.tts = true;
@@ -265,16 +350,19 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({ threadId, exitVo
 				model: ttsModel,
 				voice: ttsVoice,
 				apiKey: ttsApiKey,
+				responseFormat: ttsResponseFormat,
 				text: lastMsg.displayContent || '',
 			})
-				.then((result) => {
+				.then((result: { success: boolean; audioBase64?: string; error?: string }) => {
 					if (!result.success || !result.audioBase64) {
 						throw new Error(result.error || 'TTS failed');
 					}
-					const audio = new Audio(`data:audio/mp3;base64,${result.audioBase64}`);
+					const audioMimeType = mimeTypeOfTtsFormat(ttsResponseFormat);
+					const audio = new Audio(`data:${audioMimeType};base64,${result.audioBase64}`);
 					audioRef.current = audio;
 					audio.onended = () => {
 						hasSpokenRef.current = true;
+						pendingTTSRef.current = false;
 						safeSetPhase('idle');
 					};
 					audio.onerror = () => {
@@ -282,8 +370,9 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({ threadId, exitVo
 					};
 					return audio.play();
 				})
-				.catch((e) => {
+				.catch((e: unknown) => {
 					hasSpokenRef.current = true;
+					pendingTTSRef.current = false;
 					stopAudioPlayback();
 					safeSetPhase('error');
 					safeSetError(e instanceof Error ? e.message : 'Could not speak the response');
@@ -294,60 +383,16 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({ threadId, exitVo
 		});
 		return () => disposable.dispose();
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [ttsEnabled, phase, threadId, ttsServerUrl, ttsModel, ttsVoice, ttsApiKey, accessor, chatThreadsService, stopAudioPlayback, safeSetPhase, safeSetError]);
+	}, [ttsEnabled, threadId, ttsServerUrl, ttsModel, ttsVoice, ttsApiKey, ttsResponseFormat, accessor, chatThreadsService, stopAudioPlayback, safeSetPhase, safeSetError]);
 
-	const isSTTDisabled = !sttEnabled;
-	const phaseConfig: Record<VoicePhase, { icon: React.ReactNode; label: string; color: string }> = {
-		idle: {
-			icon: <Mic size={20} />,
-			label: isSTTDisabled ? 'Speech-to-text is disabled in settings' : 'Tap to speak',
-			color: 'text-void-fg-2',
-		},
-		listening: { icon: <Mic size={20} />, label: 'Listening...', color: 'text-red-500' },
-		transcribing: { icon: <Loader2 size={20} className="animate-spin" />, label: 'Transcribing...', color: 'text-void-fg-2' },
-		thinking: { icon: <Loader2 size={20} className="animate-spin" />, label: 'Thinking...', color: 'text-void-fg-2' },
-		speaking: { icon: <Volume2 size={20} />, label: 'Speaking...', color: 'text-void-accent' },
-		error: { icon: <AlertCircle size={20} />, label: error ?? 'Something went wrong', color: 'text-red-500' },
+	return {
+		phase,
+		audioLevel,
+		error,
+		isListening: phase === 'listening',
+		startListening,
+		stopListening,
+		stopAudioPlayback,
+		prepareResponseTTS,
 	};
-
-	const config = phaseConfig[phase];
-	const canStart = phase === 'idle' || phase === 'error';
-	const isRecording = phase === 'listening';
-	const buttonLabel = isRecording ? 'Stop listening' : canStart ? 'Start listening' : 'Voice busy';
-
-	return (
-		<div className="flex flex-col items-center justify-center h-full bg-void-bg-1 text-void-fg-1 p-6">
-			<div className="sr-only" aria-live="polite" aria-atomic="true">
-				{config.label}
-				{error ? ` Error: ${error}` : ''}
-			</div>
-			<button
-				className="flex items-center justify-center w-16 h-16 rounded-full transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-void-accent focus:ring-offset-2 focus:ring-offset-void-bg-1"
-				style={{
-					backgroundColor: isRecording ? 'rgb(239 68 68 / 0.2)' : phase === 'speaking' ? 'rgb(59 130 246 / 0.2)' : 'rgb(255 255 255 / 0.05)',
-					transform: isRecording ? `scale(${1 + audioLevel * 0.15})` : undefined,
-				}}
-				onClick={isRecording ? stopListening : startListening}
-				disabled={!isRecording && !canStart}
-				aria-label={buttonLabel}
-				aria-pressed={isRecording}
-				aria-live="off"
-			>
-				<span className={config.color}>{config.icon}</span>
-			</button>
-			<p className="mt-3 text-sm text-void-fg-3">{config.label}</p>
-			{error && (
-				<p className="mt-2 text-xs text-red-400 text-center max-w-xs" role="alert">
-					{error}
-				</p>
-			)}
-			<button
-				className="mt-4 px-4 py-2 text-sm text-void-fg-3 bg-void-bg-2 rounded-lg cursor-pointer border border-void-border-2 hover:bg-void-bg-3 transition-colors focus:outline-none focus:ring-2 focus:ring-void-accent focus:ring-offset-2 focus:ring-offset-void-bg-1"
-				onClick={exitVoiceMode}
-				aria-label="Stop voice mode"
-			>
-				<PhoneOff size={14} className="inline mr-1" /> Stop voice mode
-			</button>
-		</div>
-	);
 };

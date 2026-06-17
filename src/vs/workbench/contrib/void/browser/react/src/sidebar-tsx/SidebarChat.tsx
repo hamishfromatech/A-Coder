@@ -79,7 +79,7 @@ import { LearningDashboard } from './LearningDashboard.js';
 import { QuizMe } from './QuizMe.js';
 import { NestedToolGroup } from './NestedToolGroup.js';
 import { PersistentTaskPlan } from './PersistentTaskPlan.js';
-import { VoiceModePanel } from './VoiceModePanel.js';
+import { useVoiceMode } from './useVoiceMode.js';
 
 // Lazy-loaded components - MUST be at module level to avoid re-creating on every render
 const LazyPlanningResultWrapper = React.lazy(() => import('./PlanningResultWrapper.js'))
@@ -3194,6 +3194,77 @@ export const SidebarChat = () => {
 	// Floating scroll-to-bottom button state
 	const [showScrollToBottom, setShowScrollToBottom] = useState(false)
 
+	const onChangeText = useCallback((newStr: string) => {
+		setInstructionsAreEmpty(!newStr)
+	}, [setInstructionsAreEmpty])
+
+	// Voice mode is a transient, inline state in the chat input area.
+	const [voiceModeActive, setVoiceModeActive] = useState(false);
+	const voiceInputPrefixRef = useRef('');
+	const toggleVoiceMode = useCallback(() => {
+		setVoiceModeActive(prev => {
+			const next = !prev;
+			return next;
+		});
+	}, []);
+
+	const { phase, audioLevel, error: voiceError, isListening, startListening, stopListening, stopAudioPlayback, prepareResponseTTS } = useVoiceMode({
+		threadId,
+		onTranscription: (text) => {
+			// Stream the running voice transcript into the input box, preserving any text the user typed before voice mode started.
+			const prefix = voiceInputPrefixRef.current;
+			const separator = prefix && !prefix.endsWith(' ') ? ' ' : '';
+			const newValue = prefix + separator + text;
+			textAreaFnsRef.current?.setValue(newValue);
+			textAreaRef.current?.focus();
+			// Let the textarea know the input is no longer empty.
+			onChangeText(newValue);
+		},
+	});
+
+	// Start listening as soon as voice mode is activated; stop everything when deactivated.
+	useEffect(() => {
+		if (voiceModeActive) {
+			voiceInputPrefixRef.current = textAreaRef.current?.value || '';
+			startListening();
+		} else {
+			stopListening();
+			stopAudioPlayback();
+		}
+	}, [voiceModeActive, startListening, stopListening, stopAudioPlayback]);
+
+	// Escape exits voice mode; single press also stops an active recording.
+	useEffect(() => {
+		if (!voiceModeActive) return;
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') {
+				e.preventDefault();
+				if (isListening) {
+					stopListening();
+				} else {
+					setVoiceModeActive(false);
+				}
+			}
+		};
+		document.addEventListener('keydown', handleKeyDown);
+		return () => document.removeEventListener('keydown', handleKeyDown);
+	}, [voiceModeActive, isListening, stopListening]);
+
+	// Stop listening when the user starts typing (they are taking over with the keyboard).
+	const handleInputChangeWithVoice = useCallback((text: string) => {
+		onChangeText(text);
+		if (isListening) {
+			// Treat the current input as the new prefix so any queued voice chunks append after it.
+			voiceInputPrefixRef.current = text;
+			stopListening();
+		}
+	}, [onChangeText, isListening, stopListening]);
+
+	// Deactivate voice mode when the thread changes so it doesn't leak across conversations.
+	useEffect(() => {
+		setVoiceModeActive(false);
+	}, [threadId]);
+
 	const onSubmit = useCallback(async (_forceSubmit?: string) => {
 
 		const threadId = chatThreadsService.state.currentThreadId
@@ -3231,6 +3302,11 @@ export const SidebarChat = () => {
 		const imagesToSend = attachedImages.length > 0 ? attachedImages : undefined
 		const selectionsToSend = selections.length > 0 ? [...selections] : undefined // copy before clearing
 
+		// If the user composed this message via voice, prepare to speak the assistant's response.
+		if (voiceModeActive) {
+			prepareResponseTTS();
+		}
+
 		// Clear UI immediately (before async call)
 		setSelections([]) // clear staging
 		setAttachedImages([]) // clear images
@@ -3248,7 +3324,10 @@ export const SidebarChat = () => {
 			console.error('Error while sending message in chat:', e)
 		}
 
-	}, [chatThreadsService, isDisabled, textAreaRef, textAreaFnsRef, setSelections, setSlashMenuOpen, setSlashQuery, attachedImages, selections])
+		// Turn off the active microphone after sending so the assistant can speak without being re-recorded.
+		setVoiceModeActive(false);
+
+	}, [chatThreadsService, isDisabled, textAreaRef, textAreaFnsRef, setSelections, setSlashMenuOpen, setSlashQuery, attachedImages, selections, voiceModeActive, prepareResponseTTS])
 	// Note: settingsState and isRunng removed from deps - isDisabled already includes settingsState info
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 
@@ -3643,10 +3722,6 @@ export const SidebarChat = () => {
 	</ScrollToBottomContainer>
 
 
-	const onChangeText = useCallback((newStr: string) => {
-		setInstructionsAreEmpty(!newStr)
-	}, [setInstructionsAreEmpty])
-
 	// Track last Enter press for double-tap detection
 	const lastEnterPressRef = useRef<number>(0);
 	const DOUBLE_TAP_THRESHOLD = 500; // ms
@@ -3798,27 +3873,6 @@ export const SidebarChat = () => {
 
 	const [isQueueExpanded, setIsQueueExpanded] = useState(false);
 
-	const enterVoiceMode = useCallback(() => {
-		chatThreadsService.setCurrentThreadState({ voiceModeActive: true });
-	}, [chatThreadsService]);
-
-	const exitVoiceMode = useCallback(() => {
-		chatThreadsService.setCurrentThreadState({ voiceModeActive: false });
-	}, [chatThreadsService]);
-
-	// Voice mode is a transient UI state, not something that should persist across
-	// thread switches or sessions. Reset it whenever the active thread changes or
-	// this component unmounts.
-	useEffect(() => {
-		if (currentThread?.state?.voiceModeActive) {
-			chatThreadsService.setCurrentThreadState({ voiceModeActive: false });
-		}
-		return () => {
-			chatThreadsService.setCurrentThreadState({ voiceModeActive: false });
-		};
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [threadId, chatThreadsService]);
-
 	const inputChatArea = <div
 		onDragOver={handleDragOver}
 		onDragLeave={handleDragLeave}
@@ -3903,6 +3957,9 @@ export const SidebarChat = () => {
 			</div>
 		)}
 
+		{voiceModeActive && voiceError && <div className="mb-2 text-xs text-red-400">{voiceError}</div>}
+
+		<div className={`rounded-2xl transition-all duration-300 ${voiceModeActive ? 'voice-ring-active' : ''}`} style={voiceModeActive ? { '--voice-intensity': String(audioLevel) } as React.CSSProperties : undefined}>
 		<VoidChatArea
 			featureName='Chat'
 			onSubmit={() => onSubmit()}
@@ -3917,13 +3974,16 @@ export const SidebarChat = () => {
 			onClickAnywhere={() => { textAreaRef.current?.focus() }}
 			extraActions={
 				<button
-					className="flex items-center justify-center w-8 h-8 rounded-md transition-colors cursor-pointer text-void-fg-3 hover:text-void-fg-1 hover:bg-void-bg-3"
-					onClick={enterVoiceMode}
+					className={`flex items-center justify-center w-8 h-8 rounded-md transition-all duration-200 cursor-pointer ${voiceModeActive ? (isListening ? 'text-void-accent bg-void-accent/10' : 'text-void-accent bg-void-accent/10') : 'text-void-fg-3 hover:text-void-fg-1 hover:bg-void-bg-3'}`}
+					onClick={toggleVoiceMode}
 					data-tooltip-id='void-tooltip'
-					data-tooltip-content="Voice mode"
-					aria-label="Enable voice mode"
+					data-tooltip-content={voiceModeActive ? (isListening ? 'Listening... (click to stop)' : 'Voice mode active (click to turn off)') : 'Voice mode'}
+					data-tooltip-place='top'
+					aria-label={voiceModeActive ? 'Disable voice mode' : 'Enable voice mode'}
+					aria-pressed={voiceModeActive}
+					type='button'
 				>
-					<Mic size={16} />
+					<Mic size={16} className={isListening ? 'animate-pulse' : ''} />
 				</button>
 			}
 		>
@@ -3960,7 +4020,7 @@ export const SidebarChat = () => {
 				className={`min-h-[81px] px-3 py-2 border-0 focus:ring-0 w-full`}
 				placeholder={queuedCount > 0 ? `Enter to send queued message (⏎)` : `@ to mention, ${keybindingString ? `${keybindingString} to add a selection. ` : ''}Enter instructions...`}
 				onChangeText={(text) => {
-					onChangeText(text);
+					handleInputChangeWithVoice(text);
 					// Detect slash command typing
 					if (text.startsWith('/')) {
 						const query = text.slice(1).split(' ')[0] || '';
@@ -3979,11 +4039,11 @@ export const SidebarChat = () => {
 			/>
 
 		</VoidChatArea>
+		</div>
 	</div>
 
 
 	const isLandingPage = previousMessages.length === 0
-	const voiceModeActive = currentThread?.state?.voiceModeActive ?? false;
 
 	const initiallySuggestedPromptsHTML = useMemo(() => <div className='flex flex-col gap-2 w-full text-nowrap text-void-fg-3 select-none'>
 		{[
@@ -4274,14 +4334,7 @@ export const SidebarChat = () => {
 	return (
 		<Fragment key={threadId} // force rerender when change thread
 		>
-			{voiceModeActive ?
-				<VoiceModePanel
-					threadId={threadId}
-					exitVoiceMode={exitVoiceMode}
-				/>
-				: isLandingPage ?
-					landingPageContent
-					: threadPageContent}
+			{isLandingPage ? landingPageContent : threadPageContent}
 
 			{/* MCP Server Modal */}
 			<MCPServerModal

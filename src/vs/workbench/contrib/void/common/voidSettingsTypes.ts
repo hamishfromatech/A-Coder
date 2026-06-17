@@ -554,6 +554,7 @@ export type GlobalSettings = {
 		ttsModel: string; // Model name for TTS (e.g. tts-1)
 		ttsVoice: string; // Voice identifier for TTS (e.g. alloy)
 		ttsApiKey: string; // Optional API key for TTS endpoint
+		ttsResponseFormat: 'mp3' | 'opus' | 'aac' | 'flac' | 'wav' | 'pcm'; // Audio output format for TTS
 }
 
 export const defaultGlobalSettings: GlobalSettings = {
@@ -617,6 +618,7 @@ export const defaultGlobalSettings: GlobalSettings = {
 		ttsModel: 'tts-1',
 		ttsVoice: 'alloy',
 		ttsApiKey: '',
+		ttsResponseFormat: 'mp3',
 }
 
 export type GlobalSettingName = keyof GlobalSettings
