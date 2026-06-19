@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------*/
 
 import { Disposable } from '../../../../base/common/lifecycle.js';
+import { CancellationToken } from '../../../../base/common/cancellation.js';
 import { ILanguageFeaturesService } from '../../../../editor/common/services/languageFeatures.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { EndOfLinePreference, ITextModel } from '../../../../editor/common/model.js';
@@ -643,10 +644,17 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 	async _provideInlineCompletionItems(
 		model: ITextModel,
 		position: Position,
+		token: CancellationToken,
 	): Promise<InlineCompletion[]> {
 
 		const isEnabled = this._settingsService.state.globalSettings.enableAutocomplete
 		if (!isEnabled) return []
+
+		// If VS Code already cancelled this request (user kept typing, moved the
+		// cursor, or pressed escape), bail before doing any work — including the
+		// debounce wait and the LLM round-trip. This is what keeps autocomplete
+		// feeling snappy instead of burning a full request on stale state.
+		if (token.isCancellationRequested) return []
 
 		const docUriStr = model.uri.toString();
 
@@ -732,6 +740,10 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 		if (didTypingHappenDuringDebounce) {
 			return []
 		}
+
+		// Re-check cancellation after the debounce wait — VS Code may have moved on
+		// while we were waiting.
+		if (token.isCancellationRequested) return []
 
 
 		// if there are too many pending requests, cancel the oldest one
@@ -858,7 +870,16 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 
 		})
 
-
+		// Propagate VS Code cancellation to the LLM request: when the editor
+		// cancels (more typing, cursor moved, escape), abort the in-flight request
+		// so we stop paying for / waiting on a completion that will be discarded
+		// anyway. Disposed once the promise settles either way.
+		const cancellationDisposable = token.onCancellationRequested(() => {
+			if (newAutocompletion.status === 'pending' && newAutocompletion.requestId) {
+				this._llmMessageService.abort(newAutocompletion.requestId)
+			}
+		})
+		newAutocompletion.llmPromise?.finally(() => cancellationDisposable.dispose())
 
 		// add autocompletion to cache
 		this._autocompletionsOfDocument[docUriStr].set(newAutocompletion.id, newAutocompletion)
@@ -914,7 +935,7 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 
 		this._register(this._langFeatureService.inlineCompletionsProvider.register('*', {
 			provideInlineCompletions: async (model, position, context, token) => {
-				const items = await this._provideInlineCompletionItems(model, position)
+				const items = await this._provideInlineCompletionItems(model, position, token)
 
 				// console.log('item: ', items?.[0]?.insertText)
 				return { items: items, }

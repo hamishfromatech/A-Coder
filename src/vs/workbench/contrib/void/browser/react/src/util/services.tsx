@@ -64,6 +64,7 @@ import { IStandaloneSessionService } from '../../../standaloneSessionService.js'
 import { IVoiceService } from '../../../voiceService.js'
 import { StandaloneSession } from '../../../../common/chatThreadServiceTypes.js'
 import { WorkspaceConnection, WorkspaceThreadSummary } from '../../../../common/workspaceRegistryTypes.js'
+import { IWorkspaceRemoteControlService } from '../../../workspaceRemoteControlService.js'
 import { IComposioService } from '../../../../common/composioService.js'
 // import { IACoderOAuthService, ACoderAuthState, ACoderModelInfo } from '../../../../common/aCoderOAuthService.js'
 
@@ -407,6 +408,7 @@ const getReactAccessor = (accessor: ServicesAccessor) => {
 		IStorageService: accessor.get(IStorageService),
 		ISoundService: accessor.get(ISoundService),
 		IStandaloneSessionService: accessor.get(IStandaloneSessionService),
+		IWorkspaceRemoteControlService: accessor.get(IWorkspaceRemoteControlService),
 		IVoiceService: accessor.get(IVoiceService),
 		// IACoderOAuthService: accessor.get(IACoderOAuthService),
 
@@ -742,18 +744,34 @@ export const updateSelectedWorkspaceId = (id: string | null) => {
 }
 
 /**
- * Hook to get all connected workspaces across all VS Code windows
+ * Hook to get all connected workspaces across all VS Code windows.
+ * Backed by the cross-window hub via IWorkspaceRemoteControlService (live updates).
  */
 export const useAllWorkspaces = () => {
+	const accessor = useAccessor()
+	const remoteControl = accessor.get(IWorkspaceRemoteControlService)
 	const [workspaces, setWorkspaces] = useState<WorkspaceConnection[]>(allWorkspacesState)
 
 	useEffect(() => {
-		setWorkspaces(allWorkspacesState)
-		allWorkspacesListeners.add(setWorkspaces)
-		return () => { allWorkspacesListeners.delete(setWorkspaces) }
-	}, [])
+		// Defensive: in a stale build the service may not be registered yet.
+		// Degrade to an empty list rather than crashing the whole panel.
+		if (!remoteControl) return
+		let disposed = false
+		remoteControl.getWorkspaces().then(ws => { if (!disposed) { setWorkspaces(ws); updateAllWorkspacesState(ws) } }).catch(() => { })
+		const sub = remoteControl.onDidReceiveWorkspaces(ws => { if (!disposed) { setWorkspaces(ws); updateAllWorkspacesState(ws) } })
+		return () => { disposed = true; sub.dispose() }
+	}, [remoteControl])
 
 	return workspaces
+}
+
+/**
+ * Hook to get the cross-window remote-control service (Agent Manager side).
+ * Used to issue focus/open/stop/send/add-task commands to other windows.
+ */
+export const useWorkspaceRemoteControl = () => {
+	const accessor = useAccessor()
+	return accessor.get(IWorkspaceRemoteControlService)
 }
 
 /**

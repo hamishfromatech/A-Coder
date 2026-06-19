@@ -18,8 +18,9 @@ import { generateUuid } from '../../../../base/common/uuid.js';
 import { FeatureName, ModelSelection, ModelSelectionOptions } from '../common/voidSettingsTypes.js';
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
 import { approvalTypeOfBuiltinToolName, BuiltinToolCallParams, BuiltinToolName, ToolCallParams, ToolName, ToolResult } from '../common/toolsServiceTypes.js';
+import { shouldAutoApproveTerminalTool, TerminalAutoApproveSettings } from '../common/terminalApproval.js';
 import { IToolsService } from './toolsService.js';
-import { CancellationToken } from '../../../../base/common/cancellation.js';
+import { CancellationToken, CancellationTokenSource } from '../../../../base/common/cancellation.js';
 import { ILanguageFeaturesService } from '../../../../editor/common/services/languageFeatures.js';
 import { ChatMessage, CheckpointEntry, CodespanLocationLink, StagingSelectionItem, ToolMessage, ImageAttachment, StudentSession, StudentExercise, ActiveWorkflow, QueueBehavior } from '../common/chatThreadServiceTypes.js';
 import { Position } from '../../../../editor/common/core/position.js';
@@ -675,6 +676,9 @@ export interface IChatThreadService {
 	// call to add a message
 	addUserMessageAndStreamResponse({ userMessage, threadId, images, selections }: { userMessage: string, threadId: string, images?: ImageAttachment[], selections?: StagingSelectionItem[] }): Promise<void>;
 
+	// call to add a task to a thread's task plan
+	createTask(threadId: string, description: string, dependencies?: string[]): string;
+
 	// approve/reject/skip
 	approveLatestToolRequest(threadId: string, toolId?: string): void;
 	rejectLatestToolRequest(threadId: string, toolId?: string): void;
@@ -1062,6 +1066,13 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 	// this should be the only place this.state = ... appears besides constructor
 	private _setState(state: Partial<ThreadsState>, doNotRefreshMountInfo?: boolean) {
+		// Plans are stored per-thread; whenever the active thread changes, switch
+		// the planning services' active context so the UI and tool calls reflect it.
+		if (state.currentThreadId !== undefined && state.currentThreadId !== this.state.currentThreadId) {
+			this._toolsService.getPlanningService().switchToThread(state.currentThreadId)
+			this._toolsService.getImplementationPlanningService().switchToThread(state.currentThreadId)
+		}
+
 		const newState = {
 			...this.state,
 			...state
@@ -1453,6 +1464,17 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		}
 	}
 
+	/** Snapshot of the terminal command auto-approval policy for the logic module. */
+	private _terminalAutoApproveSettings(): TerminalAutoApproveSettings {
+		const g = this._settingsService.state.globalSettings
+		return {
+			masterToggle: g.autoApprove['terminal'],
+			terminalAllowPatterns: g.terminalAllowPatterns ?? [],
+			terminalDenyPatterns: g.terminalDenyPatterns ?? [],
+			terminalReadOnlyAutoApprove: !!g.terminalReadOnlyAutoApprove,
+		}
+	}
+
 	// returns true when the tool call is waiting for user approval
 	private _runToolCall = async (
 		threadId: string,
@@ -1511,7 +1533,12 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 			const approvalType = isBuiltInTool ? approvalTypeOfBuiltinToolName[toolName] : 'MCP tools'
 			if (approvalType) {
-				const autoApprove = this._settingsService.state.globalSettings.autoApprove[approvalType]
+				// Terminal tools use the layered command-allowlist policy (deny list,
+				// master toggle, allow list, read-only preset); all other approval
+				// types use the simple per-type boolean.
+				const autoApprove = approvalType === 'terminal'
+					? shouldAutoApproveTerminalTool(toolName, toolName === 'run_command' ? (toolParams as BuiltinToolCallParams['run_command']).command : undefined, this._terminalAutoApproveSettings())
+					: !!this._settingsService.state.globalSettings.autoApprove[approvalType]
 				const content = toolName === 'render_form' || toolName === 'create_quiz' ? 'Please complete the interactive content below.' : '(Awaiting user permission...)'
 				this._addMessageToThread(threadId, { role: 'tool', type: 'tool_request', content, result: null, name: toolName, params: toolParams, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature, parallelBatchId })
 
@@ -1537,6 +1564,11 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		let interrupted = false
 		let resolveInterruptor: (r: () => void) => void = () => { }
 		const interruptorPromise = new Promise<() => void>(res => { resolveInterruptor = res })
+		// Cancellation source for this tool call. Cancelled when the user aborts
+		// the thread (abortRunning -> interrupt()), so in-flight search/context
+		// tool calls that honour a CancellationToken stop early instead of running
+		// to completion and landing their results in context.
+		const cancellationTokenSource = new CancellationTokenSource()
 		try {
 
 			// In parallel mode, skip stream state updates since multiple tools share the same thread state.
@@ -1547,6 +1579,8 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 			if (isBuiltInTool) {
 				const { result, interruptTool } = await this._toolsService.callTool[toolName](toolParams as any, {
+					threadId,
+					cancellationToken: cancellationTokenSource.token,
 					onData: (data) => {
 						// Stream partial results to the UI for immersion
 						const currentStreamState = this.streamState[threadId];
@@ -1563,7 +1597,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 						}
 					}
 				})
-				const interruptor = () => { interrupted = true; interruptTool?.() }
+				const interruptor = () => { interrupted = true; interruptTool?.(); cancellationTokenSource.cancel() }
 				resolveInterruptor(interruptor)
 
 				toolResult = await result
@@ -1634,6 +1668,9 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 			const errorMessage = getErrorMessage(error)
 			this._updateToolMessage(threadId, { role: 'tool', type: 'tool_error', params: toolParams, result: errorMessage, name: toolName, content: errorMessage, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature, parallelBatchId }, !!parallelMode)
 			return {}
+		}
+		finally {
+			cancellationTokenSource.dispose()
 		}
 		// 4. stringify the result to give to the LLM
 		try {
@@ -2259,11 +2296,16 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 					for (const toolCall of parallelSafe) {
 						const isBuiltin = isABuiltinToolName(toolCall.name)
-						const needsApproval = isBuiltin
-							? !!approvalTypeOfBuiltinToolName[toolCall.name as BuiltinToolName]
-							: true // MCP tools always need approval
+						const approvalType = isBuiltin ? approvalTypeOfBuiltinToolName[toolCall.name as BuiltinToolName] : 'MCP tools'
+						const needsApproval = !!approvalType
+						// Terminal tools use the layered command-allowlist policy; for the
+						// grouping decision we read the command from the raw params (the
+						// authoritative approval still happens in _runToolCall with the
+						// validated params). Other types use the simple per-type boolean.
 						const autoApprove = needsApproval
-							? !!this._settingsService.state.globalSettings.autoApprove[isBuiltin ? approvalTypeOfBuiltinToolName[toolCall.name as BuiltinToolName]! : 'MCP tools']
+							? approvalType === 'terminal'
+								? shouldAutoApproveTerminalTool(toolCall.name as ToolName, typeof toolCall.rawParams?.command === 'string' ? toolCall.rawParams.command : undefined, this._terminalAutoApproveSettings())
+								: !!this._settingsService.state.globalSettings.autoApprove[approvalType]
 							: true
 
 						// Parallel execution requires auto-approval
@@ -3640,6 +3682,9 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		delete this.messageQueue[threadId];
 		delete this.taskPlans[threadId];
 		delete this.streamState[threadId];
+		// Drop this thread's plans so the per-thread plan maps don't leak.
+		this._toolsService.getPlanningService().clearPlan(threadId)
+		this._toolsService.getImplementationPlanningService().clearPlan(threadId)
 
 		// store the updated threads
 		this._storeAllThreads(newThreads);

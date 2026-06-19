@@ -13,7 +13,9 @@ import { IStorageService, StorageScope, StorageTarget } from '../../../../platfo
 import { WORKSPACE_REGISTRY_STORAGE_KEY } from '../common/storageKeys.js';
 import { generateUuid } from '../../../../base/common/uuid.js';
 import { IChannel } from '../../../../base/parts/ipc/common/ipc.js';
-import { ISharedProcessService } from '../../../../platform/ipc/electron-sandbox/services.js';
+import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
+import { INativeHostService } from '../../../../platform/native/common/native.js';
+import { IAuxiliaryWindowService } from '../../../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
 
 /**
  * Browser-side service that connects to the main process hub.
@@ -27,6 +29,7 @@ class WorkspaceConnectionService extends Disposable implements IWorkspaceConnect
 	private workspacePath: string = '';
 	private heartbeatInterval: NodeJS.Timeout | null = null;
 	private channel: IChannel | null = null;
+	private readonly windowId: number;
 
 	private readonly _onDidReceiveWorkspaces = this._register(new Emitter<WorkspaceConnection[]>());
 	readonly onDidReceiveWorkspaces: Event<WorkspaceConnection[]> = this._onDidReceiveWorkspaces.event;
@@ -34,17 +37,36 @@ class WorkspaceConnectionService extends Disposable implements IWorkspaceConnect
 	constructor(
 		@IThreadSummaryService private readonly threadSummaryService: IThreadSummaryService,
 		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
-		@ISharedProcessService private readonly sharedProcessService: ISharedProcessService,
+		@IMainProcessService private readonly mainProcessService: IMainProcessService,
+		@INativeHostService nativeHostService: INativeHostService,
+		@IAuxiliaryWindowService private readonly auxiliaryWindowService: IAuxiliaryWindowService,
 		@IStorageService private readonly storageService: IStorageService
 	) {
 		super();
+		this.windowId = nativeHostService.windowId;
 		this.initialize();
+	}
+
+	/**
+	 * The workspace id of this window, or null if it is not registered
+	 * (e.g. the Agent Manager auxiliary window).
+	 */
+	getWorkspaceId(): string | null {
+		return this.workspaceId;
 	}
 
 	/**
 	 * Initialize the workspace connection
 	 */
 	private async initialize(): Promise<void> {
+		// Auxiliary windows (e.g. the Agent Manager) are not workspaces — they must
+		// never register with the hub. They may still read the registry.
+		if (this.auxiliaryWindowService.getWindow(this.windowId)) {
+			console.log('[WorkspaceConnection] skipping registration — auxiliary window', this.windowId)
+			return;
+		}
+		console.log('[WorkspaceConnection] initialize() starting for window', this.windowId)
+
 		// Get workspace info
 		const workspace = this.workspaceContextService.getWorkspace();
 		const folders = workspace.folders;
@@ -89,15 +111,26 @@ class WorkspaceConnectionService extends Disposable implements IWorkspaceConnect
 		if (!this.workspaceId) return;
 
 		try {
-			// Get the shared process channel
-			this.channel = this.sharedProcessService.getChannel('void-channel-workspace-hub');
+			// The hub channel is registered on the main process IPC server.
+			this.channel = this.mainProcessService.getChannel('void-channel-workspace-hub');
+			console.log('[WorkspaceConnection] got hub channel, registering', { id: this.workspaceId, name: this.workspaceName, windowId: this.windowId })
 
 			if (this.channel) {
-				await this.channel.call('register', {
+				const registeredId = await this.channel.call('register', {
 					id: this.workspaceId,
 					name: this.workspaceName,
-					path: this.workspacePath
+					path: this.workspacePath,
+					windowId: this.windowId
 				});
+				console.log('[WorkspaceConnection] register call returned', registeredId)
+
+				// Push an immediate full sync so the Agent Manager sees this window's
+				// current threads without waiting for the first 25s heartbeat.
+				await this.fullSync(
+					this.threadSummaryService.generateAllSummaries(),
+					this.threadSummaryService.getActiveOperationsCount()
+				)
+				console.log('[WorkspaceConnection] full sync done; registered OK')
 
 				// Listen for workspace updates
 				const event = this.channel.listen<WorkspaceConnection[]>('onDidChangeWorkspaces');

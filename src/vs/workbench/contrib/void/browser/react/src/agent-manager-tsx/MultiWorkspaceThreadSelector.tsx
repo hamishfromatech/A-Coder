@@ -5,8 +5,8 @@
 
 import React, { useMemo, useState } from 'react';
 import { WorkspaceThreadSummary, WorkspaceConnection } from '../../../../common/workspaceRegistryTypes.js';
-import { useAllWorkspaces, useSelectedWorkspace, useMultiWorkspaceSearch } from '../util/services.js';
-import { MessageSquare, Clock, Circle, Search, X, Folder } from 'lucide-react';
+import { useAllWorkspaces, useSelectedWorkspace, useMultiWorkspaceSearch, useWorkspaceRemoteControl } from '../util/services.js';
+import { Circle, Search, X, Folder, Send, Square, ExternalLink, CornerDownLeft, Plus } from 'lucide-react';
 
 /**
  * Thread status badge
@@ -29,72 +29,102 @@ const ThreadStatusBadge = ({ status }: { status: WorkspaceThreadSummary['status'
 	);
 };
 
-/**
- * Thread item with workspace context
- */
-const ThreadItem = ({
-	thread,
-	workspaceName,
-	workspaceColor,
-	onClick
-}: {
-	thread: WorkspaceThreadSummary & { workspaceName: string, workspaceColor: string },
-	workspaceName: string,
-	workspaceColor: string,
-	onClick?: () => void
-}) => {
-	const timeAgo = useMemo(() => {
-		const diff = Date.now() - thread.timestamp;
-		const minutes = Math.floor(diff / 60000);
-		const hours = Math.floor(minutes / 60);
-		const days = Math.floor(hours / 24);
 
-		if (days > 0) return `${days}d ago`;
-		if (hours > 0) return `${hours}h ago`;
-		if (minutes > 0) return `${minutes}m ago`;
-		return 'just now';
-	}, [thread.timestamp]);
+/**
+ * A thread row with remote-control actions (Open / Stop / Send message / Add task).
+ */
+const RemoteThreadRow = ({ workspace, thread }: { workspace: WorkspaceConnection, thread: WorkspaceThreadSummary }) => {
+	const remoteControl = useWorkspaceRemoteControl();
+	const [composeMode, setComposeMode] = useState<'message' | 'task' | null>(null);
+	const [draft, setDraft] = useState('');
+	const [done, setDone] = useState<string | null>(null);
+
+	const isRunning = thread.status === 'streaming';
+
+	const open = () => {
+		remoteControl.sendCommand({ type: 'openThread', targetWorkspaceId: workspace.id, threadId: thread.id });
+	};
+	const stop = () => {
+		remoteControl.sendCommand({ type: 'stop', targetWorkspaceId: workspace.id, threadId: thread.id });
+	};
+	const submit = () => {
+		const text = draft.trim();
+		if (!text || !composeMode) return;
+		if (composeMode === 'message') {
+			remoteControl.sendCommand({ type: 'sendMessage', targetWorkspaceId: workspace.id, threadId: thread.id, userMessage: text });
+			setDone('Sent — check that window.');
+		} else {
+			remoteControl.sendCommand({ type: 'createTask', targetWorkspaceId: workspace.id, threadId: thread.id, description: text });
+			setDone('Task added — check that window.');
+		}
+		setDraft('');
+		setComposeMode(null);
+	};
 
 	return (
-		<button
-			onClick={onClick}
-			className="group w-full text-left p-3 rounded-xl border border-void-border-2 bg-void-bg-2/30 hover:bg-void-bg-2/50 hover:border-void-border-1 transition-all"
-		>
-			<div className="flex items-start gap-3">
-				{/* Workspace color dot */}
-				<div
-					className="flex-shrink-0 w-3 h-3 rounded-full mt-1"
-					style={{ backgroundColor: workspaceColor }}
-					title={workspaceName}
-				/>
-
-				<div className="flex-1 min-w-0">
-					{/* Title row */}
-					<div className="flex items-center gap-2 mb-1">
-						<span className="text-sm font-medium text-void-fg-1 truncate">{thread.title}</span>
-						<ThreadStatusBadge status={thread.status} />
-					</div>
-
-					{/* Last message preview */}
-					<p className="text-[11px] text-void-fg-4 truncate mb-2 opacity-70">
-						{thread.lastMessage || 'No messages'}
-					</p>
-
-					{/* Meta row */}
-					<div className="flex items-center gap-3">
-						<div className="flex items-center gap-1">
-							<MessageSquare className="w-3 h-3 text-void-fg-4" />
-							<span className="text-[10px] text-void-fg-4">{thread.messageCount}</span>
-						</div>
-						<div className="flex items-center gap-1">
-							<Clock className="w-3 h-3 text-void-fg-4" />
-							<span className="text-[10px] text-void-fg-4">{timeAgo}</span>
-						</div>
-						<span className="text-[10px] text-void-fg-4 opacity-60 truncate">{workspaceName}</span>
-					</div>
-				</div>
+		<div className="p-2 rounded-lg bg-void-bg-2/30 hover:bg-void-bg-2/50 transition-colors">
+			<div className="flex items-center gap-2 mb-1">
+				<span className="text-xs font-medium text-void-fg-1 truncate flex-1">{thread.title}</span>
+				<ThreadStatusBadge status={thread.status} />
 			</div>
-		</button>
+			<div className="flex items-center gap-2 text-[10px] text-void-fg-4 mb-2">
+				<span>{thread.messageCount} msgs</span>
+				<span>•</span>
+				<span>{new Date(thread.timestamp).toLocaleTimeString()}</span>
+			</div>
+			<div className="flex items-center gap-1 flex-wrap">
+				<button
+					onClick={open}
+					className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-void-bg-1 hover:bg-void-bg-3 text-void-fg-2 border border-void-border-2 transition-colors"
+					title="Open this conversation in that window"
+				>
+					<ExternalLink className="w-3 h-3" /> Open
+				</button>
+				{isRunning && (
+					<button
+						onClick={stop}
+						className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 transition-colors"
+						title="Stop what A-Coder is doing in this conversation"
+					>
+						<Square className="w-3 h-3" /> Stop
+					</button>
+				)}
+				{!isRunning && (
+					<button
+						onClick={() => { setComposeMode('message'); setDone(null); }}
+						className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-void-bg-1 hover:bg-void-bg-3 text-void-fg-2 border border-void-border-2 transition-colors"
+						title="Send a message to this conversation"
+					>
+						<Send className="w-3 h-3" /> Send
+					</button>
+				)}
+				<button
+					onClick={() => { setComposeMode('task'); setDone(null); }}
+					className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-void-bg-1 hover:bg-void-bg-3 text-void-fg-2 border border-void-border-2 transition-colors"
+					title="Add a task to this conversation's plan"
+				>
+					<Plus className="w-3 h-3" /> Add task
+				</button>
+			</div>
+			{composeMode && (
+				<div className="flex items-center gap-1 mt-2">
+					<input
+						value={draft}
+						onChange={e => { setDraft(e.target.value); setDone(null); }}
+						onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') { setComposeMode(null); setDraft(''); } }}
+						placeholder={composeMode === 'message' ? 'Message…' : 'Task description…'}
+						autoFocus
+						className="flex-1 bg-void-bg-1 border border-void-border-2 rounded px-2 py-1 text-[11px] text-void-fg-1 placeholder:text-void-fg-4 focus:outline-none focus:border-void-accent/50"
+					/>
+					<button onClick={submit} className="p-1.5 rounded bg-void-accent/10 hover:bg-void-accent/20 text-void-accent" title={composeMode === 'message' ? 'Send (Enter)' : 'Add task (Enter)'}>
+						<CornerDownLeft className="w-3 h-3" />
+					</button>
+				</div>
+			)}
+			{done && !composeMode && (
+				<p className="text-[10px] text-emerald-500 mt-1.5">{done}</p>
+			)}
+		</div>
 	);
 };
 
@@ -110,9 +140,15 @@ const WorkspaceThreadGroup = ({
 	isExpanded: boolean,
 	onToggle: () => void
 }) => {
+	const remoteControl = useWorkspaceRemoteControl();
 	const sortedThreads = useMemo(() => {
 		return [...workspace.threads].sort((a, b) => b.timestamp - a.timestamp);
 	}, [workspace.threads]);
+
+	const focus = (e: React.MouseEvent) => {
+		e.stopPropagation();
+		remoteControl.sendCommand({ type: 'focus', targetWorkspaceId: workspace.id });
+	};
 
 	return (
 		<div className="border border-void-border-2 rounded-xl overflow-hidden">
@@ -131,6 +167,13 @@ const WorkspaceThreadGroup = ({
 				<span className="text-[10px] font-medium text-void-fg-4 px-1.5 py-0.5 rounded bg-void-bg-1">
 					{workspace.threads.length}
 				</span>
+				<span
+					onClick={focus}
+					className="text-[10px] font-medium text-void-fg-3 hover:text-void-accent px-1.5 py-0.5 rounded hover:bg-void-bg-3 transition-colors"
+					title="Bring this window to the front"
+				>
+					Focus
+				</span>
 				<svg
 					className={`w-4 h-4 text-void-fg-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
 					fill="none"
@@ -145,23 +188,10 @@ const WorkspaceThreadGroup = ({
 			{isExpanded && (
 				<div className="p-2 space-y-2 border-t border-void-border-2/50 bg-void-bg-1/30">
 					{sortedThreads.length === 0 ? (
-						<div className="text-center py-4 text-void-fg-4 text-xs">No threads</div>
+						<div className="text-center py-4 text-void-fg-4 text-xs">No conversations yet</div>
 					) : (
 						sortedThreads.map(thread => (
-							<div
-								key={thread.id}
-								className="p-2 rounded-lg bg-void-bg-2/30 hover:bg-void-bg-2/50 transition-colors cursor-pointer"
-							>
-								<div className="flex items-center gap-2 mb-1">
-									<span className="text-xs font-medium text-void-fg-1 truncate flex-1">{thread.title}</span>
-									<ThreadStatusBadge status={thread.status} />
-								</div>
-								<div className="flex items-center gap-2 text-[10px] text-void-fg-4">
-									<span>{thread.messageCount} msgs</span>
-									<span>•</span>
-									<span>{new Date(thread.timestamp).toLocaleTimeString()}</span>
-								</div>
-							</div>
+							<RemoteThreadRow key={thread.id} workspace={workspace} thread={thread} />
 						))
 					)}
 				</div>
@@ -176,6 +206,7 @@ const WorkspaceThreadGroup = ({
 export const MultiWorkspaceThreadSelector = () => {
 	const workspaces = useAllWorkspaces();
 	const { selectedId } = useSelectedWorkspace();
+	const remoteControl = useWorkspaceRemoteControl();
 	const [searchQuery, setSearchQuery] = useState('');
 	const [expandedWorkspaces, setExpandedWorkspaces] = useState<Set<string>>(new Set());
 
@@ -248,7 +279,9 @@ export const MultiWorkspaceThreadSelector = () => {
 							searchResults.map(result => (
 								<div
 									key={`${result.workspaceId}-${result.id}`}
-									className="p-3 rounded-lg bg-void-bg-2/30 hover:bg-void-bg-2/50 transition-colors cursor-pointer"
+									onClick={() => remoteControl.sendCommand({ type: 'openThread', targetWorkspaceId: result.workspaceId, threadId: result.id })}
+										className="p-3 rounded-lg bg-void-bg-2/30 hover:bg-void-bg-2/50 transition-colors w-full text-left"
+										title="Open this conversation in that window"
 								>
 									<div className="flex items-center gap-2 mb-1">
 										<div

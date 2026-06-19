@@ -17,7 +17,7 @@ import { computeDirectoryTree1Deep, IDirectoryStrService, stringifyDirectoryTree
 import { IMarkerService, MarkerSeverity } from '../../../../platform/markers/common/markers.js'
 import { timeout } from '../../../../base/common/async.js'
 import { RawToolParamsObj } from '../common/sendLLMMessageTypes.js'
-import { MAX_CHILDREN_URIs_PAGE, MAX_FILE_CHARS_PAGE, MAX_TERMINAL_BG_COMMAND_TIME, MAX_TERMINAL_INACTIVE_TIME } from '../common/prompt/prompts.js'
+import { MAX_CHILDREN_URIs_PAGE, MAX_FILE_CHARS_PAGE, MAX_TERMINAL_BG_COMMAND_TIME, MAX_TERMINAL_INACTIVE_TIME, MAX_TERMINAL_TIMEOUT_MS } from '../common/prompt/prompts.js'
 import { IVoidSettingsService } from '../common/voidSettingsService.js'
 import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js'
 import { generateUuid } from '../../../../base/common/uuid.js'
@@ -30,6 +30,7 @@ import { IPathService } from '../../../services/path/common/pathService.js'
 import { parseSkillFile, detectScriptLanguage, detectAssetType } from '../common/skillParser.js'
 import { generateLessonHtml, LessonData, LessonSection } from '../common/lessonHtmlGenerator.js'
 import { IOpenerService } from '../../../../platform/opener/common/opener.js'
+import { INotificationService } from '../../../../platform/notification/common/notification.js'
 /**
  * Parse markdown lesson content into structured sections
  */
@@ -128,7 +129,7 @@ function parseLessonContent(content: string): LessonSection[] {
 
 // tool use for AI
 type ValidateBuiltinParams = { [T in BuiltinToolName]: (p: RawToolParamsObj) => BuiltinToolCallParams[T] }
-type CallBuiltinTool = { [T in BuiltinToolName]: (p: BuiltinToolCallParams[T], opts?: { onData?: (data: string) => void }) => Promise<{ result: BuiltinToolResultType[T] | Promise<BuiltinToolResultType[T]>, interruptTool?: () => void }> }
+type CallBuiltinTool = { [T in BuiltinToolName]: (p: BuiltinToolCallParams[T], opts?: { onData?: (data: string) => void, threadId?: string, cancellationToken?: CancellationToken }) => Promise<{ result: BuiltinToolResultType[T] | Promise<BuiltinToolResultType[T]>, interruptTool?: () => void }> }
 type BuiltinToolResultToString = { [T in BuiltinToolName]: (p: BuiltinToolCallParams[T], result: Awaited<BuiltinToolResultType[T]>) => string }
 
 
@@ -300,6 +301,7 @@ export class ToolsService implements IToolsService {
 		@IPathService private readonly _pathService: IPathService,
 
 		@IOpenerService private readonly _openerService: IOpenerService,
+	@INotificationService private readonly _notificationService: INotificationService,
 	) {
 		const queryBuilder = this._instantiationService.createInstance(QueryBuilder);
 		this._toonService = new ToonService();
@@ -942,7 +944,7 @@ export class ToolsService implements IToolsService {
 			install_skill: (params: RawToolParamsObj) => {
 				const { source, url, path, branch } = params;
 				return {
-					source: validateStr('source', source) as 'github' | 'url' | 'local',
+					source: validateStr('source', source) as 'github' | 'local',
 					url: url !== undefined ? validateStr('url', url) : undefined,
 					path: path !== undefined ? validateStr('path', path) : undefined,
 					branch: branch !== undefined ? validateStr('branch', branch) : undefined
@@ -1089,10 +1091,14 @@ export class ToolsService implements IToolsService {
 					const content = await this._fileService.readFile(uri, { length, position: fromIdx });
 					const rawContents = content.value.toString();
 
-					// For large files, estimating line numbers since we don't have the full model
-					// This is a tradeoff for performance. We assume roughly 80 chars per line.
-					const estimatedStartLine = Math.floor(fromIdx / 80) + 1;
-					const fileContents = addLineNumbers(rawContents, estimatedStartLine);
+					// NOTE: We deliberately do NOT prefix line numbers here. The true line
+					// number of `fromIdx` can only be known by scanning the preceding bytes,
+					// which would defeat the purpose of the paged read. Fabricating numbers
+					// (the previous "assume 80 chars/line" estimate) misled the model into
+					// targeting the wrong lines for edits. For accurately-numbered content,
+					// the model should call read_file with start_line and end_line, which
+					// goes through the model path below and returns exact line numbers.
+					const fileContents = `⚠️ Large file (${Math.round(stat.size / 1024)}KB). Line numbers are omitted because they cannot be determined without scanning the whole file. To read an accurately-numbered range, call read_file again with start_line and end_line.\n\n${rawContents}`;
 					const hasNextPage = toIdx < stat.size;
 
 					return { result: { fileContents, totalFileLen: stat.size, hasNextPage, totalNumLines: Math.floor(stat.size / 80) } };
@@ -1170,14 +1176,14 @@ export class ToolsService implements IToolsService {
 				return { result: { str } }
 			},
 
-			search_pathnames_only: async ({ query: queryStr, includePattern, pageNumber }) => {
+			search_pathnames_only: async ({ query: queryStr, includePattern, pageNumber }, opts) => {
 
 				const query = queryBuilder.file(this._workspaceContextService.getWorkspace().folders.map((f: any) => f.uri), {
 					filePattern: queryStr,
 					includePattern: includePattern ?? undefined,
 					sortByScore: true, // makes results 10x better
 				})
-				const data = await this._searchService.fileSearch(query, CancellationToken.None)
+				const data = await this._searchService.fileSearch(query, opts?.cancellationToken ?? CancellationToken.None)
 
 				const fromIdx = MAX_CHILDREN_URIs_PAGE * (pageNumber - 1)
 				const toIdx = MAX_CHILDREN_URIs_PAGE * pageNumber - 1
@@ -1189,7 +1195,7 @@ export class ToolsService implements IToolsService {
 				return { result: { uris, hasNextPage } }
 			},
 
-			search_for_files: async ({ query: queryStr, isRegex, searchInFolder, pageNumber }) => {
+			search_for_files: async ({ query: queryStr, isRegex, searchInFolder, pageNumber }, opts) => {
 				const searchFolders = searchInFolder === null ?
 					this._workspaceContextService.getWorkspace().folders.map((f: any) => f.uri)
 					: [searchInFolder]
@@ -1199,7 +1205,7 @@ export class ToolsService implements IToolsService {
 					isRegExp: isRegex,
 				}, searchFolders)
 
-				const data = await this._searchService.textSearch(query, CancellationToken.None)
+				const data = await this._searchService.textSearch(query, opts?.cancellationToken ?? CancellationToken.None)
 
 				const fromIdx = MAX_CHILDREN_URIs_PAGE * (pageNumber - 1)
 				const toIdx = MAX_CHILDREN_URIs_PAGE * pageNumber - 1
@@ -1231,7 +1237,7 @@ export class ToolsService implements IToolsService {
 			},
 
 			read_lint_errors: async ({ uri }) => {
-				await timeout(1000)
+				await this._waitForMarkerChange(uri, 1000)
 				const { lintErrors } = this._getLintErrors(uri)
 				return { result: { lintErrors } }
 			},
@@ -1248,7 +1254,8 @@ export class ToolsService implements IToolsService {
 
 				const contexts = await this._morphService.fastContext({
 					query,
-					repoRoot
+					repoRoot,
+					token: opts?.cancellationToken,
 				});
 
 				opts?.onData?.(`Morph: Found ${contexts.length} relevant results.`);
@@ -1269,6 +1276,7 @@ export class ToolsService implements IToolsService {
 					commitHash,
 					target_directories,
 					limit,
+					token: opts?.cancellationToken,
 				});
 				opts?.onData?.(`Morph: Found ${results.results.length} semantic matches.`);
 				return { result: results };
@@ -1399,6 +1407,7 @@ export class ToolsService implements IToolsService {
 			// ---
 
 			create_file_or_folder: async ({ uri, isFolder }, opts) => {
+				this._assertInWorkspace(uri)
 				opts?.onData?.(`Creating ${isFolder ? 'folder' : 'file'}: ${path.basename(uri.fsPath)}...`);
 				if (isFolder)
 					await this._fileService.createFolder(uri)
@@ -1411,6 +1420,7 @@ export class ToolsService implements IToolsService {
 			},
 
 			delete_file_or_folder: async ({ uri, isRecursive }, opts) => {
+				this._assertInWorkspace(uri)
 				const isFolder = checkIfIsFolder(uri.fsPath);
 				opts?.onData?.(`Deleting ${isFolder ? 'folder' : 'file'}: ${path.basename(uri.fsPath)}...`);
 				await this._fileService.del(uri, { recursive: isRecursive })
@@ -1420,6 +1430,7 @@ export class ToolsService implements IToolsService {
 			},
 
 			rewrite_file: async ({ uri, newContent }, opts) => {
+				this._assertInWorkspace(uri)
 				await this._voidModelService.initializeModel(uri)
 
 				// Check if file exists, if not create it (if within workspace)
@@ -1470,7 +1481,7 @@ export class ToolsService implements IToolsService {
 
 				// at end, get lint errors
 				const lintErrorsPromise = Promise.resolve().then(async () => {
-					await timeout(2000)
+					await this._waitForMarkerChange(uri, 2000)
 					const { lintErrors } = this._getLintErrors(uri)
 					return { lintErrors }
 				})
@@ -1490,7 +1501,7 @@ export class ToolsService implements IToolsService {
 
 				// at end, get lint errors
 				const lintErrorsPromise = Promise.resolve().then(async () => {
-					await timeout(2000)
+					await this._waitForMarkerChange(uri, 2000)
 					const { lintErrors } = this._getLintErrors(uri)
 					return { lintErrors }
 				})
@@ -1499,7 +1510,23 @@ export class ToolsService implements IToolsService {
 			},
 
 			edit_files: async ({ edits }, opts) => {
+				// ATOMICITY: validate every edit (old_string exists and is unique) BEFORE
+				// applying any. This prevents edit 1 from being applied when edit 2 has a
+				// bad old_string, which previously left the workspace in a partial state.
+				for (let i = 0; i < edits.length; i++) {
+					const { uri, old_string } = edits[i]
+					await this._voidModelService.initializeModel(uri)
+					const matches = this._editCodeService.countStringMatches({ uri, oldString: old_string })
+					if (matches === 0) {
+						throw new Error(`edit_files: edit ${i + 1}/${edits.length} — old_string was not found in ${path.basename(uri.fsPath)}. Re-read the file and copy the exact current text.`)
+					}
+					if (matches > 1) {
+						throw new Error(`edit_files: edit ${i + 1}/${edits.length} — old_string is not unique in ${path.basename(uri.fsPath)} (found ${matches} matches). Include more surrounding lines so it matches exactly one location.`)
+					}
+				}
+
 				const results: Array<{ uri: string, lintErrors: LintErrorItem[] | null, error?: string }> = []
+				const applied: URI[] = []
 
 				for (let i = 0; i < edits.length; i++) {
 					const { uri, old_string, new_string } = edits[i]
@@ -1512,17 +1539,21 @@ export class ToolsService implements IToolsService {
 						} });
 						// Morph Repo Storage: sync to cloud if enabled
 						this._syncToMorphRepoStorage(uri, 'Edit file: ' + path.basename(uri.fsPath));
-						// collect lint errors asynchronously for this file
-						const lintResult = await Promise.resolve().then(async () => {
-							await timeout(2000)
-							const { lintErrors } = this._getLintErrors(uri)
-							return lintErrors
-						})
-						results.push({ uri: uri.fsPath, lintErrors: lintResult })
+						applied.push(uri)
+						results.push({ uri: uri.fsPath, lintErrors: null })
 					} catch (e: any) {
 						results.push({ uri: uri.fsPath, lintErrors: null, error: e?.message || String(e) })
 					}
 				}
+
+				// Collect lint errors for all applied files in parallel (bounded wait)
+				// instead of serially, so 3 edits don't pay 3× the lint-wait latency.
+				await Promise.all(applied.map(async (uri) => {
+					await this._waitForMarkerChange(uri, 2000)
+					const { lintErrors } = this._getLintErrors(uri)
+					const r = results.find(r => r.uri === uri.fsPath)
+					if (r) r.lintErrors = lintErrors
+				}))
 
 				return { result: Promise.resolve({ results }) }
 			},
@@ -1561,8 +1592,10 @@ export class ToolsService implements IToolsService {
 					if (!targetTerminalId) {
 						targetTerminalId = await this._terminalToolService.createPersistentTerminal({ cwd });
 					}
-					// Compute timeout: LLM-provided (seconds -> ms) or default MAX_TERMINAL_BG_COMMAND_TIME
-					const timeoutMs = typeof timeout === 'number' ? timeout * 1000 : MAX_TERMINAL_BG_COMMAND_TIME * 1000;
+					// Compute timeout: LLM-provided (seconds -> ms) or default MAX_TERMINAL_BG_COMMAND_TIME.
+					// Clamp to MAX_TERMINAL_TIMEOUT_MS so a runaway model request can't hold a
+					// tool call open for hours/days.
+					const timeoutMs = typeof timeout === 'number' ? Math.min(timeout * 1000, MAX_TERMINAL_TIMEOUT_MS) : MAX_TERMINAL_BG_COMMAND_TIME * 1000;
 					// Run as persistent command
 					const { resPromise, interrupt } = await this._terminalToolService.runCommand(command, { type: 'persistent', persistentTerminalId: targetTerminalId, onData: opts?.onData, timeoutMs });
 					const result = await resPromise;
@@ -1571,8 +1604,10 @@ export class ToolsService implements IToolsService {
 				} else {
 					// 2. Default Mode (Temporary / Foreground)
 					const tempId = generateUuid();
-					// Compute timeout: LLM-provided (seconds -> ms) or default MAX_TERMINAL_INACTIVE_TIME
-					const timeoutMs = typeof timeout === 'number' ? timeout * 1000 : MAX_TERMINAL_INACTIVE_TIME * 1000;
+					// Compute timeout: LLM-provided (seconds -> ms) or default MAX_TERMINAL_INACTIVE_TIME.
+					// Clamp to MAX_TERMINAL_TIMEOUT_MS so a runaway model request can't hold a
+					// tool call open for hours/days.
+					const timeoutMs = typeof timeout === 'number' ? Math.min(timeout * 1000, MAX_TERMINAL_TIMEOUT_MS) : MAX_TERMINAL_INACTIVE_TIME * 1000;
 					const { resPromise, interrupt } = await this._terminalToolService.runCommand(command, { type: 'temporary', cwd, terminalId: tempId, onData: opts?.onData, timeoutMs });
 					const result = await resPromise;
 					return { result, interruptTool: interrupt };
@@ -1590,21 +1625,21 @@ export class ToolsService implements IToolsService {
 
 			// --- Planning tools ---
 
-			create_todo: async ({ goal, tasks }) => {
-				const plan = this._planningService.createPlan(goal, tasks);
+			create_todo: async ({ goal, tasks }, opts) => {
+				const plan = this._planningService.createPlan(goal, tasks, opts?.threadId);
 				const summary = this._planningService.formatPlanStatus(plan);
 				return { result: { planId: plan.id, summary } };
 			},
 
-			update_todo: async ({ taskId, status, notes }) => {
-				const task = this._planningService.updateTaskStatus(taskId, status as PlanTaskStatus, notes ?? undefined);
-				const plan = this._planningService.getPlanStatus();
+			update_todo: async ({ taskId, status, notes }, opts) => {
+				const task = this._planningService.updateTaskStatus(taskId, status as PlanTaskStatus, notes ?? undefined, opts?.threadId);
+				const plan = this._planningService.getPlanStatus(opts?.threadId);
 				const summary = plan ? this._planningService.formatPlanStatus(plan) : 'No active plan';
 				return { result: { taskId: task.id, newStatus: task.status, summary } };
 			},
 
-			get_todos: async () => {
-				const plan = this._planningService.getPlanStatus();
+			get_todos: async (_params, opts) => {
+				const plan = this._planningService.getPlanStatus(opts?.threadId);
 				if (!plan) {
 					return { result: { planExists: false, summary: null } };
 				}
@@ -1612,8 +1647,8 @@ export class ToolsService implements IToolsService {
 				return { result: { planExists: true, summary } };
 			},
 
-			add_todos: async ({ tasks }) => {
-				const plan = this._planningService.addTasksToPlan(tasks);
+			add_todos: async ({ tasks }, opts) => {
+				const plan = this._planningService.addTasksToPlan(tasks, opts?.threadId);
 				const summary = this._planningService.formatPlanStatus(plan);
 				return { result: { summary } };
 			},
@@ -1732,8 +1767,8 @@ export class ToolsService implements IToolsService {
 
 			// --- Implementation Planning tools ---
 
-			create_implementation_plan: async ({ goal, steps }) => {
-				const plan = this._implementationPlanningService.createImplementationPlan(goal, steps);
+			create_implementation_plan: async ({ goal, steps }, opts) => {
+				const plan = this._implementationPlanningService.createImplementationPlan(goal, steps, opts?.threadId);
 				const summary = this.formatImplementationPlanSummary(plan);
 
 				// Open in React tab
@@ -1745,8 +1780,8 @@ export class ToolsService implements IToolsService {
 				return { result: { planId: plan.id, summary } };
 			},
 
-			preview_implementation_plan: async () => {
-				const plan = this._implementationPlanningService.getCurrentPlan();
+			preview_implementation_plan: async (_p, opts) => {
+				const plan = this._implementationPlanningService.getCurrentPlan(opts?.threadId);
 				if (!plan) {
 					return { result: { planId: '', goal: '', steps: [], summary: 'No active implementation plan. Create one using create_implementation_plan.' } };
 				}
@@ -1761,8 +1796,9 @@ export class ToolsService implements IToolsService {
 				return { result: { planId: plan.id, goal: plan.goal, steps: plan.steps, summary } };
 			},
 
-			execute_implementation_plan: async ({ step_id }) => {
-				const plan = this._implementationPlanningService.getCurrentPlan();
+			execute_implementation_plan: async ({ step_id }, opts) => {
+				const tid = opts?.threadId
+				const plan = this._implementationPlanningService.getCurrentPlan(tid);
 				if (!plan) {
 					throw new Error('No active implementation plan. Create one using create_implementation_plan.');
 				}
@@ -1779,39 +1815,39 @@ export class ToolsService implements IToolsService {
 					}
 
 					// Mark step as in progress
-					this._implementationPlanningService.updateStepStatus(step_id, 'in_progress');
-					const updatedPlan = this._implementationPlanningService.getCurrentPlan()!;
+					this._implementationPlanningService.updateStepStatus(step_id, 'in_progress', undefined, tid);
+					const updatedPlan = this._implementationPlanningService.getCurrentPlan(tid)!;
 					const summary = this.formatImplementationPlanSummary(updatedPlan);
 
 					return { result: { stepId: step_id, status: 'in_progress', summary } };
 				} else {
 					// Execute next available step
-					const nextStep = this._implementationPlanningService.getNextExecutableStep();
+					const nextStep = this._implementationPlanningService.getNextExecutableStep(tid);
 					if (!nextStep) {
 						throw new Error('No executable steps found. All steps are either complete, in progress, or have unmet dependencies.');
 					}
 
 					// Mark step as in progress
-					this._implementationPlanningService.updateStepStatus(nextStep.id, 'in_progress');
-					const updatedPlan = this._implementationPlanningService.getCurrentPlan()!;
+					this._implementationPlanningService.updateStepStatus(nextStep.id, 'in_progress', undefined, tid);
+					const updatedPlan = this._implementationPlanningService.getCurrentPlan(tid)!;
 					const summary = this.formatImplementationPlanSummary(updatedPlan);
 
 					return { result: { stepId: nextStep.id, status: 'in_progress', summary } };
 				}
 			},
 
-			update_implementation_step: async ({ step_id, status, notes }) => {
-				const step = this._implementationPlanningService.updateStepStatus(step_id, status as ImplStepStatus, notes ?? undefined);
+			update_implementation_step: async ({ step_id, status, notes }, opts) => {
+				const step = this._implementationPlanningService.updateStepStatus(step_id, status as ImplStepStatus, notes ?? undefined, opts?.threadId);
 				if (!step) {
 					throw new Error(`Failed to update step with ID "${step_id}"`);
 				}
-				const plan = this._implementationPlanningService.getCurrentPlan();
+				const plan = this._implementationPlanningService.getCurrentPlan(opts?.threadId);
 				const summary = plan ? this.formatImplementationPlanSummary(plan) : 'No active plan';
 				return { result: { stepId: step.id, newStatus: step.status, summary } };
 			},
 
-			get_implementation_status: async () => {
-				const plan = this._implementationPlanningService.getCurrentPlan();
+			get_implementation_status: async (_p, opts) => {
+				const plan = this._implementationPlanningService.getCurrentPlan(opts?.threadId);
 				if (!plan) {
 					return { result: { planExists: false, summary: null } };
 				}
@@ -2083,8 +2119,8 @@ For each module include:
 			load_skill: async ({ skill_name }, opts) => {
 				const userHome = await this._pathService.userHome();
 				const skillsDir = URI.joinPath(userHome, '.a-coder', 'skills');
-				const skillFolder = URI.joinPath(skillsDir, skill_name);
-				const skillPath = URI.joinPath(skillFolder, 'SKILL.md');
+				const skillFolder = this._resolveWithin(skillsDir, [skill_name]);
+				const skillPath = this._resolveWithin(skillFolder, ['SKILL.md']);
 
 				opts?.onData?.(`Loading skill: ${skill_name}...`);
 
@@ -2277,7 +2313,12 @@ For each module include:
 			execute_skill_script: async ({ skill_name, script_name, args, timeout_ms }, opts) => {
 				const userHome = await this._pathService.userHome();
 				const skillsDir = URI.joinPath(userHome, '.a-coder', 'skills');
-				const scriptPath = URI.joinPath(skillsDir, skill_name, 'scripts', script_name);
+				// Guard against path traversal: skill_name must stay within skillsDir,
+				// and script_name must stay within the skill's scripts/ folder.
+				const skillFolder = this._resolveWithin(skillsDir, [skill_name]);
+				const scriptsDir = this._resolveWithin(skillFolder, ['scripts']);
+				const scriptPath = this._resolveWithin(scriptsDir, [script_name]);
+				const cwdPath = skillFolder.fsPath;
 
 				opts?.onData?.(`Executing script: ${skill_name}/${script_name}...`);
 
@@ -2321,7 +2362,6 @@ For each module include:
 						.join(' ') : '';
 
 					const fullCommand = envVars ? `${envVars} ${command} ${scriptArgs.join(' ')}` : `${command} ${scriptArgs.join(' ')}`;
-					const cwdPath = URI.joinPath(skillsDir, skill_name).fsPath;
 
 					// Execute using terminal service
 					const tempId = `skill-script-${Date.now()}`;
@@ -2371,7 +2411,11 @@ For each module include:
 			load_skill_reference: async ({ skill_name, reference_name }, opts) => {
 				const userHome = await this._pathService.userHome();
 				const skillsDir = URI.joinPath(userHome, '.a-coder', 'skills');
-				const refPath = URI.joinPath(skillsDir, skill_name, 'references', reference_name);
+				// Guard against path traversal: reference_name must stay within the
+				// skill's references/ folder.
+				const skillFolder = this._resolveWithin(skillsDir, [skill_name]);
+				const refsDir = this._resolveWithin(skillFolder, ['references']);
+				const refPath = this._resolveWithin(refsDir, [reference_name]);
 
 				opts?.onData?.(`Loading reference: ${skill_name}/${reference_name}...`);
 
@@ -2400,7 +2444,11 @@ For each module include:
 			get_skill_asset: async ({ skill_name, asset_name, interpolate, variables }, opts) => {
 				const userHome = await this._pathService.userHome();
 				const skillsDir = URI.joinPath(userHome, '.a-coder', 'skills');
-				const assetPath = URI.joinPath(skillsDir, skill_name, 'assets', asset_name);
+				// Guard against path traversal: asset_name must stay within the
+				// skill's assets/ folder.
+				const skillFolder = this._resolveWithin(skillsDir, [skill_name]);
+				const assetsDir = this._resolveWithin(skillFolder, ['assets']);
+				const assetPath = this._resolveWithin(assetsDir, [asset_name]);
 
 				opts?.onData?.(`Getting asset: ${skill_name}/${asset_name}...`);
 
@@ -2469,16 +2517,31 @@ For each module include:
 								throw new Error('Invalid GitHub URL format. Use: user/repo or user/repo/tree/branch');
 							}
 							const [user, repo, , ref] = parts;
+							// Sanitize the components we interpolate into a shell command so a
+							// crafted URL can't inject metacharacters (e.g. "main;rm -rf ...").
+							if (!/^[\w.-]+$/.test(user) || !/^[\w.-]+$/.test(repo)) {
+								throw new Error('Invalid GitHub URL: user and repo must be alphanumeric, dot, dash, or underscore only.');
+							}
 							skillName = repo.replace(/-skill$/, '').replace(/\.git$/, '');
 
 							// Clone or download from GitHub
 							const cloneUrl = `https://github.com/${user}/${repo}.git`;
-							const cloneBranch = ref || branch || 'main';
+							const rawBranch = ref || branch || 'main';
+							// Git ref names are restricted to a safe charset and must not contain
+							// relative segments, so they cannot break out of the --branch argument.
+							if (!/^[\w./-]+$/.test(rawBranch) || rawBranch.includes('..')) {
+								throw new Error('Invalid branch/ref: must only contain letters, digits, dot, slash, dash, or underscore.');
+							}
+							const cloneBranch = rawBranch;
+
+							// Bound the destination to the skills dir (skillName is derived from repo,
+							// validated above, but this is defense in depth).
+							const destUri = this._resolveWithin(skillsDir, [skillName]);
 
 							// Use terminal service to git clone
 							const tempId = `install-skill-${Date.now()}`;
 							const { resPromise: clonePromise } = await this._terminalToolService.runCommand(
-								`git clone --depth 1 --branch ${cloneBranch} ${cloneUrl} "${URI.joinPath(skillsDir, skillName).fsPath}"`,
+								`git clone --depth 1 --branch ${cloneBranch} ${cloneUrl} "${destUri.fsPath}"`,
 								{ type: 'temporary', cwd: skillsDir.fsPath, terminalId: tempId, onData: opts?.onData }
 							);
 
@@ -2487,17 +2550,8 @@ For each module include:
 								throw new Error(`Failed to clone repository: ${cloneResult.result}`);
 							}
 
-							skillPath = URI.joinPath(skillsDir, skillName);
+							skillPath = destUri;
 							break;
-						}
-						case 'url': {
-							// Download and extract from URL
-							const downloadUrl = url || '';
-							const filename = downloadUrl.split('/').pop() || 'skill';
-							skillName = filename.replace(/\.(zip|tar\.gz|tgz)$/, '').replace(/-skill$/, '');
-
-							// Download and extract (simplified - would need proper implementation)
-							throw new Error('URL installation not yet implemented. Use GitHub source instead.');
 						}
 						case 'local': {
 							const localPath = path || '';
@@ -2505,18 +2559,19 @@ For each module include:
 								throw new Error('Local path is required for local source.');
 							}
 
-							// Read SKILL.md to get skill name
-							const localSkillMd = URI.parse(localPath);
+							// Read SKILL.md to get skill name. Use URI.file (not URI.parse) so a
+							// bare filesystem path resolves to a proper file URI.
+							const localSkillMd = URI.file(localPath);
 							try {
 								const skillMdContent = await this._fileService.readFile(URI.joinPath(localSkillMd, 'SKILL.md'));
 								const parsed = parseSkillFile(skillMdContent.value.toString());
-								skillName = parsed.metadata.name || URI.parse(localPath).path.split('/').pop() || 'unknown-skill';
+								skillName = parsed.metadata.name || URI.file(localPath).path.split('/').pop() || 'unknown-skill';
 							} catch {
-								skillName = URI.parse(localPath).path.split('/').pop() || 'unknown-skill';
+								skillName = URI.file(localPath).path.split('/').pop() || 'unknown-skill';
 							}
 
-							// Copy directory recursively
-							const destPath = URI.joinPath(skillsDir, skillName);
+							// Copy directory recursively. Bound the destination to the skills dir.
+							const destPath = this._resolveWithin(skillsDir, [skillName]);
 							await this._fileService.copy(localSkillMd, destPath, true);
 
 							skillPath = destPath;
@@ -2565,7 +2620,9 @@ For each module include:
 			uninstall_skill: async ({ skill_name }, opts) => {
 				const userHome = await this._pathService.userHome();
 				const skillsDir = URI.joinPath(userHome, '.a-coder', 'skills');
-				const skillPath = URI.joinPath(skillsDir, skill_name);
+				// Guard against path traversal: a malicious skill_name must not let us
+				// delete outside the skills directory.
+				const skillPath = this._resolveWithin(skillsDir, [skill_name]);
 
 				opts?.onData?.(`Uninstalling skill: ${skill_name}...`);
 
@@ -2597,8 +2654,8 @@ For each module include:
 			run_skill_benchmark: async ({ skill_name, benchmark_name }, opts) => {
 				const userHome = await this._pathService.userHome();
 				const skillsDir = URI.joinPath(userHome, '.a-coder', 'skills');
-				const skillPath = URI.joinPath(skillsDir, skill_name);
-				const benchmarksDir = URI.joinPath(skillPath, 'benchmarks');
+				const skillPath = this._resolveWithin(skillsDir, [skill_name]);
+				const benchmarksDir = this._resolveWithin(skillPath, ['benchmarks']);
 
 				opts?.onData?.(`Running benchmark for skill: ${skill_name}...`);
 
@@ -2743,7 +2800,8 @@ For each module include:
 
 			get_skill_metrics: async ({ skill_name, timeframe }) => {
 				const userHome = await this._pathService.userHome();
-				const metricsDir = URI.joinPath(userHome, '.a-coder', 'metrics', skill_name);
+				const metricsBase = URI.joinPath(userHome, '.a-coder', 'metrics');
+				const metricsDir = this._resolveWithin(metricsBase, [skill_name]);
 
 				// Default metrics structure
 				const defaultMetrics = {
@@ -2784,8 +2842,8 @@ For each module include:
 			list_skill_benchmarks: async ({ skill_name }) => {
 				const userHome = await this._pathService.userHome();
 				const skillsDir = URI.joinPath(userHome, '.a-coder', 'skills');
-				const skillPath = URI.joinPath(skillsDir, skill_name);
-				const benchmarksDir = URI.joinPath(skillPath, 'benchmarks');
+				const skillPath = this._resolveWithin(skillsDir, [skill_name]);
+				const benchmarksDir = this._resolveWithin(skillPath, ['benchmarks']);
 
 				const benchmarks: Array<{ name: string; description: string; type: 'test' | 'evaluation' | 'benchmark' }> = [];
 
@@ -3119,8 +3177,8 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 				return result_
 			},
 			run_command: (params, result) => {
-				const { resolveReason, result: result_, terminalId } = result as any // terminalId added in callTool
-				
+				const { resolveReason, result: result_, terminalId } = result
+
 				let prefix = '';
 				if (terminalId) {
 					prefix = `(Ran in persistent terminal "${terminalId}")\n`;
@@ -3139,7 +3197,7 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 					} else {
 						// Temporary timeout
 						const timeoutSeconds = params.timeout ?? MAX_TERMINAL_INACTIVE_TIME;
-						return `${result_}\n(Terminal command ran, but was automatically killed by Void after ${timeoutSeconds}s of inactivity and did not finish successfully. To run longer tasks, use run_command with is_background=true.)`
+						return `${result_}\n(Terminal command timed out and was stopped after ${timeoutSeconds}s without finishing. To run longer tasks, use run_command with is_background=true.)`
 					}
 				}
 				throw new Error(`Unexpected internal error: Terminal command did not resolve with a valid reason.`)
@@ -3622,31 +3680,125 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 	}
 
 	/**
+	 * Resolve `parts` relative to `baseUri`, but only if the result stays inside
+	 * `baseUri`. Throws on path traversal (any `..` segment that escapes the base).
+	 * This is the guard that prevents LLM-supplied skill/reference/asset/script
+	 * names from reading or executing files outside their allowed directory.
+	 */
+	private _resolveWithin(baseUri: URI, parts: string[]): URI {
+		const target = URI.joinPath(baseUri, ...parts)
+		const rel = path.relative(baseUri.fsPath, target.fsPath)
+		if (rel.startsWith('..') || path.isAbsolute(rel)) {
+			throw new Error(`Path escapes the allowed directory: ${parts.filter(Boolean).join('/')}`)
+		}
+		return target
+	}
+
+	/**
+	 * Refuse file operations on paths outside the open workspace folders. This
+	 * bounds create/delete/rewrite to the workspace so a model decision can't
+	 * touch arbitrary locations on disk (e.g. ~/.ssh, the repo's .git).
+	 */
+	private _assertInWorkspace(uri: URI): void {
+		const folders = this._workspaceContextService.getWorkspace().folders
+		const inside = folders.some(f => {
+			const rel = path.relative(f.uri.fsPath, uri.fsPath)
+			return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))
+		})
+		if (!inside) {
+			throw new Error(`Refused: path is outside the workspace (${uri.fsPath}). File tools may only create, modify, or delete files inside an open workspace folder.`)
+		}
+	}
+
+	/**
+	 * Wait until markers for `uri` change, or `maxWaitMs` elapses — whichever is
+	 * first. More responsive than a fixed sleep: resolves the moment the marker
+	 * service reports an update for this file, but is still bounded so we don't
+	 * hang when no language service is producing markers.
+	 *
+	 * NOTE: markerService only reports markers for files that have been opened
+	 * (or just edited in an open model). For a file not open in an editor this
+	 * may resolve with no markers at all; that is inherent to the marker service.
+	 */
+	private _waitForMarkerChange(uri: URI, maxWaitMs: number): Promise<void> {
+		return new Promise<void>((resolve) => {
+			let done = false
+			const finish = () => {
+				if (done) return
+				done = true
+				clearTimeout(timer)
+				disposable.dispose()
+				resolve()
+			}
+			const uriStr = uri.toString()
+			const disposable = this._markerService.onMarkerChanged(uris => {
+				if (uris.some(u => u.toString() === uriStr)) finish()
+			})
+			const timer = setTimeout(finish, maxWaitMs)
+		})
+	}
+
+	/**
+	 * Tools the sandboxed `run_code` execution is permitted to call back into via
+	 * IPC. Intentionally read-only: `run_code` executes arbitrary LLM-supplied
+	 * code, so sandbox code must NOT be able to invoke mutating tools (edits,
+	 * terminal, delete, repo writes, skill install, image generation, …) with no
+	 * approval gate. This is defense-in-depth — `run_code` is not currently exposed
+	 * in the chat tool list, but the IPC callback channel exists, so we restrict it
+	 * to a safe read-only allowlist regardless. Any tool not listed here is refused.
+	 */
+	private static readonly SANDBOX_ALLOWED_TOOLS: ReadonlySet<BuiltinToolName> = new Set<BuiltinToolName>([
+		'read_file',
+		'outline_file',
+		'ls_dir',
+		'get_dir_tree',
+		'search_pathnames_only',
+		'search_for_files',
+		'search_in_file',
+		'read_lint_errors',
+		'fast_context',
+		'codebase_search',
+	])
+
+	/**
 	 * Handle tool call request from sandbox via IPC
 	 */
 	private async handleToolCallFromSandbox(
 		channel: any,
-		request: { requestId: string; toolName: string; params: any }
+		request: { requestId: string; toolName: string; params: unknown }
 	): Promise<void> {
-		const { requestId, toolName, params } = request;
+		const { requestId, toolName, params } = request
+
+		// Refuse anything outside the read-only allowlist before dispatching.
+		if (!ToolsService.SANDBOX_ALLOWED_TOOLS.has(toolName as BuiltinToolName)) {
+			await channel.call('respondToToolCall', {
+				requestId,
+				success: false,
+				error: `Sandboxed code is not permitted to call tool '${toolName}'. Only read-only tools are allowed: ${[...ToolsService.SANDBOX_ALLOWED_TOOLS].join(', ')}.`
+			})
+			return
+		}
 
 		try {
-			// Execute the actual tool
-			const toolResult = await (this.callTool as any)[toolName](params);
+			// Execute the actual tool. `toolName` is allowlisted above, so the
+			// indexed-access is safe; the cast is to the concrete param type rather
+			// than `any`.
+			const toolFn = this.callTool[toolName as BuiltinToolName] as (p: typeof params) => Promise<{ result: unknown }>
+			const toolResult = await toolFn(params)
 
 			// Send success response back to electron-main
 			await channel.call('respondToToolCall', {
 				requestId,
 				success: true,
 				result: toolResult
-			});
+			})
 		} catch (error) {
 			// Send error response back to electron-main
 			await channel.call('respondToToolCall', {
 				requestId,
 				success: false,
 				error: error instanceof Error ? error.message : String(error)
-			});
+			})
 		}
 	}
 
@@ -3661,7 +3813,21 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 		return this._implementationPlanningService;
 	}
 
-	private async _syncToMorphRepoStorage(uri: URI, message: string): Promise<void> {
+	private _morphSyncChain: Promise<void> = Promise.resolve();
+
+	/**
+	 * Queue a Morph Repo Storage sync. Syncs are serialized (chained) so that a
+	 * burst of edits doesn't kick off many concurrent repoInit/add/commit/push
+	 * sequences that race with each other. Failures are surfaced to the user via
+	 * a notification instead of being silently swallowed.
+	 *
+	 * Fire-and-forget by design: callers do not await this.
+	 */
+	private _syncToMorphRepoStorage(uri: URI, message: string): void {
+		this._morphSyncChain = this._morphSyncChain.then(() => this._doMorphSync(uri, message));
+	}
+
+	private async _doMorphSync(uri: URI, message: string): Promise<void> {
 		const gs = this._voidSettingsService.state.globalSettings;
 		if (!gs.enableMorphRepoStorage || !gs.morphApiKey) return;
 
@@ -3698,6 +3864,7 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 			console.log(`[ToolsService] Successfully synced ${relativePath} to Morph Repo Storage`);
 		} catch (error) {
 			console.error('[ToolsService] Failed to sync to Morph Repo Storage:', error);
+			this._notificationService.error(`Failed to sync ${path.basename(uri.fsPath)} to Morph Repo Storage: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
 }

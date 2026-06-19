@@ -16,6 +16,14 @@ import * as path from 'path';
 export class MorphChannel implements IServerChannel {
 	private morphClients: Map<string, MorphClient> = new Map();
 
+	/**
+	 * In-flight abortable Morph calls, keyed by the renderer-supplied `_requestId`.
+	 * Lets the renderer cancel a long-running fastContext/codebaseSearch via the
+	 * `abortMorph` command. A CancellationToken can't cross IPC, so the renderer
+	 * sends a requestId instead and we map it to an AbortController here.
+	 */
+	private inFlightAbort = new Map<string, AbortController>();
+
 	private getMorphClient(apiKey: string): MorphClient {
 		if (!this.morphClients.has(apiKey)) {
 			this.morphClients.set(apiKey, new MorphClient({ apiKey }));
@@ -25,16 +33,35 @@ export class MorphChannel implements IServerChannel {
 
 	async call(_: unknown, command: string, arg?: any): Promise<any> {
 		switch (command) {
+			case 'abortMorph': {
+				const { requestId } = arg as { requestId: string };
+				const ctrl = this.inFlightAbort.get(requestId);
+				if (ctrl) {
+					ctrl.abort();
+					this.inFlightAbort.delete(requestId);
+				}
+				return true;
+			}
+
 			case 'fastContext': {
-				const { query, repoRoot, apiKey } = arg as {
+				const { query, repoRoot, apiKey, _requestId } = arg as {
 					query: string;
 					repoRoot: string;
 					apiKey: string;
+					_requestId?: string;
 				};
 
 				console.log('[MorphChannel] Starting Fast Context (warpGrep)...');
 				console.log('[MorphChannel] Query:', query);
 				console.log('[MorphChannel] Repo root:', repoRoot);
+
+				// Track this call so the renderer can abort it via `abortMorph`.
+				// The SDK may or may not honour the AbortSignal; either way the
+				// renderer stops blocking once it cancels, and we clean up here.
+				const ctrl = new AbortController();
+				if (_requestId) {
+					this.inFlightAbort.set(_requestId, ctrl);
+				}
 
 				try {
 					// Get Morph client (cast to any to access experimental APIs not in typings)
@@ -45,11 +72,13 @@ export class MorphChannel implements IServerChannel {
 						throw new Error('Morph SDK does not support warpGrep (fast context). Please update @morphllm/morphsdk or disable fast_context.');
 					}
 
-					// Execute warpGrep
+					// Execute warpGrep. Pass the abort signal best-effort; SDKs that
+					// ignore unknown options are unaffected.
 					console.log('[MorphChannel] Calling Morph warpGrep SDK...');
 					const result = await morph.warpGrep.execute({
 						query,
-						repoRoot
+						repoRoot,
+						signal: ctrl.signal,
 					});
 
 					if (!result.success) {
@@ -63,11 +92,15 @@ export class MorphChannel implements IServerChannel {
 				} catch (error) {
 					console.error('[MorphChannel] Error in fastContext:', error);
 					throw error;
+				} finally {
+					if (_requestId) {
+						this.inFlightAbort.delete(_requestId);
+					}
 				}
 			}
 
 			case 'codebaseSearch': {
-				const { apiKey, query, repoId, branch, commitHash, target_directories, limit } = arg as {
+				const { apiKey, query, repoId, branch, commitHash, target_directories, limit, _requestId } = arg as {
 					apiKey: string;
 					query: string;
 					repoId: string;
@@ -75,6 +108,7 @@ export class MorphChannel implements IServerChannel {
 					commitHash?: string;
 					target_directories: string[];
 					limit: number;
+					_requestId?: string;
 				};
 
 				const morph = this.getMorphClient(apiKey) as any;
@@ -82,15 +116,27 @@ export class MorphChannel implements IServerChannel {
 					throw new Error('Morph SDK does not support codebaseSearch. Please update @morphllm/morphsdk to a git-enabled version.');
 				}
 
-				const results = await morph.codebaseSearch.search({
-					query,
-					repoId,
-					branch,
-					commitHash,
-					target_directories,
-					limit,
-				});
-				return results;
+				const ctrl = new AbortController();
+				if (_requestId) {
+					this.inFlightAbort.set(_requestId, ctrl);
+				}
+
+				try {
+					const results = await morph.codebaseSearch.search({
+						query,
+						repoId,
+						branch,
+						commitHash,
+						target_directories,
+						limit,
+						signal: ctrl.signal,
+					});
+					return results;
+				} finally {
+					if (_requestId) {
+						this.inFlightAbort.delete(_requestId);
+					}
+				}
 			}
 
 			case 'repoInit': {

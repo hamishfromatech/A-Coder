@@ -75,6 +75,14 @@ import './voidSCMService.js'
 // register standalone session service for multi-workspace agent manager
 import './standaloneSessionService.js'
 
+// register cross-window workspace registry client (per-window registration + heartbeats)
+import './workspaceConnectionService.js'
+import './threadSummaryService.js'
+
+// register cross-window remote-control (Agent Manager sends, workspace windows receive)
+import './workspaceRemoteControlService.js'
+import './workspaceCommandDispatcher.js'
+
 // register Agent Manager
 import './agentManager.contribution.js'
 

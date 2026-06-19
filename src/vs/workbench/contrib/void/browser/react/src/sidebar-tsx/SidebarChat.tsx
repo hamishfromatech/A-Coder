@@ -30,7 +30,6 @@ import { AUTO_CONTINUE_CHAR_THRESHOLD } from '../../../chatThreadService.js';
 import { builtinToolNames, isABuiltinToolName, MAX_FILE_CHARS_PAGE } from '../../../../common/prompt/prompts.js';
 import { RawToolCallObj } from '../../../../common/sendLLMMessageTypes.js';
 import ErrorBoundary from './ErrorBoundary.js';
-import { ToolApprovalTypeSwitch } from '../void-settings-tsx/Settings.js';
 
 import { persistentTerminalNameOfId } from '../../../terminalToolService.js';
 import { TypingIndicator, ToolLoadingIndicator, ReActPhaseIndicator, SmoothHeight } from './ChatAnimations.js';
@@ -1512,8 +1511,6 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 
 	}
 
-	const EditSymbol = mode === 'display' ? Pencil : X
-
 
 	// Context menu state
 	const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
@@ -1664,8 +1661,19 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 		>
 			<div className="flex flex-col items-end gap-1.5 flex-1 min-w-0">
 				{mode === 'edit' ? (
-					// Edit mode: use existing chat area
+					// Edit mode: use existing chat area, with a visible cancel affordance
+					// (Escape also cancels via onKeyDown, but a button is discoverable)
 					<div className="w-full">
+						<div className="flex items-center justify-between mb-1.5 px-0.5">
+							<span className="text-[10px] font-bold uppercase tracking-wider text-void-fg-3">Editing message</span>
+							<button
+								onClick={onCloseEdit}
+								className="user-message-action-btn"
+								title="Cancel edit (Esc)"
+							>
+								<X size={14} />
+							</button>
+						</div>
 						{chatbubbleContents}
 					</div>
 				) : (
@@ -1673,7 +1681,7 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 					<div className="user-message-card group w-full">
 						{/* Header row - always visible */}
 						<div
-							className="user-message-header"
+							className={`user-message-header${shouldCollapse ? ' user-message-header-collapsible' : ''}`}
 							onClick={() => {
 								if (shouldCollapse) {
 									setIsExpanded(v => !v)
@@ -1683,12 +1691,6 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 							tabIndex={shouldCollapse ? 0 : -1}
 						>
 							<div className="user-message-header-left">
-								<div className="user-message-avatar">
-									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-										<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-										<circle cx="12" cy="7" r="4" />
-									</svg>
-								</div>
 								<span className="user-message-label">You</span>
 								{timeAgo && (
 									<span
@@ -1939,7 +1941,6 @@ const ToolRequestAcceptRejectButtons = ({ toolName, toolId }: { toolName: ToolNa
 	const chatThreadsService = accessor.get('IChatThreadService')
 	const metricsService = accessor.get('IMetricsService')
 	const voidSettingsService = accessor.get('IVoidSettingsService')
-	const voidSettingsState = useSettingsState()
 
 	const onAccept = useCallback(() => {
 		try { // this doesn't need to be wrapped in try/catch anymore
@@ -2025,15 +2026,42 @@ const ToolRequestAcceptRejectButtons = ({ toolName, toolId }: { toolName: ToolNa
 	)
 
 	const approvalType = isABuiltinToolName(toolName) ? approvalTypeOfBuiltinToolName[toolName] : 'MCP tools'
-	const approvalToggle = approvalType ? <div key={approvalType} className="flex items-center ml-2 gap-x-1">
-		<ToolApprovalTypeSwitch size='xs' approvalType={approvalType} desc={`Auto-approve ${approvalType}`} />
-	</div> : null
 
-	return <div className="flex gap-2 mx-0.5 items-center">
+	// Mirror of the terminal "Always allow" affordance: persist an autoApprove
+	// override for this approval type AND immediately run the tool, so future
+	// calls of the same type skip the prompt. Uses the same setGlobalSetting path
+	// as ToolApprovalTypeSwitch / the settings page (no new persistence path).
+	const onAlwaysAllow = useCallback(() => {
+		try {
+			if (approvalType) {
+				voidSettingsService.setGlobalSetting('autoApprove', {
+					...voidSettingsService.state.globalSettings.autoApprove,
+					[approvalType]: true
+				})
+			}
+			const threadId = chatThreadsService.state.currentThreadId
+			chatThreadsService.approveLatestToolRequest(threadId, toolId)
+			metricsService.capture('Tool Request Accepted', { tool: toolName, alwaysAllow: true })
+		} catch (e) { console.error('Error while always-allowing tool:', e) }
+	}, [approvalType, voidSettingsService, chatThreadsService, metricsService, toolId, toolName])
+
+	const alwaysAllowButton = approvalType ? (
+		<button
+			onClick={onAlwaysAllow}
+			className="flex items-center gap-1.5 px-3 py-1.5 bg-void-bg-3 text-void-fg-1 hover:bg-void-bg-4 rounded-xl shadow-sm text-xs font-bold uppercase tracking-wider border border-void-border-2 transition-all duration-200 active:scale-95"
+			data-tooltip-id='void-tooltip'
+			data-tooltip-place='top'
+			data-tooltip-content={`Run now and auto-approve ${approvalType} in future`}
+		>
+			<Check size={12} strokeWidth={3} />Always allow {approvalType}
+		</button>
+	) : null
+
+	return <div className="flex gap-2 mx-0.5 items-center flex-wrap">
 		{approveButton}
 		{skipButton}
 		{cancelButton}
-		{approvalToggle}
+		{alwaysAllowButton}
 	</div>
 }
 
@@ -2321,9 +2349,15 @@ export const ChatBubble = React.memo((props: ChatBubbleProps) => {
 			prevMsg.reasoning === nextMsg.reasoning;
 	}
 
-	// For user messages and other types, compare content
+	// For user messages, compare content AND the editable state. The edit pencil
+	// toggles state.isBeingEdited (and edits mutate state.stagingSelections) without
+	// changing content, so comparing content alone made React bail out and the
+	// pencil appeared to do nothing. state is replaced with a fresh object on every
+	// setCurrentMessageState, so reference equality on stagingSelections is safe.
 	if (prevMsg.role === 'user' && nextMsg.role === 'user') {
-		return prevMsg.content === nextMsg.content;
+		return prevMsg.content === nextMsg.content &&
+			prevMsg.state.isBeingEdited === nextMsg.state.isBeingEdited &&
+			prevMsg.state.stagingSelections === nextMsg.state.stagingSelections
 	}
 
 	// Default: re-render if message role changed
@@ -3047,19 +3081,35 @@ export const SidebarChat = () => {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [threadId])
 
-		// Notification sound on LLM response complete (natural stop only)
+		// Notification sound: play when the LLM finishes a response with no
+		// pending tool calls — i.e. the turn is truly done ("finished responding
+		// and completed tasks"). We fire on the LLM→idle transition (the decorative
+		// idle set right after each LLM response). The discriminator is "no tool
+		// calls pending": if the response produced tool calls, tools are about to
+		// run and the turn is NOT done, so we stay silent and wait for the final
+		// no-tool response. This is provider-independent — Gemini returns
+		// finishReason 'STOP' even when it emits tool calls, so stopReason alone
+		// can't tell done-from-pending (the old stopReason-only check fired the
+		// chime mid-turn for Anthropic 'tool_use' / Gemini tool calls).
 		const prevIsRunningRef = useRef<IsRunningType | undefined>(undefined)
 		useEffect(() => {
 			const prevIsRunning = prevIsRunningRef.current
 			prevIsRunningRef.current = isRunning
 			const soundSetting = settingsState.globalSettings.notificationSound
-			
-			// Only play sound on natural stop reasons (stop, end_turn, or unknown/missing — many providers don't return finish_reason)
-			// Skip explicit non-natural stops: tool_calls, max_tokens, length, content_filter
-			const nonNaturalStops = ['tool_calls', 'max_tokens', 'length', 'content_filter']
-			const isNaturalStop = !stopReason || !(nonNaturalStops.includes(stopReason))
 
-			if (soundSetting && soundSetting !== 'none' && prevIsRunning && prevIsRunning !== 'idle' && isRunning === 'idle' && isNaturalStop) {
+			// Pending tool calls => tools are about to run, turn is not done.
+			const hasPendingToolCalls = !!(toolCallsSoFar && toolCallsSoFar.length > 0)
+			// Don't chime on abrupt truncation/filter stops (response was cut off,
+			// not a clean finish). Normalize case-insensitively across providers:
+			// OpenAI 'length'/'content_filter', Anthropic 'max_tokens', Gemini
+			// 'MAX_TOKENS'/'SAFETY'.
+			const truncationStops = ['max_tokens', 'length', 'content_filter', 'safety', 'recitation']
+			const isTruncated = !!stopReason && truncationStops.includes(stopReason.toLowerCase())
+
+			if (soundSetting && soundSetting !== 'none'
+				&& prevIsRunning && prevIsRunning !== 'idle' && isRunning === 'idle'
+				&& !hasPendingToolCalls && !isTruncated
+			) {
 				// Play notification sound via SoundService
 				;(async () => {
 					try {
@@ -3070,7 +3120,7 @@ export const SidebarChat = () => {
 					}
 				})()
 			}
-		}, [isRunning, settingsState.globalSettings.notificationSound, stopReason])
+		}, [isRunning, toolCallsSoFar, settingsState.globalSettings.notificationSound, stopReason])
 
 	// Task handlers
 	const handleCreateTask = (description: string) => {

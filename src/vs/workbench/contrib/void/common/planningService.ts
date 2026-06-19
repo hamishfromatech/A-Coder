@@ -33,22 +33,62 @@ export interface Plan {
 }
 
 /**
- * Ephemeral in-memory planning service
- * Stores the current plan for the active conversation
- * State is cleared when the IDE is restarted
+ * Ephemeral in-memory planning service.
+ *
+ * Plans are stored PER THREAD so that switching conversations does not clobber
+ * one thread's plan with another's. The public `onDidChangePlan` event and
+ * `getPlanStatus()` (called with no thread id) reflect the ACTIVE thread, which
+ * is set via `switchToThread` when the user changes conversations. Tool calls
+ * may pass an explicit `threadId` to operate on the thread the agent is
+ * running in, even if it isn't the active one in the UI.
+ *
+ * State is cleared when the IDE is restarted.
  */
 export class PlanningService {
-	private currentPlan: Plan | null = null;
+	private plansByThread = new Map<string, Plan>();
+	private activeThreadId = '__default__';
 	private readonly _onDidChangePlan = new Emitter<Plan | null>();
 	public readonly onDidChangePlan: Event<Plan | null> = this._onDidChangePlan.event;
 
 	/**
-	 * Creates a new plan, replacing any existing plan
+	 * Set the active thread and emit its plan so the UI updates on switch.
 	 */
-	createPlan(goal: string, tasks: Array<{ id: string; description: string; dependencies?: string[] }>): Plan {
+	switchToThread(threadId: string): void {
+		if (this.activeThreadId === threadId) return;
+		this.activeThreadId = threadId;
+		this._onDidChangePlan.fire(this.plansByThread.get(threadId) ?? null);
+	}
+
+	private _tid(threadId?: string): string {
+		return threadId ?? this.activeThreadId;
+	}
+
+	private _planFor(threadId?: string): Plan | null {
+		return this.plansByThread.get(this._tid(threadId)) ?? null;
+	}
+
+	private _setPlan(plan: Plan | null, threadId?: string): void {
+		const tid = this._tid(threadId);
+		if (plan) {
+			this.plansByThread.set(tid, plan);
+		} else {
+			this.plansByThread.delete(tid);
+		}
+	}
+
+	private _fireIfActive(threadId?: string): void {
+		if (this._tid(threadId) === this.activeThreadId) {
+			this._onDidChangePlan.fire(this._planFor(this.activeThreadId));
+		}
+	}
+
+	/**
+	 * Creates a new plan, replacing any existing plan for the thread
+	 */
+	createPlan(goal: string, tasks: Array<{ id: string; description: string; dependencies?: string[] }>, threadId?: string): Plan {
 		const now = new Date();
 
-		this.currentPlan = {
+		const plan: Plan = {
 			id: this.generatePlanId(),
 			goal,
 			tasks: tasks.map(t => ({
@@ -63,21 +103,23 @@ export class PlanningService {
 			updatedAt: now,
 		};
 
-		this._onDidChangePlan.fire(this.currentPlan);
-		return this.currentPlan;
+		this._setPlan(plan, threadId);
+		this._fireIfActive(threadId);
+		return plan;
 	}
 
 	/**
 	 * Updates the status of a task in the current plan
 	 */
-	updateTaskStatus(taskId: TaskId, status: TaskStatus, notes?: string): Task {
-		if (!this.currentPlan) {
+	updateTaskStatus(taskId: TaskId, status: TaskStatus, notes?: string, threadId?: string): Task {
+		const plan = this._planFor(threadId);
+		if (!plan) {
 			throw new Error('No active plan. Create a plan first using create_plan.');
 		}
 
-		const task = this.currentPlan.tasks.find(t => t.id === taskId);
+		const task = plan.tasks.find(t => t.id === taskId);
 		if (!task) {
-			throw new Error(`Task with id "${taskId}" not found in current plan. Available task IDs: ${this.currentPlan.tasks.map(t => t.id).join(', ')}`);
+			throw new Error(`Task with id "${taskId}" not found in current plan. Available task IDs: ${plan.tasks.map(t => t.id).join(', ')}`);
 		}
 
 		task.status = status;
@@ -86,16 +128,17 @@ export class PlanningService {
 			task.notes = notes;
 		}
 
-		this.currentPlan.updatedAt = new Date();
-		this._onDidChangePlan.fire(this.currentPlan);
+		plan.updatedAt = new Date();
+		this._fireIfActive(threadId);
 		return task;
 	}
 
 	/**
 	 * Adds new tasks to the current plan
 	 */
-	addTasksToPlan(tasks: Array<{ id: string; description: string; dependencies?: string[] }>): Plan {
-		if (!this.currentPlan) {
+	addTasksToPlan(tasks: Array<{ id: string; description: string; dependencies?: string[] }>, threadId?: string): Plan {
+		const plan = this._planFor(threadId);
+		if (!plan) {
 			throw new Error('No active plan. Create a plan first using create_plan.');
 		}
 
@@ -109,26 +152,26 @@ export class PlanningService {
 			updatedAt: now,
 		}));
 
-		this.currentPlan.tasks.push(...newTasks);
-		this.currentPlan.updatedAt = now;
-		this._onDidChangePlan.fire(this.currentPlan);
+		plan.tasks.push(...newTasks);
+		plan.updatedAt = now;
+		this._fireIfActive(threadId);
 
-		return this.currentPlan;
+		return plan;
 	}
 
 	/**
 	 * Gets the current plan with all tasks and statuses
 	 */
-	getPlanStatus(): Plan | null {
-		return this.currentPlan;
+	getPlanStatus(threadId?: string): Plan | null {
+		return this._planFor(threadId);
 	}
 
 	/**
 	 * Clears the current plan
 	 */
-	clearPlan(): void {
-		this.currentPlan = null;
-		this._onDidChangePlan.fire(null);
+	clearPlan(threadId?: string): void {
+		this._setPlan(null, threadId);
+		this._fireIfActive(threadId);
 	}
 
 	/**
@@ -184,4 +227,3 @@ export class PlanningService {
 		}
 	}
 }
-

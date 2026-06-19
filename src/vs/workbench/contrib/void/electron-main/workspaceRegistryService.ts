@@ -5,8 +5,9 @@
 
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
-import { IWorkspaceRegistryService, WorkspaceConnection, WorkspaceThreadSummary, WORKSPACE_INACTIVITY_THRESHOLD, WORKSPACE_COLORS } from '../common/workspaceRegistryTypes.js';
+import { IWorkspaceRegistryService, WorkspaceConnection, WorkspaceThreadSummary, WorkspaceRemoteCommand, WORKSPACE_INACTIVITY_THRESHOLD, WORKSPACE_COLORS } from '../common/workspaceRegistryTypes.js';
 import { generateUuid } from '../../../../base/common/uuid.js';
+import { BrowserWindow } from 'electron';
 
 /**
  * Main process service maintaining the central workspace registry.
@@ -21,9 +22,38 @@ export class WorkspaceRegistryService extends Disposable implements IWorkspaceRe
 	private readonly _onDidChangeWorkspaces = this._register(new Emitter<WorkspaceConnection[]>());
 	readonly onDidChangeWorkspaces: Event<WorkspaceConnection[]> = this._onDidChangeWorkspaces.event;
 
+	private readonly _onDidReceiveCommand = this._register(new Emitter<WorkspaceRemoteCommand>());
+	readonly onDidReceiveCommand: Event<WorkspaceRemoteCommand> = this._onDidReceiveCommand.event;
+
 	constructor() {
 		super();
 		this.startHeartbeatCheck();
+	}
+
+	/**
+	 * Dispatch a remote-control command to a target workspace window.
+	 * 'focus' is handled here in the main process; all other variants are broadcast
+	 * on onDidReceiveCommand so the matching workspace window's dispatcher acts on it.
+	 */
+	sendCommand(command: WorkspaceRemoteCommand): void {
+		const target = this.workspaces.get(command.targetWorkspaceId);
+		if (!target) {
+			console.warn(`[WorkspaceRegistry] sendCommand: unknown workspace ${command.targetWorkspaceId}`);
+			return;
+		}
+
+		if (command.type === 'focus') {
+			if (target.windowId !== undefined) {
+				const bw = BrowserWindow.fromId(target.windowId);
+				if (bw && !bw.isDestroyed()) {
+					if (bw.isMinimized()) { bw.restore(); }
+					bw.focus();
+				}
+			}
+			return;
+		}
+
+		this._onDidReceiveCommand.fire(command);
 	}
 
 	/**
@@ -74,6 +104,7 @@ export class WorkspaceRegistryService extends Disposable implements IWorkspaceRe
 	 */
 	registerWorkspace(workspace: Omit<WorkspaceConnection, 'status' | 'lastSeen' | 'threads' | 'activeOperations'>): string {
 		const id = workspace.id || generateUuid();
+		console.log('[WorkspaceRegistry] registerWorkspace called', { id, name: workspace.name, windowId: workspace.windowId, existing: this.workspaces.size })
 		const colorIndex = this.workspaces.size % WORKSPACE_COLORS.length;
 
 		const newWorkspace: WorkspaceConnection = {

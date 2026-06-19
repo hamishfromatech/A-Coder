@@ -19,6 +19,7 @@ import { VoidPreviewInput } from './voidPreviewPane.js';
 import { INotificationService } from '../../../../platform/notification/common/notification.js';
 import { localize } from '../../../../nls.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
+import { IWorkspaceRemoteControlService } from './workspaceRemoteControlService.js';
 
 const AGENT_MANAGER_STATE_KEY = 'void.agentManager.state';
 
@@ -102,6 +103,18 @@ export class AgentManagerService extends Disposable implements IAgentManagerServ
 			container.style.height = '100%';
 			container.style.width = '100%';
 
+			// VS Code patches the auxiliary window's document.createElement(ns) to
+			// throw, to force elements to be created in the MAIN window's context
+			// (so `instanceof HTMLElement` keeps working). React reads ownerDocument
+			// lazily and some shared helpers use the global `document`, so the
+			// per-element ownerDocument pin below alone is not enough. Delegate the
+			// aux document's element factories to the main window's document — this
+			// is exactly the "always use the main window" behaviour VS Code expects.
+			const auxDoc = container.ownerDocument;
+			const mainDoc = mainWindow.document;
+			auxDoc.createElement = mainDoc.createElement.bind(mainDoc);
+			auxDoc.createElementNS = mainDoc.createElementNS.bind(mainDoc);
+
 			const reactWrapper = mainWindow.document.createElement('div');
 			reactWrapper.style.height = '100%';
 			reactWrapper.style.width = '100%';
@@ -139,6 +152,9 @@ export class AgentManagerService extends Disposable implements IAgentManagerServ
 			this._windowDisposables.add(scopedInstantiationService);
 
 			scopedInstantiationService.invokeFunction(accessor => {
+				// Eagerly start the cross-window reader so the panel has live data
+				// before the React tree mounts.
+				accessor.get(IWorkspaceRemoteControlService);
 				const mountRes = mountAgentManager(reactWrapper, accessor, undefined, mainWindow.document) as { rerender: (props?: unknown) => void; dispose: () => void } | undefined;
 				if (mountRes?.dispose) {
 					this._mountDisposables.add(mountRes);

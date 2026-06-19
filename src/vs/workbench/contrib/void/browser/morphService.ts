@@ -7,6 +7,9 @@ import { createDecorator } from '../../../../platform/instantiation/common/insta
 import { registerSingleton, InstantiationType } from '../../../../platform/instantiation/common/extensions.js';
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
 import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
+import { IChannel } from '../../../../base/parts/ipc/common/ipc.js';
+import { CancellationToken } from '../../../../base/common/cancellation.js';
+import { generateUuid } from '../../../../base/common/uuid.js';
 
 export const IMorphService = createDecorator<IMorphService>('MorphService');
 
@@ -17,11 +20,14 @@ export interface IMorphService {
 	 * Gather context using Morph Fast Context (warpGrep) API
 	 * @param query Search query
 	 * @param repoRoot Root directory of the repository
+	 * @param token Optional cancellation token; when cancelled the call rejects
+	 *   locally and best-effort asks the main process to abort the SDK call.
 	 * @returns The context results from Morph
 	 */
 	fastContext(params: {
 		query: string;
 		repoRoot: string;
+		token?: CancellationToken;
 	}): Promise<{ file: string; content: string }[]>;
 
 	/**
@@ -44,6 +50,7 @@ export interface IMorphService {
 		commitHash?: string;
 		target_directories?: string[];
 		limit?: number;
+		token?: CancellationToken;
 	}): Promise<{
 		success: boolean;
 		results: Array<{
@@ -89,8 +96,9 @@ export class MorphService implements IMorphService {
 	async fastContext(params: {
 		query: string;
 		repoRoot: string;
+		token?: CancellationToken;
 	}): Promise<{ file: string; content: string }[]> {
-		const { query, repoRoot } = params;
+		const { query, repoRoot, token } = params;
 
 		console.log('[MorphService] Starting fastContext...');
 		console.log('[MorphService] Query:', query);
@@ -109,12 +117,17 @@ export class MorphService implements IMorphService {
 		console.log('[MorphService] Calling Morph SDK (warpGrep) via IPC channel...');
 
 		try {
-			// Call the main process to use Morph SDK
-			const contexts = await channel.call('fastContext', {
+			// Call the main process to use Morph SDK. Race against the cancellation
+			// token so a Stop/abort doesn't block the chat on a slow Morph call.
+			const requestId = generateUuid();
+			const callPromise = channel.call('fastContext', {
 				query,
 				repoRoot,
-				apiKey
-			}) as { file: string; content: string }[];
+				apiKey,
+				_requestId: requestId,
+			}) as Promise<{ file: string; content: string }[]>;
+
+			const contexts = await this._raceWithAbort(callPromise, token, requestId, channel);
 
 			console.log(`[MorphService] Successfully received ${contexts.length} contexts from Morph`);
 			return contexts;
@@ -197,11 +210,13 @@ export class MorphService implements IMorphService {
 		commitHash?: string;
 		target_directories?: string[];
 		limit?: number;
+		token?: CancellationToken;
 	}) {
 		const apiKey = this._getApiKey();
 		const defaults = this._getRepoDefaults();
 		const channel = this._mainProcessService.getChannel('void-channel-morph');
-		const results = await channel.call('codebaseSearch', {
+		const requestId = generateUuid();
+		const callPromise = channel.call('codebaseSearch', {
 			apiKey,
 			query: params.query,
 			repoId: params.repoId ?? defaults.repoId,
@@ -209,7 +224,8 @@ export class MorphService implements IMorphService {
 			commitHash: params.commitHash,
 			target_directories: params.target_directories ?? [],
 			limit: params.limit ?? 10,
-		}) as {
+			_requestId: requestId,
+		}) as Promise<{
 			success: boolean;
 			results: Array<{
 				filepath: string;
@@ -220,8 +236,36 @@ export class MorphService implements IMorphService {
 				endLine: number;
 			}>;
 			stats: { searchTimeMs: number };
-		};
-		return results;
+		}>;
+		return this._raceWithAbort(callPromise, params.token, requestId, channel);
+	}
+
+	/**
+	 * Race an IPC call against a CancellationToken. On cancellation, reject locally
+	 * so the chat flow stops waiting, and best-effort ask the main process to abort
+	 * the underlying Morph SDK call (the SDK call may not be cancellable, in which
+	 * case it simply completes in the background and its result is dropped — but we
+	 * no longer block on it). Without a token, this is a plain await.
+	 */
+	private _raceWithAbort<T>(callPromise: Promise<T>, token: CancellationToken | undefined, requestId: string, channel: IChannel): Promise<T> {
+		if (!token) {
+			return callPromise;
+		}
+		return new Promise<T>((resolve, reject) => {
+			let settled = false;
+			const cancellationListener = token.onCancellationRequested(() => {
+				if (settled) return;
+				settled = true;
+				cancellationListener.dispose();
+				// Best-effort: tell main to abort. Don't await — we reject immediately.
+				channel.call('abortMorph', { requestId }).catch(() => { });
+				reject(new Error('Morph call was cancelled.'));
+			});
+			callPromise.then(
+				(v) => { if (!settled) { settled = true; cancellationListener.dispose(); resolve(v); } },
+				(e) => { if (!settled) { settled = true; cancellationListener.dispose(); reject(e); } }
+			);
+		});
 	}
 
 	async repoInit(params: { repoId?: string; dir?: string }) {

@@ -503,6 +503,16 @@ export type GlobalSettings = {
 	chatMode: ChatMode;
 	studentLevel: StudentLevel;
 	autoApprove: { [approvalType in ToolApprovalType]?: boolean };
+	// Terminal command auto-approval policy (layers on top of autoApprove['terminal']).
+	//   - terminalAllowPatterns: command prefixes/globs that auto-run even when the
+	//     master toggle is off (e.g. "ls", "git status", "npm run *").
+	//   - terminalDenyPatterns: always prompt, overriding the master toggle and the
+	//     allowlist (e.g. "rm", "git push").
+	//   - terminalReadOnlyAutoApprove: when true, the built-in read-only command set
+	//     (ls/cat/pwd/git status/...) auto-runs. Off by default.
+	terminalAllowPatterns: string[];
+	terminalDenyPatterns: string[];
+	terminalReadOnlyAutoApprove: boolean;
 	showInlineSuggestions: boolean;
 	includeToolLintErrors: boolean;
 	isOnboardingComplete: boolean;
@@ -567,6 +577,9 @@ export const defaultGlobalSettings: GlobalSettings = {
 	chatMode: 'code',
 	studentLevel: 'beginner',
 	autoApprove: {},
+	terminalAllowPatterns: [],
+	terminalDenyPatterns: [],
+	terminalReadOnlyAutoApprove: false,
 	showInlineSuggestions: true,
 	includeToolLintErrors: true,
 	isOnboardingComplete: false,

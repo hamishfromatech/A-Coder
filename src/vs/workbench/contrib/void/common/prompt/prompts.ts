@@ -28,6 +28,10 @@ export const MAX_CHILDREN_URIs_PAGE = 500
 export const MAX_TERMINAL_CHARS = 100_000
 export const MAX_TERMINAL_INACTIVE_TIME = 60 // seconds
 export const MAX_TERMINAL_BG_COMMAND_TIME = 60
+// Hard ceiling on a single terminal command's run time (ms), regardless of what
+// the model requests via the `timeout` param. Prevents a stuck command from
+// holding a tool call open for hours/days.
+export const MAX_TERMINAL_TIMEOUT_MS = 600_000 // 10 minutes
 
 
 // Maximum character limits for prefix and suffix context

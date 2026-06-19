@@ -10,6 +10,9 @@ import { os } from '../common/helpers/systemInfo.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { timeout } from '../../../../base/common/async.js';
 import { getActiveWindow } from '../../../../base/browser/dom.js';
+import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
+import { IWorkspaceConnectionService } from '../common/workspaceRegistryTypes.js';
+import { IWorkspaceCommandDispatcher } from './workspaceCommandDispatcher.js';
 
 // Onboarding contribution that mounts the component at startup
 export class MiscWorkbenchContribs extends Disposable implements IWorkbenchContribution {
@@ -18,9 +21,19 @@ export class MiscWorkbenchContribs extends Disposable implements IWorkbenchContr
 	constructor(
 		@IExtensionTransferService private readonly extensionTransferService: IExtensionTransferService,
 		@IStorageService private readonly storageService: IStorageService,
+		@IInstantiationService instantiationService: IInstantiationService,
 	) {
 		super();
 		this.initialize();
+
+		// Eagerly instantiate the cross-window connection service so this window
+		// registers with the hub and starts heartbeating as soon as it opens.
+		// The service itself no-ops inside auxiliary windows (e.g. the Agent Manager).
+		instantiationService.invokeFunction(accessor => {
+			accessor.get(IWorkspaceConnectionService);
+			// The command dispatcher also no-ops inside auxiliary windows.
+			accessor.get(IWorkspaceCommandDispatcher);
+		});
 	}
 
 	private initialize(): void {

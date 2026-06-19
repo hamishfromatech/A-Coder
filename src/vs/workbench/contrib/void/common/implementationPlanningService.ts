@@ -38,12 +38,34 @@ export interface ImplementationPlan {
 }
 
 /**
- * Ephemeral in-memory implementation planning service
- * Stores the current implementation plan for the active conversation
- * State is cleared when the IDE is restarted
+ * Ephemeral in-memory implementation planning service.
+ *
+ * Plans are stored PER THREAD so that switching conversations does not clobber
+ * one thread's plan with another's. Methods take an optional `threadId`; when
+ * omitted they operate on the active thread (set via `switchToThread`). The
+ * preview/React tab is driven from the tools that call `openContentPreview`, so
+ * no change event is needed here.
+ *
+ * State is cleared when the IDE is restarted.
  */
 export class ImplementationPlanningService {
-	private currentPlan: ImplementationPlan | null = null;
+	private plansByThread = new Map<string, ImplementationPlan>();
+	private activeThreadId = '__default__';
+
+	/**
+	 * Set the active thread.
+	 */
+	switchToThread(threadId: string): void {
+		this.activeThreadId = threadId;
+	}
+
+	private _tid(threadId?: string): string {
+		return threadId ?? this.activeThreadId;
+	}
+
+	private _planFor(threadId?: string): ImplementationPlan | null {
+		return this.plansByThread.get(this._tid(threadId)) ?? null;
+	}
 
 	/**
 	 * Creates a new implementation plan, replacing any existing plan
@@ -58,11 +80,12 @@ export class ImplementationPlanningService {
 			files: string[];
 			dependencies?: string[];
 			estimated_time?: number
-		}>
+		}>,
+		threadId?: string
 	): ImplementationPlan {
 		const now = new Date();
 
-		this.currentPlan = {
+		const plan: ImplementationPlan = {
 			id: this.generatePlanId(),
 			goal,
 			steps: steps.map(s => ({
@@ -77,25 +100,27 @@ export class ImplementationPlanningService {
 			approved: false
 		};
 
-		return this.currentPlan;
+		this.plansByThread.set(this._tid(threadId), plan);
+		return plan;
 	}
 
 	/**
 	 * Gets the current implementation plan
 	 */
-	getCurrentPlan(): ImplementationPlan | null {
-		return this.currentPlan;
+	getCurrentPlan(threadId?: string): ImplementationPlan | null {
+		return this._planFor(threadId);
 	}
 
 	/**
 	 * Updates the status of a step in the current plan
 	 */
-	updateStepStatus(stepId: StepId, status: StepStatus, notes?: string): ImplementationStep | null {
-		if (!this.currentPlan) {
+	updateStepStatus(stepId: StepId, status: StepStatus, notes?: string, threadId?: string): ImplementationStep | null {
+		const plan = this._planFor(threadId);
+		if (!plan) {
 			throw new Error('No active implementation plan. Create a plan first using create_implementation_plan.');
 		}
 
-		const step = this.currentPlan.steps.find(s => s.id === stepId);
+		const step = plan.steps.find(s => s.id === stepId);
 		if (!step) {
 			throw new Error(`Step with ID '${stepId}' not found in current plan.`);
 		}
@@ -103,7 +128,7 @@ export class ImplementationPlanningService {
 		step.status = status;
 		step.notes = notes;
 		step.updatedAt = new Date();
-		this.currentPlan.updatedAt = new Date();
+		plan.updatedAt = new Date();
 
 		return step;
 	}
@@ -111,20 +136,21 @@ export class ImplementationPlanningService {
 	/**
 	 * Gets the next step that can be executed (all dependencies are complete and status is pending)
 	 */
-	getNextExecutableStep(): ImplementationStep | null {
-		if (!this.currentPlan) {
+	getNextExecutableStep(threadId?: string): ImplementationStep | null {
+		const plan = this._planFor(threadId);
+		if (!plan) {
 			return null;
 		}
 
 		// Find steps that are pending and have all dependencies complete
-		const pendingSteps = this.currentPlan.steps.filter(step => {
+		const pendingSteps = plan.steps.filter(step => {
 			if (step.status !== 'pending') {
 				return false;
 			}
 
 			// Check if all dependencies are complete
 			return step.dependencies.every(depId => {
-				const depStep = this.currentPlan!.steps.find(s => s.id === depId);
+				const depStep = plan.steps.find(s => s.id === depId);
 				return depStep && depStep.status === 'complete';
 			});
 		});
@@ -136,8 +162,9 @@ export class ImplementationPlanningService {
 	/**
 	 * Gets steps grouped by status
 	 */
-	getStepsByStatus(): Record<StepStatus, ImplementationStep[]> {
-		if (!this.currentPlan) {
+	getStepsByStatus(threadId?: string): Record<StepStatus, ImplementationStep[]> {
+		const plan = this._planFor(threadId);
+		if (!plan) {
 			return {
 				pending: [],
 				in_progress: [],
@@ -155,7 +182,7 @@ export class ImplementationPlanningService {
 			skipped: []
 		};
 
-		for (const step of this.currentPlan.steps) {
+		for (const step of plan.steps) {
 			grouped[step.status].push(step);
 		}
 
@@ -165,53 +192,55 @@ export class ImplementationPlanningService {
 	/**
 	 * Gets a summary of the current plan status
 	 */
-	getPlanSummary(): string | null {
-		if (!this.currentPlan) {
+	getPlanSummary(threadId?: string): string | null {
+		const plan = this._planFor(threadId);
+		if (!plan) {
 			return null;
 		}
 
-		const { steps } = this.currentPlan;
+		const { steps } = plan;
 		const completed = steps.filter(s => s.status === 'complete').length;
 		const total = steps.length;
 		const progress = Math.round((completed / total) * 100);
 
-		const nextStep = this.getNextExecutableStep();
+		const nextStep = this.getNextExecutableStep(threadId);
 		const nextStepInfo = nextStep ? `\nNext: ${nextStep.title}` : '';
 
-		return `Implementation Plan: "${this.currentPlan.goal}"\nProgress: ${completed}/${total} steps (${progress}%)${nextStepInfo}`;
+		return `Implementation Plan: "${plan.goal}"\nProgress: ${completed}/${total} steps (${progress}%)${nextStepInfo}`;
 	}
 
 	/**
 	 * Approves the current implementation plan for execution
 	 */
-	approvePlan(): void {
-		if (!this.currentPlan) {
+	approvePlan(threadId?: string): void {
+		const plan = this._planFor(threadId);
+		if (!plan) {
 			throw new Error('No active implementation plan to approve.');
 		}
 
-		this.currentPlan.approved = true;
-		this.currentPlan.updatedAt = new Date();
+		plan.approved = true;
+		plan.updatedAt = new Date();
 	}
 
 	/**
 	 * Checks if the current plan is approved
 	 */
-	isPlanApproved(): boolean {
-		return this.currentPlan?.approved || false;
+	isPlanApproved(threadId?: string): boolean {
+		return this._planFor(threadId)?.approved || false;
 	}
 
 	/**
 	 * Clears the current plan
 	 */
-	clearPlan(): void {
-		this.currentPlan = null;
+	clearPlan(threadId?: string): void {
+		this.plansByThread.delete(this._tid(threadId));
 	}
 
 	/**
 	 * Generates a unique plan ID
 	 */
 	private generatePlanId(): string {
-		return `impl_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+		return `impl_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 	}
 }
 

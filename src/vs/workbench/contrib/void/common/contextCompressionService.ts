@@ -134,14 +134,14 @@ export class ContextCompressionService {
 		console.log(`[ContextCompression] Identified ${criticalMessages.size} critical messages to preserve`);
 
 		// Step 2: Truncate large tool results in all message categories
-		let processedRecent = this.truncateToolResults(recentMessages, fullConfig.maxToolResultLength);
-		let processedOld = this.truncateToolResults(oldMessages, fullConfig.maxToolResultLength);
+		const recentTrunc = this.truncateToolResults(recentMessages, fullConfig.maxToolResultLength);
+		const oldTrunc = this.truncateToolResults(oldMessages, fullConfig.maxToolResultLength);
+		let processedRecent = recentTrunc.messages;
+		let processedOld = oldTrunc.messages;
 
-
-		// Count truncated messages
-		const recentTruncated = processedRecent.length - recentMessages.length;
-		const oldTruncated = processedOld.length - oldMessages.length;
-		stats.toolResultsTruncated = Math.max(recentTruncated, oldTruncated);
+		// Count truncated tool results (previously always reported 0 because
+		// truncation never changes the message count, only message content).
+		stats.toolResultsTruncated = recentTrunc.truncatedCount + oldTrunc.truncatedCount;
 
 		// Step 3: Calculate target for recent + system (keep more for recency)
 		const recentTargetTokens = Math.floor(targetTokens * 0.7); // 70% for recent messages
@@ -178,11 +178,25 @@ export class ContextCompressionService {
 		// Step 5: Combine messages (system + summary + recent)
 		let finalMessages: LLMChatMessage[] = [];
 
+		// Fold the summary into the system prompt where possible, instead of
+		// emitting a separate mid-conversation "summary" message. A synthetic
+		// user-role summary can be misread as a fresh user request, while a
+		// synthetic system-role message mid-stream is rejected by separated-system
+		// providers (Anthropic/Gemini keep the system message out of the array).
+		// `systemMessage` is only present in-array for system-role/developer-role
+		// providers, so folding into it is safe there; for separated providers we
+		// fall back to a clearly-framed user message (the only provider-safe option).
 		if (systemMessage) {
-			finalMessages.push(systemMessage);
-		}
-
-		if (summaryMessage) {
+			const sysHasStringContent = 'content' in systemMessage && typeof systemMessage.content === 'string';
+			if (summaryMessage && sysHasStringContent && 'content' in summaryMessage && typeof summaryMessage.content === 'string') {
+				finalMessages.push({ ...systemMessage, content: `${systemMessage.content}\n\n${summaryMessage.content}` } as LLMChatMessage);
+			} else {
+				finalMessages.push(systemMessage);
+				if (summaryMessage) {
+					finalMessages.push(summaryMessage);
+				}
+			}
+		} else if (summaryMessage) {
 			finalMessages.push(summaryMessage);
 		}
 
@@ -334,21 +348,21 @@ export class ContextCompressionService {
 				}
 			}
 
-			// Remove oldest non-critical messages first
-			let keepStartIndex = 0;
+			// Drop the oldest non-critical messages, but ALWAYS keep every critical
+			// message (system/developer prompt + most recent user message). A previous
+			// version used a single `slice(finalKeepStart)` from the start, which
+			// silently dropped the critical prefix — including the system message —
+			// whenever the kept window started past it. Filtering by index preserves
+			// critical messages in place while shedding the oldest non-critical ones.
+			const nonCriticalIndices: number[] = [];
 			for (let i = 0; i < currentMessages.length; i++) {
 				if (!currentCriticalIndices.has(i)) {
-					keepStartIndex = i + 1;
-					break;
+					nonCriticalIndices.push(i);
 				}
 			}
-
-			// Calculate how many to keep, ensuring we keep all critical messages
-			const nonCriticalCount = currentMessages.length - keepStartIndex;
-			const targetKeepCount = Math.max(minKeepMessages, Math.floor(nonCriticalCount * 0.7));
-			const finalKeepStart = Math.max(keepStartIndex, currentMessages.length - targetKeepCount - keepStartIndex);
-
-			currentMessages = currentMessages.slice(finalKeepStart);
+			const keepNonCriticalCount = Math.floor(nonCriticalIndices.length * 0.7);
+			const keepNonCritical = new Set(nonCriticalIndices.slice(-keepNonCriticalCount));
+			currentMessages = currentMessages.filter((_, i) => currentCriticalIndices.has(i) || keepNonCritical.has(i));
 			iterations++;
 		}
 
@@ -438,10 +452,15 @@ export class ContextCompressionService {
 		}
 
 		const summaryText = summaryParts.length > 0
-			? `[PREVIOUS CONVERSATION SUMMARY - ${oldMessages.length} messages condensed]\n\n${summaryParts.join('\n')}\n\n[End of summary]`
-			: '[Previous conversation context condensed]';
+			? `[PREVIOUS CONVERSATION SUMMARY - ${oldMessages.length} messages condensed. This is background context from earlier in the conversation, NOT a new request from the user. Do not respond to it directly.]\n\n${summaryParts.join('\n')}\n\n[End of summary]`
+			: '[Previous conversation context condensed. This is background context, NOT a new request from the user.]';
 
-		// Return as user message (will be combined with actual recent messages)
+		// Return as a user-role message. This is only used as a fallback for
+		// separated-system providers (Anthropic/Gemini) where the system message
+		// is not part of the message array; for system-role providers the summary
+		// is folded into the system prompt by the caller instead. A user role is
+		// the only mid-stream role those APIs accept, and the framing above makes
+		// clear it is context, not a fresh user instruction.
 		return {
 			role: 'user',
 			content: summaryText
@@ -494,13 +513,17 @@ export class ContextCompressionService {
 	}
 
 	/**
-	 * Truncate large tool results and tool calls to reduce token usage
+	 * Truncate large tool results and tool calls to reduce token usage.
+	 * Returns the (possibly modified) messages plus a count of how many individual
+	 * tool results/calls were truncated, for accurate stats.
 	 */
-	private truncateToolResults(messages: LLMChatMessage[], maxLength: number): LLMChatMessage[] {
-		return messages.map(msg => {
+	private truncateToolResults(messages: LLMChatMessage[], maxLength: number): { messages: LLMChatMessage[]; truncatedCount: number } {
+		let truncatedCount = 0
+		const result = messages.map(msg => {
 			// OpenAI tool format (role: tool)
 			if ('role' in msg && msg.role === 'tool' && 'content' in msg) {
 				if (typeof msg.content === 'string' && msg.content.length > maxLength) {
+					truncatedCount++
 					return {
 						...msg,
 						content: msg.content.substring(0, maxLength) + `\n\n[... truncated ${msg.content.length - maxLength} characters for context window management]`
@@ -510,8 +533,11 @@ export class ContextCompressionService {
 
 			// OpenAI tool calls (role: assistant)
 			if ('role' in msg && msg.role === 'assistant' && 'tool_calls' in msg && msg.tool_calls) {
+				let modified = false
 				const newToolCalls = msg.tool_calls.map(tc => {
 					if (tc.function.arguments.length > maxLength) {
+						truncatedCount++
+						modified = true
 						return {
 							...tc,
 							function: {
@@ -522,15 +548,22 @@ export class ContextCompressionService {
 					}
 					return tc;
 				});
-				return { ...msg, tool_calls: newToolCalls } as LLMChatMessage;
+				if (modified) {
+					return { ...msg, tool_calls: newToolCalls } as LLMChatMessage;
+				}
 			}
 
 			// Anthropic format
 			if ('content' in msg && Array.isArray(msg.content)) {
+				let modified = false
 				const newContent = msg.content.map(part => {
-					// Tool result
-					if ('type' in part && part.type === 'tool_result' && 'content' in part) {
+					// Tool result. `content` may be a string OR an array of content
+					// blocks (Anthropic allows both); only truncate the string form,
+					// otherwise `.substring` would throw at runtime.
+					if ('type' in part && part.type === 'tool_result' && 'content' in part && typeof part.content === 'string') {
 						if (part.content.length > maxLength) {
+							truncatedCount++
+							modified = true
 							return {
 								...part,
 								content: part.content.substring(0, maxLength) + `\n\n[... truncated for context window]`
@@ -539,12 +572,12 @@ export class ContextCompressionService {
 					}
 					// Tool use (assistant)
 					if ('type' in part && part.type === 'tool_use' && 'input' in part) {
-						let modified = false;
 						const newInput = { ...part.input };
 						for (const key of Object.keys(newInput)) {
 							if (typeof newInput[key] === 'string' && newInput[key].length > maxLength) {
 								newInput[key] = newInput[key].substring(0, maxLength) + `\n... [truncated]`;
 								modified = true;
+								truncatedCount++
 							}
 						}
 						if (modified) {
@@ -553,16 +586,22 @@ export class ContextCompressionService {
 					}
 					return part;
 				});
-				return { ...msg, content: newContent } as LLMChatMessage;
+				if (modified) {
+					return { ...msg, content: newContent } as LLMChatMessage;
+				}
 			}
 
 			// Gemini format
 			if ('parts' in msg) {
+				let modified = false
 				const newParts = msg.parts.map(part => {
-					// Function response
+					// Function response. `output` is typically a string but may be an
+					// object for structured responses; only truncate the string form.
 					if ('functionResponse' in part) {
 						const output = part.functionResponse.response.output;
-						if (output.length > maxLength) {
+						if (typeof output === 'string' && output.length > maxLength) {
+							truncatedCount++
+							modified = true
 							return {
 								...part,
 								functionResponse: {
@@ -576,12 +615,12 @@ export class ContextCompressionService {
 					}
 					// Function call
 					if ('functionCall' in part) {
-						let modified = false;
 						const newArgs = { ...part.functionCall.args };
 						for (const key of Object.keys(newArgs)) {
 							if (typeof newArgs[key] === 'string' && (newArgs[key] as string).length > maxLength) {
 								newArgs[key] = (newArgs[key] as string).substring(0, maxLength) + `\n... [truncated]`;
 								modified = true;
+								truncatedCount++
 							}
 						}
 						if (modified) {
@@ -593,11 +632,14 @@ export class ContextCompressionService {
 					}
 					return part;
 				});
-				return { ...msg, parts: newParts } as LLMChatMessage;
+				if (modified) {
+					return { ...msg, parts: newParts } as LLMChatMessage;
+				}
 			}
 
 			return msg;
 		});
+		return { messages: result, truncatedCount };
 	}
 
 	/**

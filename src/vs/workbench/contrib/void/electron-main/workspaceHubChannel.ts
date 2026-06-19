@@ -47,6 +47,10 @@ export class WorkspaceHubChannel implements IServerChannel {
 			case 'getWorkspace':
 				return Promise.resolve(this.registryService.getWorkspace(arg) as T);
 
+			case 'sendCommand':
+				this.registryService.sendCommand(arg);
+				return Promise.resolve(undefined as T);
+
 			default:
 				return Promise.reject(new Error(`Unknown command: ${command}`));
 		}
@@ -59,6 +63,9 @@ export class WorkspaceHubChannel implements IServerChannel {
 		switch (event) {
 			case 'onDidChangeWorkspaces':
 				return this.registryService.onDidChangeWorkspaces as Event<T>;
+
+			case 'onCommand':
+				return this.registryService.onDidReceiveCommand as Event<T>;
 
 			default:
 				throw new Error(`Unknown event: ${event}`);

@@ -31,7 +31,7 @@ export type ShallowDirectoryItem = {
 }
 
 
-export const approvalTypeOfBuiltinToolName: Partial<{ [T in BuiltinToolName]?: 'edits' | 'terminal' | 'MCP tools' | 'forms' | 'quizzes' | 'browser' }> = {
+export const approvalTypeOfBuiltinToolName: Partial<{ [T in BuiltinToolName]?: 'edits' | 'terminal' | 'MCP tools' | 'forms' | 'quizzes' | 'browser' | 'code execution' | 'skills' | 'image generation' | 'repo' }> = {
 	'create_file_or_folder': 'edits',
 	'delete_file_or_folder': 'edits',
 	'rewrite_file': 'edits',
@@ -41,6 +41,24 @@ export const approvalTypeOfBuiltinToolName: Partial<{ [T in BuiltinToolName]?: '
 	'run_command': 'terminal',
 	'open_persistent_terminal': 'terminal',
 	'kill_persistent_terminal': 'terminal',
+	// Code execution (sandboxed or script files) — at least as sensitive as terminal.
+	'run_code': 'code execution',
+	'execute_skill_script': 'code execution',
+	'run_skill_benchmark': 'code execution',
+	// Skill install/uninstall mutates ~/.a-coder/skills and (for github) runs git clone.
+	'install_skill': 'skills',
+	'uninstall_skill': 'skills',
+	// Image generation makes a paid external API call.
+	'generate_image': 'image generation',
+	// Mutating Morph repo operations. Read-only repo_* ops stay auto-approved.
+	'repo_init': 'repo',
+	'repo_clone': 'repo',
+	'repo_add': 'repo',
+	'repo_commit': 'repo',
+	'repo_push': 'repo',
+	'repo_pull': 'repo',
+	'repo_checkout': 'repo',
+	'repo_branch': 'repo',
 	'render_form': 'forms',
 	'create_quiz': 'quizzes',
 }
@@ -159,7 +177,7 @@ export type BuiltinToolCallParams = {
 		variables?: Record<string, string>;
 	},
 	'install_skill': {
-		source: 'github' | 'url' | 'local';
+		source: 'github' | 'local';
 		url?: string;
 		path?: string;
 		branch?: string;

@@ -31,6 +31,7 @@ export interface WorkspaceConnection {
 	threads: WorkspaceThreadSummary[];
 	activeOperations: number;
 	color: string;           // UI color for workspace badge
+	windowId?: number;        // Electron BrowserWindow id (for cross-window focus)
 }
 
 /**
@@ -60,6 +61,18 @@ export interface WorkspaceRegistryState {
 }
 
 /**
+ * Remote-control command issued from the Agent Manager to a target workspace window.
+ * The hub handles 'focus' main-process-side; all other variants are broadcast on
+ * onDidReceiveCommand and acted on by the matching workspace window's dispatcher.
+ */
+export type WorkspaceRemoteCommand =
+	| { type: 'focus'; targetWorkspaceId: string }
+	| { type: 'openThread'; targetWorkspaceId: string; threadId: string }
+	| { type: 'stop'; targetWorkspaceId: string; threadId: string }
+	| { type: 'sendMessage'; targetWorkspaceId: string; threadId?: string; userMessage: string; images?: string[] }
+	| { type: 'createTask'; targetWorkspaceId: string; threadId: string; description: string };
+
+/**
  * Service interface for the workspace registry
  * Main process service maintaining the central registry
  */
@@ -67,6 +80,18 @@ export interface IWorkspaceRegistryService {
 	readonly _serviceBrand: undefined;
 
 	readonly onDidChangeWorkspaces: Event<WorkspaceConnection[]>;
+
+	/**
+	 * Fires when a remote-control command is dispatched. Workspace windows filter
+	 * for their own targetWorkspaceId; the Agent Manager never subscribes.
+	 */
+	readonly onDidReceiveCommand: Event<WorkspaceRemoteCommand>;
+
+	/**
+	 * Dispatch a remote-control command. 'focus' is handled here (main-process);
+	 * all other variants are broadcast on onDidReceiveCommand.
+	 */
+	sendCommand(command: WorkspaceRemoteCommand): void;
 
 	/**
 	 * Get all currently registered workspaces
@@ -114,6 +139,12 @@ export interface IWorkspaceConnectionService {
 	readonly _serviceBrand: undefined;
 
 	readonly onDidReceiveWorkspaces: Event<WorkspaceConnection[]>;
+
+	/**
+	 * The workspace id of this window, or null if this window is not a
+	 * registered workspace (e.g. the Agent Manager auxiliary window).
+	 */
+	getWorkspaceId(): string | null;
 
 	/**
 	 * Get all workspaces from the hub

@@ -9,6 +9,7 @@ import { useAccessor, useChatThreadsStreamState } from '../util/services.js';
 import { URI } from '../../../../../../../base/common/uri.js';
 import { BlockCode } from '../util/inputs.js';
 import { persistentTerminalNameOfId } from '../../../terminalToolService.js';
+import { suggestedAllowPattern } from '../../../../common/terminalApproval.js';
 import { 
 	ToolHeaderWrapper, 
 	ToolChildrenWrapper, 
@@ -27,6 +28,7 @@ export const TerminalCommandApproval = ({ command, cwd, threadId, toolId }: { co
 	const chatThreadsService = accessor.get('IChatThreadService')
 	const metricsService = accessor.get('IMetricsService')
 	const workspaceContextService = accessor.get('IWorkspaceContextService')
+	const voidSettingsService = accessor.get('IVoidSettingsService')
 
 	const workspaceFolders = workspaceContextService.getWorkspace().folders
 	const firstFolder = workspaceFolders[0]?.uri.fsPath
@@ -38,6 +40,23 @@ export const TerminalCommandApproval = ({ command, cwd, threadId, toolId }: { co
 		try { chatThreadsService.approveLatestToolRequest(threadId, toolId); metricsService.capture('Tool Request Accepted', { tool: 'run_command' }); }
 		catch (e) { console.error('Error while approving command:', e) }
 	}, [chatThreadsService, metricsService, threadId, toolId])
+
+	// Run this command AND add its base pattern to the allow list so future
+	// matching commands auto-run without prompting.
+	const onAlwaysAllow = useCallback(() => {
+		try {
+			const pattern = suggestedAllowPattern(command)
+			if (pattern) {
+				const current = voidSettingsService.state.globalSettings.terminalAllowPatterns ?? []
+				if (!current.includes(pattern)) {
+					voidSettingsService.setGlobalSetting('terminalAllowPatterns', [...current, pattern])
+				}
+			}
+			chatThreadsService.approveLatestToolRequest(threadId, toolId)
+			metricsService.capture('Tool Request Accepted', { tool: 'run_command', alwaysAllow: true })
+		}
+		catch (e) { console.error('Error while always-allowing command:', e) }
+	}, [chatThreadsService, metricsService, voidSettingsService, command, threadId, toolId])
 
 	const onSkip = useCallback(() => {
 		try { chatThreadsService.skipLatestToolRequest(threadId, toolId); metricsService.capture('Tool Request Skipped', { tool: 'run_command' }); }
@@ -51,6 +70,8 @@ export const TerminalCommandApproval = ({ command, cwd, threadId, toolId }: { co
 		catch (e) { console.error('Error while rejecting command:', e) }
 	}, [chatThreadsService, metricsService, threadId, toolId])
 
+	const allowPattern = suggestedAllowPattern(command)
+
 	return (
 		<div className="rounded-xl overflow-hidden border border-void-border-2 bg-void-bg-4 shadow-lg my-3 mx-1 animate-in fade-in slide-in-from-top-2 duration-300">
 			<div className="px-4 py-3 font-mono text-[13px] leading-relaxed relative group">
@@ -62,6 +83,17 @@ export const TerminalCommandApproval = ({ command, cwd, threadId, toolId }: { co
 			</div>
 			<div className="flex items-center justify-end gap-2 px-3 py-2 border-t border-void-border-2 bg-void-bg-2">
 				<button onClick={onCopy} className="p-2 text-void-fg-3 hover:text-void-fg-1 hover:bg-void-bg-2 rounded-lg transition-all active:scale-90" data-tooltip-id='void-tooltip' data-tooltip-content='Copy command' data-tooltip-place='top'><CopyIcon size={14} /></button>
+				{allowPattern && (
+					<button
+						onClick={onAlwaysAllow}
+						className="flex items-center gap-1.5 px-3 py-1.5 bg-void-bg-3 text-void-fg-1 hover:bg-void-bg-4 rounded-lg text-xs font-bold uppercase tracking-wider border border-void-border-2 transition-all active:scale-95"
+						data-tooltip-id='void-tooltip'
+						data-tooltip-content={`Run now and auto-allow "${allowPattern}" in future`}
+						data-tooltip-place='top'
+					>
+						<Check size={12} strokeWidth={3} />Always allow
+					</button>
+				)}
 				<button onClick={onRun} className="flex items-center gap-2 px-4 py-1.5 bg-[var(--vscode-button-background)] text-white hover:bg-[var(--vscode-button-hoverBackground)] rounded-lg shadow-sm text-xs font-bold uppercase tracking-wider transition-all active:scale-95"><Play size={12} strokeWidth={3} />Run</button>
 				<button onClick={onSkip} className="px-3 py-1.5 bg-void-bg-2 text-void-fg-2 hover:bg-void-bg-3 rounded-lg text-xs font-bold uppercase tracking-wider border border-void-border-2 transition-all active:scale-95">Skip</button>
 				<button onClick={onCancel} className="px-3 py-1.5 text-void-fg-3 hover:text-void-fg-1 hover:bg-void-bg-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all active:scale-95">Cancel</button>

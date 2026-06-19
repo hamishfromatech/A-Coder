@@ -502,34 +502,17 @@
    ============================================ */
 
 .void-user-message-card {
-	background: linear-gradient(
-		135deg,
-		color-mix(in srgb, var(--vscode-button-background) 8%, var(--void-depth-elevated)) 0%,
-		color-mix(in srgb, var(--vscode-button-background) 4%, var(--void-depth-elevated)) 100%
-	);
-	border-left: 2px solid var(--vscode-button-background);
+	background: var(--void-bg-1);
+	border: 1px solid var(--void-border-1);
 	border-radius: var(--void-radius-md);
-	border-top-left-radius: var(--void-radius-xs);
-	box-shadow: var(--void-shadow-sm), inset 0 1px 0 color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+	box-shadow: none;
 	position: relative;
-	overflow: hidden;
 	max-width: 100%;
-	transition: box-shadow var(--void-duration-fast) var(--void-ease-out);
+	transition: border-color var(--void-duration-fast) var(--void-ease-out);
 }
 
 .void-user-message-card:hover {
-	box-shadow: var(--void-shadow-md);
-}
-
-.void-user-message-card::before {
-	content: '';
-	position: absolute;
-	left: 0;
-	top: 0;
-	bottom: 0;
-	width: 2px;
-	background: var(--void-accent-gradient);
-	opacity: 0.6;
+	border-color: color-mix(in srgb, var(--void-fg-4) 35%, var(--void-border-1));
 }
 
 /* Header row */
@@ -538,13 +521,16 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: 8px;
-	padding: 10px 16px;
-	cursor: pointer;
+	padding: 9px 14px;
 	transition: background-color var(--void-duration-fast) var(--void-ease-out);
-	min-height: 40px;
+	min-height: 38px;
 }
 
-.void-user-message-header:hover {
+.void-user-message-header-collapsible {
+	cursor: pointer;
+}
+
+.void-user-message-header-collapsible:hover {
 	background: color-mix(in srgb, var(--vscode-foreground) 3%, transparent);
 }
 
@@ -552,37 +538,16 @@
 .void-user-message-header-left {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 6px;
 	flex: 1;
 	min-width: 0;
 }
 
-/* User avatar/icon in header */
-.void-user-message-avatar {
-	width: 22px;
-	height: 22px;
-	border-radius: 50%;
-	background: color-mix(in srgb, var(--vscode-button-background) 20%, transparent);
-	border: 1px solid color-mix(in srgb, var(--vscode-button-background) 30%, transparent);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	flex-shrink: 0;
-}
-
-.void-user-message-avatar svg {
-	width: 12px;
-	height: 12px;
-	color: var(--vscode-button-foreground);
-}
-
 /* Sender label */
 .void-user-message-label {
-	font-size: 10px;
-	font-weight: 700;
-	text-transform: uppercase;
-	letter-spacing: 0.1em;
-	color: var(--void-fg-3);
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--void-fg-2);
 }
 
 /* Timestamp */
@@ -668,7 +633,7 @@
 	right: 0;
 	bottom: 0;
 	height: 24px;
-	background: linear-gradient(to bottom, transparent, var(--void-depth-elevated));
+	background: linear-gradient(to bottom, transparent, var(--void-bg-1));
 	pointer-events: none;
 }
 

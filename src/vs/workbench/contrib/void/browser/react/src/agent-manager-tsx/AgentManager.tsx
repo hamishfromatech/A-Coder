@@ -14,9 +14,11 @@ import { PastThreadsList } from '../sidebar-tsx/SidebarThreadSelector.js';
 import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js';
 import {
 	Settings, X, Maximize2, Search, ExternalLink, Code, Plus, Zap,
-	MessageSquare, Folder, Activity, Globe, ChevronRight, Layers, Trash2, Edit3
+	MessageSquare, Folder, Activity, Globe, ChevronRight, Layers, Trash2, Edit3,
+	Sparkles, LayoutGrid
 } from 'lucide-react';
 import { URI } from '../../../../../../../base/common/uri.js';
+import { StorageScope, StorageTarget } from '../../../../../../../platform/storage/common/storage.js';
 import '../styles.css';
 
 import { CodePreview } from './CodePreview.js';
@@ -24,8 +26,11 @@ import { ContentPreview } from './ContentPreview.js';
 import { WorkspacesView } from './WorkspacesView.js';
 import { DashboardView } from './DashboardView.js';
 import { MultiView } from './MultiView.js';
+import { SimpleHome } from './SimpleHome.js';
 import { useWindowSize } from './useWindowSize.js';
 import { StandaloneSession } from '../../../../common/chatThreadServiceTypes.js';
+
+const AGENT_MANAGER_MODE_KEY = 'void.agentManager.mode';
 
 // ------------------------------------------------------------------
 //  Top nav item
@@ -242,6 +247,14 @@ export const AgentManager = ({ className }: { className: string }) => {
 	const isDark = useIsDark();
 	const accessor = useAccessor();
 	const { width } = useWindowSize(100);
+	const storageService = accessor.get('IStorageService');
+	const [mode, setMode] = useState<'simple' | 'advanced'>(
+		() => (storageService.get(AGENT_MANAGER_MODE_KEY, StorageScope.APPLICATION) === 'advanced' ? 'advanced' : 'simple')
+	);
+	const switchMode = useCallback((m: 'simple' | 'advanced') => {
+		setMode(m);
+		storageService.store(AGENT_MANAGER_MODE_KEY, m, StorageScope.APPLICATION, StorageTarget.MACHINE);
+	}, [storageService]);
 	const [tab, setTab] = useState<'chats' | 'workspaces' | 'dashboard' | 'multi'>('chats');
 	const [preview, setPreview] = useState(true);
 	const [sidebar, setSidebar] = useState(true);
@@ -361,16 +374,36 @@ export const AgentManager = ({ className }: { className: string }) => {
 							<div className="w-6 h-6 rounded bg-void-bg-2 border border-void-border-1 flex items-center justify-center">
 								<Zap className="w-3.5 h-3.5 text-void-fg-0" />
 							</div>
-							<span className="text-sm font-semibold text-void-fg-0">Agent Manager</span>
+							<span className="text-sm font-semibold text-void-fg-0">A-Coder</span>
 						</div>
 
-						{/* Nav */}
-						<nav className="flex items-center gap-1">
-							<NavItem active={tab === 'chats'} onClick={() => setTab('chats')} label="Chat" icon={MessageSquare} />
-							<NavItem active={tab === 'workspaces'} onClick={() => setTab('workspaces')} label="Files" icon={Folder} />
-							<NavItem active={tab === 'dashboard'} onClick={() => setTab('dashboard')} label="Overview" icon={Activity} />
-							<NavItem active={tab === 'multi'} onClick={() => setTab('multi')} label="Multi" icon={Globe} />
-						</nav>
+						{/* Mode toggle: Simple / Advanced */}
+						<div className="flex items-center gap-1 p-0.5 rounded-lg bg-void-bg-2 border border-void-border-2">
+							<button
+								onClick={() => switchMode('simple')}
+								className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${mode === 'simple' ? 'bg-void-bg-3 text-void-fg-1' : 'text-void-fg-4 hover:text-void-fg-2'}`}
+								title="Plain-language control — just tell A-Coder what you want"
+							>
+								<Sparkles className="w-3.5 h-3.5" /> Simple
+							</button>
+							<button
+								onClick={() => switchMode('advanced')}
+								className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${mode === 'advanced' ? 'bg-void-bg-3 text-void-fg-1' : 'text-void-fg-4 hover:text-void-fg-2'}`}
+								title="Full multi-window control panel"
+							>
+								<LayoutGrid className="w-3.5 h-3.5" /> Advanced
+							</button>
+						</div>
+
+						{/* Nav (advanced mode only) */}
+						{mode === 'advanced' && (
+							<nav className="flex items-center gap-1">
+								<NavItem active={tab === 'chats'} onClick={() => setTab('chats')} label="Chat" icon={MessageSquare} />
+								<NavItem active={tab === 'workspaces'} onClick={() => setTab('workspaces')} label="Files" icon={Folder} />
+								<NavItem active={tab === 'dashboard'} onClick={() => setTab('dashboard')} label="Overview" icon={Activity} />
+								<NavItem active={tab === 'multi'} onClick={() => setTab('multi')} label="Projects" icon={Globe} />
+							</nav>
+						)}
 					</div>
 
 					<div className="flex items-center gap-2">
@@ -386,7 +419,14 @@ export const AgentManager = ({ className }: { className: string }) => {
 
 				{/* === Body === */}
 				<div className="flex-1 flex overflow-hidden h-full min-h-0 relative">
-
+				{mode === 'simple' ? (
+					<main className="flex-1 flex flex-col min-w-0 relative h-full overflow-hidden bg-void-bg-4">
+						<ErrorBoundary>
+							<SimpleHome onGoAdvanced={() => switchMode('advanced')} />
+						</ErrorBoundary>
+					</main>
+				) : (
+				<>
 					{/* Sidebar */}
 					{sidebar && (
 						<Sidebar
@@ -514,6 +554,8 @@ export const AgentManager = ({ className }: { className: string }) => {
 							Preview
 						</button>
 					)}
+				</>
+				)}
 				</div>
 			</div>
 		</div>

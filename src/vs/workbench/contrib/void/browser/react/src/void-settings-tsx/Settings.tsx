@@ -1885,6 +1885,80 @@ export const ToolApprovalTypeSwitch = ({ approvalType, size, desc }: { approvalT
 
 
 
+/**
+ * Editor for a list of command patterns (allow/deny list). Each pattern is a
+ * command prefix or glob (`*` wildcard) matched against the command line.
+ */
+export const TerminalPatternListEditor = ({ kind }: { kind: 'allow' | 'deny' }) => {
+	const accessor = useAccessor()
+	const voidSettingsService = accessor.get('IVoidSettingsService')
+	const settingsState = useSettingsState()
+	const [input, setInput] = useState('')
+
+	const patterns = kind === 'allow'
+		? settingsState.globalSettings.terminalAllowPatterns
+		: settingsState.globalSettings.terminalDenyPatterns
+
+	const setPatterns = useCallback((next: string[]) => {
+		const key = kind === 'allow' ? 'terminalAllowPatterns' : 'terminalDenyPatterns'
+		voidSettingsService.setGlobalSetting(key, next)
+	}, [voidSettingsService, kind])
+
+	const onAdd = useCallback(() => {
+		const trimmed = input.trim()
+		if (!trimmed) return
+		if (patterns.includes(trimmed)) { setInput(''); return }
+		setPatterns([...patterns, trimmed])
+		setInput('')
+	}, [input, patterns, setPatterns])
+
+	const onRemove = useCallback((pat: string) => {
+		setPatterns(patterns.filter(p => p !== pat))
+	}, [patterns, setPatterns])
+
+	return (
+		<div className="space-y-2">
+			<div className="flex items-center gap-2">
+				<input
+					value={input}
+					onChange={e => setInput(e.target.value)}
+					onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onAdd() } }}
+					placeholder={kind === 'allow' ? 'e.g. ls, git status, npm run *' : 'e.g. rm, git push'}
+					className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-void-bg-3 border border-void-border-2 text-void-fg-1 text-xs font-mono outline-none focus:border-void-accent"
+				/>
+				<button
+					onClick={onAdd}
+					disabled={!input.trim()}
+					className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-void-bg-3 hover:bg-void-bg-4 border border-void-border-2 text-void-fg-2 text-xs font-bold uppercase tracking-wider transition-all active:scale-95 disabled:opacity-40"
+				>
+					<Plus size={12} strokeWidth={3} />Add
+				</button>
+			</div>
+			{patterns.length === 0 ? (
+				<div className="text-void-fg-4 text-xs italic px-1">No {kind === 'allow' ? 'allowed' : 'denied'} commands yet.</div>
+			) : (
+				<div className="flex flex-wrap gap-1.5">
+					{patterns.map(pat => (
+						<span key={pat} className="inline-flex items-center gap-1 pl-2 pr-1 py-1 rounded-md bg-void-bg-3 border border-void-border-2 text-void-fg-2 text-xs font-mono">
+							{pat}
+							<button
+								onClick={() => onRemove(pat)}
+								className="ml-0.5 p-0.5 rounded hover:bg-void-bg-4 text-void-fg-4 hover:text-void-fg-1 transition-all"
+								data-tooltip-id='void-tooltip'
+								data-tooltip-content='Remove'
+								data-tooltip-place='top'
+							>
+								<X size={12} strokeWidth={2.5} />
+							</button>
+						</span>
+					))}
+				</div>
+			)}
+		</div>
+	)
+}
+
+
 export const OneClickSwitchButton = ({ fromEditor = 'VS Code', className = '' }: { fromEditor?: TransferEditorType, className?: string }) => {
 	const accessor = useAccessor()
 	const extensionTransferService = accessor.get('IExtensionTransferService')
@@ -3518,6 +3592,48 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 																			onChange={(newVal) => voidSettingsService.setGlobalSetting('enableToolResultTOON', newVal)}
 																		/>
 																	</SettingRow>
+																</SettingBox>
+															</div>
+														</SettingCard>
+
+														{/* Terminal Auto-Approval Card */}
+														<SettingCard
+															isDark={isDark}
+															title="Terminal Auto-Approval"
+															description="Auto-run safe terminal commands; prompt for everything else."
+															icon={Terminal}
+														>
+															<div className="space-y-3">
+																<SettingBox>
+																	<SettingRow label="Auto-approve all terminal commands" description="Master toggle: run every command without asking. Overridden by the deny list below.">
+																		<ToolApprovalTypeSwitch size='sm' approvalType='terminal' desc="" />
+																	</SettingRow>
+																</SettingBox>
+
+																<SettingBox>
+																	<SettingRow label="Auto-run read-only commands" description="Auto-approve a built-in read-only set (ls, cat, pwd, git status, git diff, …). Off by default.">
+																		<VoidSwitch
+																			size='sm'
+																			value={settingsState.globalSettings.terminalReadOnlyAutoApprove}
+																			onChange={(newVal) => voidSettingsService.setGlobalSetting('terminalReadOnlyAutoApprove', newVal)}
+																		/>
+																	</SettingRow>
+																</SettingBox>
+
+																<SettingBox>
+																	<div className="space-y-2">
+																		<div className="text-xs text-void-fg-2 font-bold uppercase tracking-wider">Allowed commands</div>
+																		<div className="text-[11px] text-void-fg-4">Auto-run commands matching these prefixes/globs (use <code className="font-mono">*</code> as a wildcard), even when the master toggle is off.</div>
+																		<TerminalPatternListEditor kind='allow' />
+																	</div>
+																</SettingBox>
+
+																<SettingBox>
+																	<div className="space-y-2">
+																		<div className="text-xs text-void-fg-2 font-bold uppercase tracking-wider">Denied commands</div>
+																		<div className="text-[11px] text-void-fg-4">Always prompt for commands matching these, even if the master toggle is on.</div>
+																		<TerminalPatternListEditor kind='deny' />
+																	</div>
 																</SettingBox>
 															</div>
 														</SettingCard>

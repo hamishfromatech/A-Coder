@@ -18,6 +18,11 @@ import { IACPService } from './acpService.js';
 import { IComposioService } from './composioService.js';
 import { InternalToolInfo } from './prompt/prompts.js';
 
+// Upper bound on how long we'll wait for the Composio Tool Router to return meta
+// tools before proceeding without them. Prevents a flaky Composio endpoint from
+// stalling the entire chat request.
+const COMPOSIO_TOOLS_TIMEOUT_MS = 10000;
+
 // calls channel to implement features
 export const ILLMMessageService = createDecorator<ILLMMessageService>('llmMessageService');
 
@@ -132,7 +137,14 @@ export class LLMMessageService extends Disposable implements ILLMMessageService 
 
 		// Get Composio meta tools if API key is configured
 		// Using Tool Router approach: agent self-manages connections via meta tools
-		const composioToolsPromise = this._getComposioTools(globalSettings.composioApiKey, globalSettings.composioEnabledToolkits);
+		// Race against a timeout so a slow/hanging Composio endpoint can't block the
+		// chat forever — on timeout we proceed without Composio tools (same as the
+		// failure path below), rather than leaving the request stuck before it even
+		// reaches the main process.
+		const composioToolsPromise = Promise.race([
+			this._getComposioTools(globalSettings.composioApiKey, globalSettings.composioEnabledToolkits),
+			new Promise<InternalToolInfo[] | undefined>(resolve => setTimeout(() => resolve(undefined), COMPOSIO_TOOLS_TIMEOUT_MS)),
+		]);
 
 		// add state for request id
 		const requestId = generateUuid();

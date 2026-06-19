@@ -5,8 +5,8 @@
 
 import React, { useMemo } from 'react';
 import { WorkspaceConnection } from '../../../../common/workspaceRegistryTypes.js';
-import { useAllWorkspaces, useSelectedWorkspace } from '../util/services.js';
-import { Folder, MessageSquare, Activity, Circle, ChevronRight } from 'lucide-react';
+import { useAllWorkspaces, useSelectedWorkspace, useWorkspaceRemoteControl } from '../util/services.js';
+import { Folder, MessageSquare, Activity, Circle, ChevronRight, ExternalLink } from 'lucide-react';
 
 /**
  * Status indicator component
@@ -40,6 +40,7 @@ const WorkspaceCard = ({
 	isSelected: boolean,
 	onClick: () => void
 }) => {
+	const remoteControl = useWorkspaceRemoteControl();
 	const totalMessages = useMemo(() => {
 		return workspace.threads.reduce((sum, t) => sum + t.messageCount, 0);
 	}, [workspace.threads]);
@@ -48,11 +49,19 @@ const WorkspaceCard = ({
 		return workspace.threads.filter(t => t.status === 'streaming').length;
 	}, [workspace.threads]);
 
+	const focus = (e: React.MouseEvent) => {
+		e.stopPropagation();
+		remoteControl.sendCommand({ type: 'focus', targetWorkspaceId: workspace.id });
+	};
+
 	return (
-		<button
+		<div
 			onClick={onClick}
+			role="button"
+			tabIndex={0}
+			onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
 			className={`
-				group w-full text-left p-3 rounded-xl border transition-all duration-200
+				group w-full text-left p-3 rounded-xl border transition-all duration-200 cursor-pointer
 				${isSelected
 					? 'bg-void-accent/10 border-void-accent/30 shadow-md shadow-void-accent/10'
 					: 'bg-void-bg-2 border-void-border-2 hover:bg-void-bg-3 hover:border-void-border-1'
@@ -89,7 +98,7 @@ const WorkspaceCard = ({
 			<div className="flex items-center gap-4 mt-3 pt-2 border-t border-void-border-2">
 				<div className="flex items-center gap-1.5">
 					<MessageSquare className="w-3 h-3 text-void-fg-4" />
-					<span className="text-[10px] font-medium text-void-fg-3">{workspace.threads.length} threads</span>
+					<span className="text-[10px] font-medium text-void-fg-3">{workspace.threads.length} tasks</span>
 				</div>
 				<div className="flex items-center gap-1.5">
 					<Activity className="w-3 h-3 text-void-fg-4" />
@@ -98,11 +107,18 @@ const WorkspaceCard = ({
 				{activeThreads > 0 && (
 					<div className="flex items-center gap-1.5">
 						<Circle className="w-2 h-2 text-void-accent fill-current animate-pulse" />
-						<span className="text-[10px] font-medium text-void-accent">{activeThreads} active</span>
+						<span className="text-[10px] font-medium text-void-accent">{activeThreads} running</span>
 					</div>
 				)}
+				<button
+					onClick={focus}
+					className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-void-bg-1 hover:bg-void-bg-3 text-void-fg-3 hover:text-void-accent border border-void-border-2 transition-colors"
+					title="Bring this window to the front"
+				>
+					<ExternalLink className="w-3 h-3" /> Focus
+				</button>
 			</div>
-		</button>
+		</div>
 	);
 };
 

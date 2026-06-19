@@ -1544,6 +1544,35 @@ class EditCodeService extends Disposable implements IEditCodeService {
 		}
 	}
 
+	/**
+	 * Count how many times `oldString` occurs in the file, using the same
+	 * line-ending normalization as `instantlyReplaceString`. Used for
+	 * atomic pre-validation in edit_files (existence + uniqueness) without
+	 * applying any change.
+	 */
+	public countStringMatches({ uri, oldString }: { uri: URI, oldString: string }): number {
+		if (!oldString || oldString.length === 0) {
+			return 0
+		}
+		const { model } = this._voidModelService.getModel(uri)
+		if (!model) {
+			return 0
+		}
+		const content = model.getValue(EndOfLinePreference.LF)
+		const normalizedContent = normalizeLineEndings(content)
+		const normalizedOldString = normalizeLineEndings(oldString)
+		if (!normalizedOldString) {
+			return 0
+		}
+		let count = 0
+		let idx = normalizedContent.indexOf(normalizedOldString)
+		while (idx !== -1) {
+			count++
+			idx = normalizedContent.indexOf(normalizedOldString, idx + 1)
+		}
+		return count
+	}
+
 	public instantlyReplaceString({ uri, oldString, newString, onProgress }: { uri: URI, oldString: string, newString: string, onProgress?: (data: string) => void }) {
 		onProgress?.(`Replacing text in: ${uri.fsPath}...`);
 

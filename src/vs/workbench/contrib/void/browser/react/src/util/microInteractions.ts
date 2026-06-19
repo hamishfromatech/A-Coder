@@ -262,7 +262,10 @@ export function createRipple(event: React.MouseEvent<HTMLElement>, config: Rippl
 	const { color = 'rgba(255, 255, 255, 0.3)', duration = 600 } = config;
 	const button = event.currentTarget;
 
-	const circle = document.createElement('span');
+	// Create the ripple in the same document that owns the button (the main
+	// window's document inside auxiliary windows) so we never hit the aux
+	// window's patched, throwing document.createElement.
+	const circle = button.ownerDocument.createElement('span');
 	const diameter = Math.max(button.clientWidth, button.clientHeight);
 	const radius = diameter / 2;
 
