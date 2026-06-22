@@ -791,9 +791,12 @@ class EditCodeService extends Disposable implements IEditCodeService {
 					else if (diff.type === 'deletion') {
 						// if diff.startLine is out of bounds
 						if (diff.startLine === 1) {
-							const numRedLines = diff.originalEndLine - diff.originalStartLine + 1
+							// The red view zone is inserted after line 0, i.e. at the very
+							// top of the file. Place the buttons at the top of that zone
+							// (offset 0). A negative offset would push them above the
+							// viewport and out of sight.
 							startLine = diff.startLine
-							offsetLines = -numRedLines
+							offsetLines = 0
 						}
 						else {
 							startLine = diff.startLine - 1

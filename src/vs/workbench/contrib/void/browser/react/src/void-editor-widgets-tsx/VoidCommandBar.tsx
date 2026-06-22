@@ -8,11 +8,10 @@ import { useAccessor, useCommandBarState, useIsDark } from '../util/services.js'
 import { getBasename } from '../sidebar-tsx/ToolResultHelpers.js';
 
 import '../styles.css'
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ScrollType } from '../../../../../../../editor/common/editorCommon.js';
-import { acceptAllBg, acceptBorder, buttonFontSize, buttonTextColor, rejectAllBg, rejectBg, rejectBorder } from '../../../../common/helpers/colors.js';
 import { VoidCommandBarProps } from '../../../voidCommandBarService.js';
-import { Check, EllipsisVertical, Menu, MoveDown, MoveLeft, MoveRight, MoveUp, X } from 'lucide-react';
+import { Check, EllipsisVertical, MoveDown, MoveLeft, MoveRight, MoveUp, X } from 'lucide-react';
 import {
 	VOID_GOTO_NEXT_DIFF_ACTION_ID,
 	VOID_GOTO_PREV_DIFF_ACTION_ID,
@@ -98,20 +97,32 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 	const { stateOfURI: commandBarState, sortedURIs: sortedCommandBarURIs } = useCommandBarState()
 	const [showAcceptRejectAllButtons, setShowAcceptRejectAllButtons] = useState(false)
 
-	// latestUriIdx is used to remember place in leftRight
-	const _latestValidUriIdxRef = useRef<number | null>(null)
+	const dropdownRef = useRef<HTMLDivElement>(null)
+	const ellipsisRef = useRef<HTMLButtonElement>(null)
 
-	// i is the current index of the URI in sortedCommandBarURIs
+	// Dismiss the Accept All / Reject All dropdown on outside pointer-down or Escape.
+	// The ellipsis button is excluded so its own click can toggle without racing.
+	useEffect(() => {
+		if (!showAcceptRejectAllButtons) return
+		const onPointerDown = (e: PointerEvent) => {
+			const target = e.target as Node | null
+			if (target && (dropdownRef.current?.contains(target) || ellipsisRef.current?.contains(target))) return
+			setShowAcceptRejectAllButtons(false)
+		}
+		const onKeyDown = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') setShowAcceptRejectAllButtons(false)
+		}
+		document.addEventListener('pointerdown', onPointerDown)
+		document.addEventListener('keydown', onKeyDown)
+		return () => {
+			document.removeEventListener('pointerdown', onPointerDown)
+			document.removeEventListener('keydown', onKeyDown)
+		}
+	}, [showAcceptRejectAllButtons])
+
+	// index of the current URI in sortedCommandBarURIs (null when this file has no diffs)
 	const i_ = sortedCommandBarURIs.findIndex(e => e.fsPath === uri?.fsPath)
 	const currFileIdx = i_ === -1 ? null : i_
-	useEffect(() => {
-		if (currFileIdx !== null) _latestValidUriIdxRef.current = currFileIdx
-	}, [currFileIdx])
-
-	const uriIdxInStepper = currFileIdx !== null ? currFileIdx // use currFileIdx if it exists, else use latestNotNullUriIdxRef
-		: _latestValidUriIdxRef.current === null ? null
-			: _latestValidUriIdxRef.current < sortedCommandBarURIs.length ? _latestValidUriIdxRef.current
-				: null
 
 	// when change URI, scroll to the proper spot
 	useEffect(() => {
@@ -152,7 +163,7 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 	const onAcceptFile = async () => {
 		if (!uri) return
 		const idxBefore = currFileIdx
-		await editCodeService.acceptOrRejectAllDiffAreas({ uri, behavior: 'accept', removeCtrlKs: false, _addToHistory: true })
+		await editCodeService.acceptOrRejectAllDiffAreas({ uri, behavior: 'accept', removeCtrlKs: true, _addToHistory: true })
 		metricsService.capture('Accept File', {})
 		// Auto-advance: after removing current file, the next file is at the same index (array shifted up)
 		setTimeout(() => {
@@ -166,7 +177,7 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 	const onRejectFile = async () => {
 		if (!uri) return
 		const idxBefore = currFileIdx
-		await editCodeService.acceptOrRejectAllDiffAreas({ uri, behavior: 'reject', removeCtrlKs: false, _addToHistory: true })
+		await editCodeService.acceptOrRejectAllDiffAreas({ uri, behavior: 'reject', removeCtrlKs: true, _addToHistory: true })
 		metricsService.capture('Reject File', {})
 		// Auto-advance: after removing current file, the next file is at the same index (array shifted up)
 		setTimeout(() => {
@@ -205,19 +216,28 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 	const downKeybindLabel = editCodeService.processRawKeybindingText(_downKeybinding?.getLabel() || '');
 	const leftKeybindLabel = editCodeService.processRawKeybindingText(_leftKeybinding?.getLabel() || '');
 	const rightKeybindLabel = editCodeService.processRawKeybindingText(_rightKeybinding?.getLabel() || '');
-	const acceptFileKeybindLabel = editCodeService.processRawKeybindingText(_acceptFileKeybinding?.getAriaLabel() || '');
-	const rejectFileKeybindLabel = editCodeService.processRawKeybindingText(_rejectFileKeybinding?.getAriaLabel() || '');
-	const acceptAllKeybindLabel = editCodeService.processRawKeybindingText(_acceptAllKeybinding?.getAriaLabel() || '');
-	const rejectAllKeybindLabel = editCodeService.processRawKeybindingText(_rejectAllKeybinding?.getAriaLabel() || '');
+	const acceptFileKeybindLabel = editCodeService.processRawKeybindingText(_acceptFileKeybinding?.getLabel() || '');
+	const rejectFileKeybindLabel = editCodeService.processRawKeybindingText(_rejectFileKeybinding?.getLabel() || '');
+	const acceptAllKeybindLabel = editCodeService.processRawKeybindingText(_acceptAllKeybinding?.getLabel() || '');
+	const rejectAllKeybindLabel = editCodeService.processRawKeybindingText(_rejectAllKeybinding?.getLabel() || '');
+
+	// Tooltip = action label + (optional) keybind, e.g. "Previous diff · ⌥⌃↑"
+	const fmtTooltip = (label: string, keybind: string) => keybind ? `${label} · ${keybind}` : label
 
 
-	// Overall review progress across all files
+	// Overall review progress across all files.
+	// `totalDiffs` is the count of diffs still pending. We track the high-water
+	// mark of pending diffs seen this session and derive disposed = highWater -
+	// pending, so progress reflects diffs actually accepted/rejected (cleared),
+	// not merely how far the cursor has navigated. This keeps the bar from
+	// moving backwards when accepting the last diff in a file. The high-water
+	// mark resets once everything is cleared, so a fresh batch starts at 0.
 	const totalDiffs = sortedCommandBarURIs.reduce((sum, u) => sum + (commandBarState[u.fsPath]?.sortedDiffIds?.length || 0), 0);
-	const reviewedDiffs = sortedCommandBarURIs.reduce((sum, u) => {
-		const idx = commandBarState[u.fsPath]?.diffIdx;
-		return sum + (idx !== null && idx !== undefined ? idx + 1 : 0);
-	}, 0);
-	const progress = totalDiffs > 0 ? reviewedDiffs / totalDiffs : 0;
+	const highWaterRef = useRef(0)
+	if (totalDiffs === 0) highWaterRef.current = 0
+	else if (totalDiffs > highWaterRef.current) highWaterRef.current = totalDiffs
+	const disposedDiffs = Math.max(0, highWaterRef.current - totalDiffs)
+	const progress = highWaterRef.current > 0 ? disposedDiffs / highWaterRef.current : 0;
 
 	if (!isADiffZoneInAnyFile) return null
 
@@ -255,18 +275,18 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 			{/* Accept All / Reject All buttons that appear when the vertical ellipsis is clicked */}
 			{showAcceptRejectAllButtons && showAcceptRejectAll && (
 				<div className="flex justify-end">
-					<div className="inline-flex bg-void-bg-1/95 backdrop-blur-md rounded-xl shadow-2xl border border-void-border-2 p-1 gap-1">
+					<div ref={dropdownRef} className="inline-flex bg-void-bg-1/95 backdrop-blur-md rounded-xl shadow-2xl border border-void-border-2 p-1 gap-1">
 						<AcceptAllButtonWrapper
 							text={`Accept All`}
 							data-tooltip-id='void-tooltip'
-							data-tooltip-content={acceptAllKeybindLabel}
+							data-tooltip-content={fmtTooltip('Accept all changes', acceptAllKeybindLabel)}
 							data-tooltip-delay-show={500}
 							onClick={onAcceptAll}
 						/>
 						<RejectAllButtonWrapper
 							text={`Reject All`}
 							data-tooltip-id='void-tooltip'
-							data-tooltip-content={rejectAllKeybindLabel}
+							data-tooltip-content={fmtTooltip('Reject all changes', rejectAllKeybindLabel)}
 							data-tooltip-delay-show={500}
 							onClick={onRejectAll}
 						/>
@@ -301,7 +321,7 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 							}
 						}}
 						data-tooltip-id="void-tooltip"
-						data-tooltip-content={`${upKeybindLabel ? `${upKeybindLabel}` : ''}`}
+						data-tooltip-content={fmtTooltip('Previous diff', upKeybindLabel)}
 						data-tooltip-delay-show={500}
 					>
 						<MoveUp className='size-3.5 text-void-fg-1' />
@@ -326,7 +346,7 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 							}
 						}}
 						data-tooltip-id="void-tooltip"
-						data-tooltip-content={`${downKeybindLabel ? `${downKeybindLabel}` : ''}`}
+						data-tooltip-content={fmtTooltip('Next diff', downKeybindLabel)}
 						data-tooltip-delay-show={500}
 					>
 						<MoveDown className='size-3.5 text-void-fg-1' />
@@ -348,7 +368,7 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 							}
 						}}
 						data-tooltip-id="void-tooltip"
-						data-tooltip-content={`${leftKeybindLabel ? `${leftKeybindLabel}` : ''}`}
+						data-tooltip-content={fmtTooltip('Previous file', leftKeybindLabel)}
 						data-tooltip-delay-show={500}
 					>
 						<MoveLeft className='size-3.5 text-void-fg-1' />
@@ -375,7 +395,7 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 							}
 						}}
 						data-tooltip-id="void-tooltip"
-						data-tooltip-content={`${rightKeybindLabel ? `${rightKeybindLabel}` : ''}`}
+						data-tooltip-content={fmtTooltip('Next file', rightKeybindLabel)}
 						data-tooltip-delay-show={500}
 					>
 						<MoveRight className='size-3.5 text-void-fg-1' />
@@ -389,7 +409,7 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 						<AcceptAllButtonWrapper
 							text={`Accept File`}
 							data-tooltip-id='void-tooltip'
-							data-tooltip-content={acceptFileKeybindLabel}
+							data-tooltip-content={fmtTooltip('Accept all changes in this file', acceptFileKeybindLabel)}
 							data-tooltip-delay-show={500}
 							onClick={onAcceptFile}
 							className="h-8"
@@ -397,7 +417,7 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 						<RejectAllButtonWrapper
 							text={`Reject File`}
 							data-tooltip-id='void-tooltip'
-							data-tooltip-content={rejectFileKeybindLabel}
+							data-tooltip-content={fmtTooltip('Reject all changes in this file', rejectFileKeybindLabel)}
 							data-tooltip-delay-show={500}
 							onClick={onRejectFile}
 							className="h-8"
@@ -407,8 +427,11 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 				{/* Triple colon menu button */}
 				{showAcceptRejectAll && (
 					<button
+						ref={ellipsisRef}
 						className={`p-1.5 hover:bg-void-bg-2 rounded-md transition-all ${showAcceptRejectAllButtons ? 'bg-void-bg-2 text-void-accent' : 'text-void-fg-3 hover:text-void-fg-1'}`}
 						onClick={() => setShowAcceptRejectAllButtons(!showAcceptRejectAllButtons)}
+						aria-label={showAcceptRejectAllButtons ? 'Close accept/reject all menu' : 'Open accept/reject all menu'}
+						aria-expanded={showAcceptRejectAllButtons}
 					>
 						<EllipsisVertical className="size-4" />
 					</button>
