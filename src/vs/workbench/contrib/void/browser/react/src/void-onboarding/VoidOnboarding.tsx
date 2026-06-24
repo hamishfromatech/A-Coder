@@ -11,14 +11,11 @@ import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js';
 import { OllamaSetupInstructions, OneClickSwitchButton, SettingsForProvider, ModelDump, SettingBox, SettingRow, SettingCard } from '../void-settings-tsx/Settings.js';
 import { ColorScheme } from '../../../../../../../platform/theme/common/theme.js';
 import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js';
-import { isLinux } from '../../../../../../../base/common/platform.js';
-
-const OVERRIDE_VALUE = false
 
 export const VoidOnboarding = () => {
 
 	const voidSettingsState = useSettingsState()
-	const isOnboardingComplete = voidSettingsState.globalSettings.isOnboardingComplete || OVERRIDE_VALUE
+	const isOnboardingComplete = voidSettingsState.globalSettings.isOnboardingComplete
 
 	const isDark = useIsDark()
 
@@ -613,6 +610,7 @@ const VoidOnboardingContent = () => {
 	const accessor = useAccessor()
 	const voidSettingsService = accessor.get('IVoidSettingsService')
 	const voidMetricsService = accessor.get('IMetricsService')
+	const productService = accessor.get('IProductService')
 
 	const voidSettingsState = useSettingsState()
 	const isDark = useIsDark()
@@ -715,7 +713,7 @@ const VoidOnboardingContent = () => {
 	// can be md
 	const detailedDescOfWantToUseOption: { [wantToUseOption in WantToUseOption]: string } = {
 		smart: "Most intelligent and best for agent mode.",
-		private: "Private-hosted so your data never leaves your computer or network. [Email us](mailto:founders@voideditor.com) for help setting up at your company.",
+		private: "Private-hosted so your data never leaves your computer or network. [Email us](mailto:founders@atech.industries) for help setting up at your company.",
 		cheap: "Use great deals like Gemini 2.5 Pro, or self-host a model with Ollama or vLLM for free.",
 		all: "",
 	}
@@ -751,7 +749,7 @@ const VoidOnboardingContent = () => {
 					{/* Logo */}
 					<div className="relative group">
 						<div className="absolute -inset-4 bg-void-accent/20 rounded-full blur-2xl group-hover:bg-void-accent/30 transition-all duration-1000" />
-						{!isLinux && <div className='@@void-icon relative z-10' style={{ width: '120px', height: '120px', opacity: 0.9 }} />}
+						<div className='@@void-icon relative z-10' style={{ width: '120px', height: '120px', opacity: 0.9 }} />
 					</div>
 
 					{/* Title & Tagline */}
@@ -760,12 +758,14 @@ const VoidOnboardingContent = () => {
 							Welcome to <span className="text-void-accent">A-Coder</span>
 						</h1>
 						<p className="text-xs text-void-fg-3 font-mono opacity-60">
-							Version: 1.4.9 (0044)
+							{productService.voidVersion
+								? `Version: ${productService.voidVersion}${productService.voidRelease ? ` (${productService.voidRelease})` : ''}`
+								: `Version: ${productService.version}`}
 						</p>
-													<p className='text-void-fg-3 text-lg leading-relaxed'>
-														Your code, understood by AI. Chat naturally, plan architecture,<br />
-														and ship faster with an editor that thinks alongside you.
-													</p>
+						<p className='text-void-fg-3 text-lg leading-relaxed'>
+							Your code, understood by AI. Chat naturally, plan architecture,<br />
+							and ship faster with an editor that thinks alongside you.
+						</p>
 					</div>
 
 					<FadeIn delayMs={800}>

@@ -15,7 +15,7 @@ interface MultiViewProps {
 }
 
 export const MultiView = memo(({ onNewThread, onOpenSettings }: MultiViewProps) => {
-	const allWorkspaces = useAllWorkspaces();
+	const { workspaces: allWorkspaces } = useAllWorkspaces();
 	const multiStats = useMultiWorkspaceStats();
 
 	return (

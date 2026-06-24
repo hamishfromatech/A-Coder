@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------*/
 
 import { RawToolCallObj, RawToolParamsObj } from '../common/sendLLMMessageTypes.js';
+import { voidDevLog } from '../common/devLog.js';
 
 export interface ReActPhase {
 	type: 'thought' | 'action' | 'observation' | 'idle';
@@ -308,7 +309,7 @@ export class StreamingXMLParser {
 								});
 							}
 						} catch (e) {
-							console.log('Failed to parse marker tool call JSON:', e);
+							voidDevLog('Failed to parse marker tool call JSON:', e);
 						}
 						
 						this.state = 'IDLE'; // Ready for next block (or more text)
@@ -336,7 +337,7 @@ export class StreamingXMLParser {
 										this.currentToolName = nameMatch[1];
 									}
 								}
-							} catch (e) {}
+							} catch (e) { voidDevLog('[streamingXMLParser] tool-call JSON parse failed:', e) }
 						}
 						// Don't loop
 					}

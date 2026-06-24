@@ -69,7 +69,7 @@ const SessionCard = ({ session, isActive, onClick, onDelete, onRename }: {
 }) => {
 	const [editing, setEditing] = useState(false);
 	const [name, setName] = useState(session.name);
-	const workspaces = useAllWorkspaces();
+	const { workspaces } = useAllWorkspaces();
 	const ws = session.workspaceId ? workspaces.find(w => w.id === session.workspaceId) : null;
 
 	const commit = () => {
@@ -265,7 +265,7 @@ export const AgentManager = ({ className }: { className: string }) => {
 
 	const sessions = useStandaloneSessions();
 	const { activeId, activeSession, setActiveId } = useActiveStandaloneSession();
-	const workspaces = useAllWorkspaces();
+	const { workspaces } = useAllWorkspaces();
 
 	useEffect(() => {
 		if (width < 1280) setPreview(false);

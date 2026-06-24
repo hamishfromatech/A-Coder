@@ -126,7 +126,7 @@ const WorkspaceCard = ({
  * Workspace list component showing all connected workspaces
  */
 export const WorkspaceList = () => {
-	const workspaces = useAllWorkspaces();
+	const { workspaces, loadError } = useAllWorkspaces();
 	const { selectedId, setSelected } = useSelectedWorkspace();
 
 	// Sort workspaces: connected first, then by last seen
@@ -146,8 +146,17 @@ export const WorkspaceList = () => {
 				<div className="w-12 h-12 rounded-xl bg-void-bg-2 border border-dashed border-void-border-2 flex items-center justify-center mb-3">
 					<Folder className="w-6 h-6 opacity-30" />
 				</div>
-				<p className="text-xs font-medium text-void-fg-3">No workspaces connected</p>
-				<p className="text-[10px] text-void-fg-4 mt-1 opacity-70">Open another VS Code window to see it here</p>
+				{loadError ? (
+					<>
+						<p className="text-xs font-medium text-void-fg-3">Couldn't load projects</p>
+						<p className="text-[10px] text-void-fg-4 mt-1 opacity-70">{loadError}</p>
+					</>
+				) : (
+					<>
+						<p className="text-xs font-medium text-void-fg-3">No workspaces connected</p>
+						<p className="text-[10px] text-void-fg-4 mt-1 opacity-70">Open another VS Code window to see it here</p>
+					</>
+				)}
 			</div>
 		);
 	}
@@ -170,7 +179,7 @@ export const WorkspaceList = () => {
  * Mini workspace list for sidebar
  */
 export const MiniWorkspaceList = () => {
-	const workspaces = useAllWorkspaces();
+	const { workspaces } = useAllWorkspaces();
 	const { selectedId, setSelected } = useSelectedWorkspace();
 
 	const activeCount = workspaces.filter(w => w.status === 'connected').length;

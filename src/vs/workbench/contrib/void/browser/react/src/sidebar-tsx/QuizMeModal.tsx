@@ -6,7 +6,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAccessor, useChatThreadsState, useSettingsState } from '../util/services.js';
 import { ILearningProgressService } from '../../../../common/learningProgressService.js';
-import { Brain, RefreshCw, CheckCircle2, Clock, Flame, Target, ChevronRight, X } from 'lucide-react';
+import { Brain, RefreshCw, CheckCircle2, Clock, Flame, Target, ChevronRight, X, BookOpen } from 'lucide-react';
 
 interface QuizMeModalProps {
 	threadId: string;
@@ -147,27 +147,6 @@ export const QuizMeModal: React.FC<QuizMeModalProps> = ({ threadId, onClose, onQ
 							});
 						}
 					});
-
-					// Add some default concepts for demo if none found
-					if (conceptPractices.length === 0) {
-						const defaultConcepts = [
-							'JavaScript Functions',
-							'React Hooks',
-							'CSS Grid',
-							'Async/Await',
-							'Git Branching',
-						];
-
-						for (const concept of defaultConcepts) {
-							conceptPractices.push({
-								concept,
-								timesPracticed: Math.floor(Math.random() * 3) + 1,
-								lastPracticed: Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000, // Random time in last 7 days
-								timeSpent: Math.random() * 300000,
-								successRate: 0.6 + Math.random() * 0.4,
-							});
-						}
-					}
 
 					// Calculate review scores
 					const reviewItems: ReviewItem[] = conceptPractices.map((practice) => {
@@ -372,7 +351,15 @@ export const QuizMeModal: React.FC<QuizMeModalProps> = ({ threadId, onClose, onQ
 							<h3 className="text-xs font-semibold text-void-fg-2 uppercase tracking-wider mb-3">
 								Suggested for Review
 							</h3>
-							{concepts.map((concept) => {
+							{concepts.length === 0 ? (
+								<div className="text-center py-10 px-4">
+									<BookOpen size={28} className="text-void-fg-4 mx-auto mb-3" />
+									<p className="text-sm text-void-fg-2 font-medium">No quizzes yet</p>
+									<p className="text-xs text-void-fg-3 mt-1">
+										Start a lesson to build your practice history — concepts you study will show up here for review.
+									</p>
+								</div>
+							) : concepts.map((concept) => {
 								const styles = getTypeStyles(concept.type);
 								const isSelected = selectedConcept === concept.concept;
 

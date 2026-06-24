@@ -6,6 +6,8 @@
 // Extract XML tool calls from model response
 // Based on Anthropic's XML tool calling format
 
+import { voidDevLog } from '../devLog.js';
+
 export type XMLToolCall = {
 	toolName: string;
 	parameters: Record<string, any>;
@@ -43,7 +45,7 @@ export function extractXMLToolCalls(text: string): XMLToolCall[] {
 				const paramName = paramMatch[1];
 				let paramValue: any = paramMatch[2];
 				if (paramValue.trim().startsWith('{') || paramValue.trim().startsWith('[')) {
-					try { paramValue = JSON.parse(paramValue); } catch (e) {}
+					try { paramValue = JSON.parse(paramValue); } catch (e) { voidDevLog('[extractXMLTools] param JSON parse failed:', e) }
 				}
 				parameters[paramName] = paramValue;
 			}
@@ -70,7 +72,7 @@ export function extractXMLToolCalls(text: string): XMLToolCall[] {
 				let paramValue: any = paramMatch[2].trim();
 				
 				if (paramValue.startsWith('{') || paramValue.startsWith('[')) {
-					try { paramValue = JSON.parse(paramValue); } catch (e) {}
+					try { paramValue = JSON.parse(paramValue); } catch (e) { voidDevLog('[extractXMLTools] param JSON parse failed:', e) }
 				}
 				parameters[paramName] = paramValue;
 			}
@@ -88,7 +90,7 @@ export function extractXMLToolCalls(text: string): XMLToolCall[] {
 				toolCalls.push({ toolName: callObj.name, parameters: callObj.arguments });
 			}
 		} catch (e) {
-			console.log(`[extractXMLTools] Failed to parse marker tool call:`, e);
+			voidDevLog(`[extractXMLTools] Failed to parse marker tool call:`, e);
 		}
 	}
 

@@ -14,6 +14,7 @@ import { IApplicationStorageMainService } from '../../../../platform/storage/ele
 import { IMetricsService, LLMGenerationEvent, FileOperationEvent, EditorAnalyticsEvent, LayoutAnalyticsEvent, CommandAnalyticsEvent, SessionAnalyticsEvent } from '../common/metricsService.js';
 import { PostHog } from 'posthog-node'
 import { OPT_OUT_KEY, COHORT_KEY, FIRST_SESSION_KEY, LAST_SESSION_KEY, USER_EMAIL_KEY } from '../common/storageKeys.js';
+import { voidDevLog } from '../common/devLog.js';
 
 
 const os = isWindows ? 'windows' : isMacintosh ? 'mac' : isLinux ? 'linux' : null
@@ -43,6 +44,8 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 	private _sessionId: string | undefined;
 	private _sessionStartTime: number | undefined;
 	private _sessionActivities: Record<string, number> = {};
+
+	private _heartbeatInterval: NodeJS.Timeout | null = null;
 
 
 	// helper - looks like this is stored in a .vscdb file in ~/Library/Application Support/Void
@@ -149,7 +152,7 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 
 		const didOptOut = this._appStorage.getBoolean(OPT_OUT_KEY, StorageScope.APPLICATION, false)
 
-		console.log('User is opted out of basic A-Coder metrics?', didOptOut)
+		voidDevLog('User is opted out of basic A-Coder metrics?', didOptOut)
 		if (didOptOut) {
 			this.client.optOut()
 		}
@@ -163,14 +166,22 @@ export class MetricsMainService extends Disposable implements IMetricsService {
 		}
 
 
-		console.log('A-Coder posthog metrics info:', JSON.stringify(identifyMessage, null, 2))
+		voidDevLog('A-Coder posthog metrics info:', JSON.stringify(identifyMessage, null, 2))
 	}
 
 	private _startHeartbeat() {
 		// Send heartbeat every 12 hours (43200000 ms)
-		setInterval(() => {
+		this._heartbeatInterval = setInterval(() => {
 			this.capture('heartbeat', { ...this._initProperties })
 		}, 12 * 60 * 60 * 1000)
+	}
+
+	override dispose(): void {
+		if (this._heartbeatInterval) {
+			clearInterval(this._heartbeatInterval)
+			this._heartbeatInterval = null
+		}
+		super.dispose()
 	}
 
 

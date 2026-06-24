@@ -12,6 +12,7 @@ import { IStorageService, StorageScope, StorageTarget } from '../../../../platfo
 import { URI } from '../../../../base/common/uri.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { ILLMMessageService } from '../common/sendLLMMessageService.js';
+import { voidDevLog, voidDevWarn } from '../common/devLog.js';
 import { chat_userMessageContent, isABuiltinToolName } from '../common/prompt/prompts.js';
 import { AnthropicReasoning, getErrorMessage, RawToolCallObj, RawToolParamsObj } from '../common/sendLLMMessageTypes.js';
 import { generateUuid } from '../../../../base/common/uuid.js';
@@ -858,7 +859,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 			}
 		} catch {
 			// Timeout - component may not have mounted yet, just skip focusing
-			console.log('[chatThreadService] focusCurrentChat timed out waiting for mount')
+			voidDevLog('[chatThreadService] focusCurrentChat timed out waiting for mount')
 		}
 	}
 	async blurCurrentChat() {
@@ -908,7 +909,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 		// Version 1 migrations (current version)
 		if (fromVersion < 1) {
-			console.log(`[Migration] Migrating threads from version ${fromVersion} to version 1`);
+			voidDevLog(`[Migration] Migrating threads from version ${fromVersion} to version 1`);
 
 			// Migration: Ensure all messages have required fields
 			// Migration: Convert old Set serialization to arrays
@@ -927,7 +928,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 				}
 			}
 
-			console.log(`[Migration] Migration complete. Processed ${Object.keys(migratedThreads).length} threads`);
+			voidDevLog(`[Migration] Migration complete. Processed ${Object.keys(migratedThreads).length} threads`);
 		}
 
 		return migratedThreads;
@@ -965,7 +966,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 
 		// Apply migrations if needed
 		if (storedVersion < CURRENT_THREAD_STORAGE_VERSION) {
-			console.log(`[Storage] Found threads from version ${storedVersion}, current is ${CURRENT_THREAD_STORAGE_VERSION}`);
+			voidDevLog(`[Storage] Found threads from version ${storedVersion}, current is ${CURRENT_THREAD_STORAGE_VERSION}`);
 			const migratedThreads = this._migrateThreads(threads, storedVersion);
 			// Save migrated data
 			this._storeAllThreads(migratedThreads);
@@ -1177,11 +1178,31 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		this._addMessageToThread(threadId, tool)
 	}
 
-	// Update or add a tool message. In parallel mode, always appends a new message
-	// instead of replacing the last one, preventing concurrent tools from overwriting each other.
+	// Update or add a tool message. In sequential mode we swap "the latest" tool
+	// message in place, so each call evolves running_now -> success as ONE message.
+	//
+	// In parallel mode several tools mutate the same thread concurrently, so we
+	// can't swap "the latest" message — that would let one tool clobber another's
+	// in-progress row. Instead we update THIS tool's own row in place by id,
+	// appending only the first time we see the id. This keeps the one-evolving-
+	// message-per-tool invariant that both downstream consumers rely on:
+	//   - convertToLLMMessageService._chatMessagesToSimpleMessages emits every
+	//     role:'tool' message without deduping by id, so a leftover running_now
+	//     next to the success would send the provider two results for one
+	//     tool_call_id (OpenAI-style APIs reject duplicate tool_call_ids).
+	//   - NestedToolGroup counts one card per message, so a leftover running_now
+	//     would double the count ("2N tools ran in parallel"), spin the spinner
+	//     forever, and render each tool twice.
 	private _updateToolMessage = (threadId: string, tool: ChatMessage & { role: 'tool' }, parallelMode: boolean) => {
 		if (parallelMode) {
-			// In parallel mode, always append - never replace the last message
+			const messages = this.state.allThreads[threadId]?.messages
+			if (messages) {
+				const existingIdx = findLastIdx(messages, m => m.role === 'tool' && m.id === tool.id)
+				if (existingIdx !== -1) {
+					this._editMessageInThread(threadId, existingIdx, tool)
+					return
+				}
+			}
 			this._addMessageToThread(threadId, tool)
 		} else {
 			this._updateLatestTool(threadId, tool)
@@ -1269,14 +1290,14 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		// Find the tool request message
 		const toolMsgIdx = findLastIdx(thread.messages, m => m.role === 'tool' && m.type === 'tool_request' && m.id === toolId);
 		if (toolMsgIdx === -1) {
-			console.warn(`[chatThreadService] submitToolResult: Tool request not found for toolId ${toolId}`);
+			voidDevWarn(`[chatThreadService] submitToolResult: Tool request not found for toolId ${toolId}`);
 			return;
 		}
 
 		const toolMsg = thread.messages[toolMsgIdx] as ToolMessage<ToolName> & { type: 'tool_request' };
 		const { name, rawParams, mcpServerName, thought_signature } = toolMsg;
 
-		console.log(`[chatThreadService] submitToolResult: Submitting result for tool ${name} (id: ${toolId})`);
+		voidDevLog(`[chatThreadService] submitToolResult: Submitting result for tool ${name} (id: ${toolId})`);
 
 		// Format the result as a string for the LLM
 		let toolResultStr: string;
@@ -1286,7 +1307,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 			toolResultStr = String(result);
 		}
 
-		console.log(`[chatThreadService] submitToolResult: Result: ${toolResultStr.substring(0, 200)}${toolResultStr.length > 200 ? '...' : ''}`);
+		voidDevLog(`[chatThreadService] submitToolResult: Result: ${toolResultStr.substring(0, 200)}${toolResultStr.length > 200 ? '...' : ''}`);
 
 		// Update the tool message with the result (type: 'success')
 		this._updateLatestTool(threadId, {
@@ -1305,7 +1326,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		// Resume the agent directly (without re-executing the tool)
 		// We use _runChatAgent without callThisToolFirst so it just continues
 		// processing with the tool result we just added to the thread
-		console.log(`[chatThreadService] submitToolResult: Resuming agent for thread ${threadId}`);
+		voidDevLog(`[chatThreadService] submitToolResult: Resuming agent for thread ${threadId}`);
 		this._wrapRunAgentToNotify(
 			this._runChatAgent({ threadId, ...this._currentModelSelectionProps() })
 			, threadId
@@ -1518,7 +1539,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 				const lastParamsKey = lastCall._paramsKey || this._getToolParamsKey(lastCall.name, lastCall.params);
 				if (lastParamsKey === currentParamsKey) {
 					// We are repeating a failing call. Add a note to help the agent break out.
-					console.warn(`[chatThreadService] Loop detected for tool ${toolName}.`);
+					voidDevWarn(`[chatThreadService] Loop detected for tool ${toolName}.`);
 					// We don't block it here, but we will ensure the result contains a hint for the agent.
 				}
 			}
@@ -1847,7 +1868,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 			// Safety check: prevent infinite loops in agent mode
 			const maxAgentIterations = this._settingsService.state.globalSettings.maxAgentIterations || 50
 			if (nMessagesSent > maxAgentIterations) {
-				console.warn(`[chatThreadService] Agent mode exceeded maximum iterations (${maxAgentIterations}), stopping loop`)
+				voidDevWarn(`[chatThreadService] Agent mode exceeded maximum iterations (${maxAgentIterations}), stopping loop`)
 				this._setStreamState(threadId, {
 					isRunning: undefined,
 					error: {
@@ -1862,12 +1883,12 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 			const chatMessages = this.state.allThreads[threadId]?.messages ?? []
 			const loadedSkills = this.state.allThreads[threadId]?.state.loadedSkills
-			console.log(`[_runChatAgent] threadId: ${threadId}, messages count: ${chatMessages.length}`);
+			voidDevLog(`[_runChatAgent] threadId: ${threadId}, messages count: ${chatMessages.length}`);
 			if (chatMessages.length > 0) {
 				const lastMsg = chatMessages[chatMessages.length - 1];
-				console.log(`[_runChatAgent] Last message role: ${lastMsg.role}`);
+				voidDevLog(`[_runChatAgent] Last message role: ${lastMsg.role}`);
 				if (lastMsg.role === 'user') {
-					console.log(`[_runChatAgent] Last user message content length: ${lastMsg.content?.length || 0}`);
+					voidDevLog(`[_runChatAgent] Last user message content length: ${lastMsg.content?.length || 0}`);
 				}
 			}
 			let { messages, separateSystemMessage, tokenUsage, compressionStats } = await this._convertToLLMMessagesService.prepareLLMChatMessages({
@@ -2001,8 +2022,8 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 						
 						                                const repetitionCount = lastChunks.filter(chunk => chunk === recentText).length;
 						                                if (repetitionCount >= REPETITION_THRESHOLD) {
-						                                    console.warn(`[chatThreadService] Text repetition detected. Count: ${repetitionCount}, Text: "${recentText.substring(0, 100)}..."`);
-						                                    console.warn(`[chatThreadService] Repetition threshold reached (${REPETITION_THRESHOLD}), aborting LLM...`);
+						                                    voidDevWarn(`[chatThreadService] Text repetition detected. Count: ${repetitionCount}, Text: "${recentText.substring(0, 100)}..."`);
+						                                    voidDevWarn(`[chatThreadService] Repetition threshold reached (${REPETITION_THRESHOLD}), aborting LLM...`);
 						                                    if (llmCancelToken) {
 						                                        this._llmMessageService.abort(llmCancelToken);
 						                                    }
@@ -2066,9 +2087,9 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 							toolCalls = [legacyToolCall];
 						}
 
-						console.log(`[chatThreadService] onFinalMessage received - fullReasoning length: ${fullReasoning?.length ?? 0}, toolCalls: ${toolCalls?.length ?? 0}`)
+						voidDevLog(`[chatThreadService] onFinalMessage received - fullReasoning length: ${fullReasoning?.length ?? 0}, toolCalls: ${toolCalls?.length ?? 0}`)
 						if (usage) {
-							console.log(`[chatThreadService] Token usage received:`, usage);
+							voidDevLog(`[chatThreadService] Token usage received:`, usage);
 							// Update token ratio for adaptive counting
 							if (tokenUsage?.used && usage.promptTokens) {
 								const { providerName, modelName } = modelSelection!;
@@ -2080,7 +2101,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 							}
 						}
 						const parsed = partitionReasoningContent(fullText, fullReasoning)
-						console.log(`[chatThreadService] After partitioning - reasoningText length: ${parsed.reasoningText?.length ?? 0}`)
+						voidDevLog(`[chatThreadService] After partitioning - reasoningText length: ${parsed.reasoningText?.length ?? 0}`)
 						resMessageIsDonePromise({ type: 'llmDone', toolCalls, info: { fullText: parsed.displayText, fullReasoning: parsed.reasoningText, anthropicReasoning }, usage, stopReason: params.stopReason }) // resolve with tool calls
 					},
 					onError: async (error) => {
@@ -2104,7 +2125,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 				// if something else started running in the meantime
 				if (this.streamState[threadId]?.isRunning !== 'LLM') {
-					// console.log('Chat thread interrupted by a newer chat thread', this.streamState[threadId]?.isRunning)
+					// voidDevLog('Chat thread interrupted by a newer chat thread', this.streamState[threadId]?.isRunning)
 					return
 				}
 
@@ -2120,7 +2141,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 					// Handle context length errors specifically by adjusting token estimation
 					if (isContextError && nAttempts < CHAT_RETRIES) {
-						console.warn(`[chatThreadService] Context length error detected: ${errorMsg}`);
+						voidDevWarn(`[chatThreadService] Context length error detected: ${errorMsg}`);
 						const { providerName, modelName } = modelSelection!;
 						const fullModelName = `${providerName}:${modelName}`;
 						
@@ -2129,7 +2150,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 						// This tells the token service "whatever you thought the count was, it's actually 1.5x higher"
 						// We pass dummy values (estimated=1000, actual=1500) to force a 1.5 ratio update
 						this._convertToLLMMessagesService.updateTokenRatio(fullModelName, 1000, 1500);
-						console.log(`[chatThreadService] Bumped token ratio for ${fullModelName} due to context error`);
+						voidDevLog(`[chatThreadService] Bumped token ratio for ${fullModelName} due to context error`);
 						
 						shouldRetryLLM = true;
 						this._setStreamState(threadId, {
@@ -2161,7 +2182,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 					// error, should retry
 					if (nAttempts < CHAT_RETRIES) {
 						shouldRetryLLM = true
-						console.log(`[chatThreadService] LLM error, retrying (attempt ${nAttempts}/${CHAT_RETRIES})...`)
+						voidDevLog(`[chatThreadService] LLM error, retrying (attempt ${nAttempts}/${CHAT_RETRIES})...`)
 						// Show retry message briefly
 						this._setStreamState(threadId, {
 							isRunning: undefined,
@@ -2206,7 +2227,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 										fullText: info.fullText,
 										reasoning: info.fullReasoning
 									});
-									console.log(`[chatThreadService] LLM response:`, responseLog.length > 1000 ? responseLog.substring(0, 1000) + '...' : responseLog)
+									voidDevLog(`[chatThreadService] LLM response:`, responseLog.length > 1000 ? responseLog.substring(0, 1000) + '...' : responseLog)
 								// Check for empty response and treat as error for retry
 				// Note: Tool calls with empty content are valid (especially for Ollama)
 				// Also treat "(empty message)" placeholder as empty
@@ -2216,7 +2237,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 					// In both modes, retry with delay if we haven't exhausted attempts
 					if (nAttempts < CHAT_RETRIES) {
 						shouldRetryLLM = true
-						console.warn(`[chatThreadService] LLM returned empty response, retrying (attempt ${nAttempts}/${CHAT_RETRIES})...`)
+						voidDevWarn(`[chatThreadService] LLM returned empty response, retrying (attempt ${nAttempts}/${CHAT_RETRIES})...`)
 						
 						// Show retry message briefly
 						this._setStreamState(threadId, {
@@ -2246,7 +2267,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 							const lastPokeIdx = findLastIdx(messages, m => m.role === 'user' && m.content.includes('I received an empty response'))
 							
 							if (lastPokeIdx === -1 || messages.length - lastPokeIdx > 2) {
-								console.log('[chatThreadService] Agent mode: Adding poke message after empty responses')
+								voidDevLog('[chatThreadService] Agent mode: Adding poke message after empty responses')
 								this._addMessageToThread(threadId, { 
 									role: 'user', 
 									content: 'I received an empty response from you. If you are stuck, please try a different approach or ask me for clarification. Otherwise, please continue with the task.',
@@ -2272,7 +2293,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 				// Only add non-empty messages to thread
 				if (!isEmptyResponse) {
-					console.log(`[chatThreadService] Adding assistant message with reasoning length: ${info.fullReasoning?.length ?? 0}`)
+					voidDevLog(`[chatThreadService] Adding assistant message with reasoning length: ${info.fullReasoning?.length ?? 0}`)
 					this._addMessageToThread(threadId, { role: 'assistant', displayContent: info.fullText, reasoning: info.fullReasoning, anthropicReasoning: info.anthropicReasoning })
 				}
 
@@ -2281,7 +2302,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 				// call tool(s) if there are any
 				if (toolCalls && toolCalls.length > 0) {
 					const mcpTools = this._mcpService.getMCPTools()
-					console.log(`[chatThreadService] LLM called ${toolCalls.length} tool(s)`)
+					voidDevLog(`[chatThreadService] LLM called ${toolCalls.length} tool(s)`)
 
 					let anyToolRan = false;
 
@@ -2321,7 +2342,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 					// replacing the last one, preventing concurrent tools from overwriting each other.
 					if (finalParallelSafe.length > 1) {
 						const parallelBatchId = generateUuid();
-						console.log(`[chatThreadService] Running ${finalParallelSafe.length} read-only tools in parallel: ${finalParallelSafe.map(t => t.name).join(', ')} (batch: ${parallelBatchId})`)
+						voidDevLog(`[chatThreadService] Running ${finalParallelSafe.length} read-only tools in parallel: ${finalParallelSafe.map(t => t.name).join(', ')} (batch: ${parallelBatchId})`)
 						const parallelResults = await Promise.all(
 							finalParallelSafe.map(toolCall => {
 								const mcpServerName = this._computeMCPServerOfToolName(toolCall.name);
@@ -2343,7 +2364,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 					} else if (finalParallelSafe.length === 1) {
 						// Single parallel-safe tool, run normally (no batch grouping needed)
 						const toolCall = finalParallelSafe[0]
-						console.log(`[chatThreadService] LLM calling tool: ${toolCall.name}`)
+						voidDevLog(`[chatThreadService] LLM calling tool: ${toolCall.name}`)
 						const mcpServerName = this._computeMCPServerOfToolName(toolCall.name);
 						const { awaitingUserApproval, interrupted } = await this._runToolCall(threadId, toolCall.name, toolCall.id, mcpServerName, { preapproved: false, unvalidatedToolParams: toolCall.rawParams, thought_signature: toolCall.thought_signature })
 						if (interrupted) {
@@ -2360,15 +2381,15 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 					// Run sequential tools one at a time
 					for (const toolCall of finalSequential) {
-						console.log(`[chatThreadService] LLM calling tool: ${toolCall.name}`)
+						voidDevLog(`[chatThreadService] LLM calling tool: ${toolCall.name}`)
 						const paramsStr = JSON.stringify(toolCall.rawParams);
-						console.log(`[chatThreadService] Tool call params:`, paramsStr.length > 1000 ? paramsStr.substring(0, 1000) + '...' : paramsStr)
+						voidDevLog(`[chatThreadService] Tool call params:`, paramsStr.length > 1000 ? paramsStr.substring(0, 1000) + '...' : paramsStr)
 						const mcpTool = mcpTools?.find(t => t.name === toolCall.name)
 
 						// Determine mcpServerName - check for Composio tools first
 						let mcpServerName: string | undefined = mcpTool?.mcpServerName
 						const isComposio = this._composioService.isComposioTool(toolCall.name);
-						console.log(`[chatThreadService] Tool "${toolCall.name}" - mcpTool found: ${!!mcpTool}, isComposio=${isComposio}`);
+						voidDevLog(`[chatThreadService] Tool "${toolCall.name}" - mcpTool found: ${!!mcpTool}, isComposio=${isComposio}`);
 						if (isComposio) {
 							mcpServerName = 'composio_tool_router'
 						}
@@ -2407,7 +2428,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 							workflow.tasks.some(t => t.status === 'pending' || t.status === 'in_progress');
 
 						if (hasPendingTasks) {
-							console.log(`[chatThreadService] Active workflow has pending tasks, continuing...`);
+							voidDevLog(`[chatThreadService] Active workflow has pending tasks, continuing...`);
 							shouldSendAnotherMessage = true;
 							break; // Break retry loop to start new turn
 						}
@@ -2420,11 +2441,11 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 							nPokesThisLoop += 1;
 
 							if (danglingIntent === 'silent') {
-								console.log(`[chatThreadService] Agent mode: Detected obvious 'About to Act' pattern, silently auto-continuing...`)
+								voidDevLog(`[chatThreadService] Agent mode: Detected obvious 'About to Act' pattern, silently auto-continuing...`)
 								// Silent auto-continue: just start another turn without adding a user message
 								shouldSendAnotherMessage = true;
 							} else {
-								console.log(`[chatThreadService] Agent mode: Detected interrupted response (XML incomplete: ${isInterruptedXML}, intent: ${danglingIntent}). Poking model...`)
+								voidDevLog(`[chatThreadService] Agent mode: Detected interrupted response (XML incomplete: ${isInterruptedXML}, intent: ${danglingIntent}). Poking model...`)
 								this._addMessageToThread(threadId, {
 									role: 'user',
 									content: 'Your last response seemed interrupted or you mentioned an action without calling the corresponding tool. Please continue and call the tool now. Do not repeat your thought process, just proceed with the tool call.',
@@ -2443,7 +2464,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 						const lastMessageWasToolResult = chatMessages.length > 0 && chatMessages[chatMessages.length - 1].role === 'tool';
 
 						if (isVeryShortResponse && lastMessageWasToolResult && nPokesThisLoop < 3) {
-							console.log(`[chatThreadService] Agent mode: Model returned short response (${textContent.length} chars) after tool call, silently auto-continuing...`)
+							voidDevLog(`[chatThreadService] Agent mode: Model returned short response (${textContent.length} chars) after tool call, silently auto-continuing...`)
 							nPokesThisLoop += 1;
 							shouldSendAnotherMessage = true;
 							break;
@@ -2453,7 +2474,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 						// These models (like Gemini 3 Pro with thinking) will reason then stop, expecting to continue
 						const isOnlyReasoning = info.fullReasoning && info.fullReasoning.length > 10 && textContent.length === 0;
 						if (isOnlyReasoning && nPokesThisLoop < 3) {
-							console.log(`[chatThreadService] Agent mode: Model returned reasoning only (${info.fullReasoning.length} chars) without text or tool call, silently auto-continuing...`)
+							voidDevLog(`[chatThreadService] Agent mode: Model returned reasoning only (${info.fullReasoning.length} chars) without text or tool call, silently auto-continuing...`)
 							nPokesThisLoop += 1;
 							shouldSendAnotherMessage = true;
 							break;
@@ -2461,7 +2482,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 						// Only terminate if no workflow or workflow is complete
 						if (!workflow || workflow.status === 'completed') {
-							console.log(`[chatThreadService] Agent mode: Text-only response (no tool call) - task complete`)
+							voidDevLog(`[chatThreadService] Agent mode: Text-only response (no tool call) - task complete`)
 							shouldSendAnotherMessage = false
 							break
 						}
@@ -2487,7 +2508,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 					workflow.tasks.some(t => t.status === 'pending' || t.status === 'in_progress');
 
 				if (hasActiveWorkflow && thread?.state.queueBehavior === 'wait_for_workflow') {
-					console.log('[chatThreadService] Workflow active, holding queued message');
+					voidDevLog('[chatThreadService] Workflow active, holding queued message');
 					// Don't process - wait for workflow completion
 				} else {
 					await this._processNextQueuedMessage(threadId);
@@ -2845,7 +2866,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		const [_, toIdx] = c
 		if (toIdx === fromIdx) return
 
-		// console.log(`going from ${fromIdx} to ${toIdx}`)
+		// voidDevLog(`going from ${fromIdx} to ${toIdx}`)
 
 		// update the user's checkpoint
 		this._addUserModificationsToCurrCheckpoint({ threadId })
@@ -3006,14 +3027,14 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		if (images && images.length > 0) {
 			// Limit number of images
 			if (images.length > MAX_IMAGES_PER_MESSAGE) {
-				console.warn(`[Memory] Limiting images from ${images.length} to ${MAX_IMAGES_PER_MESSAGE}`);
+				voidDevWarn(`[Memory] Limiting images from ${images.length} to ${MAX_IMAGES_PER_MESSAGE}`);
 				images = images.slice(0, MAX_IMAGES_PER_MESSAGE);
 			}
 
 			// Check total image size
 			const totalSizeMB = images.reduce((sum, img) => sum + (img.base64?.length || 0) * 0.75 / 1024 / 1024, 0);
 			if (totalSizeMB > MAX_TOTAL_IMAGE_SIZE_MB) {
-				console.warn(`[Memory] Total image size ${totalSizeMB.toFixed(2)}MB exceeds limit of ${MAX_TOTAL_IMAGE_SIZE_MB}MB`);
+				voidDevWarn(`[Memory] Total image size ${totalSizeMB.toFixed(2)}MB exceeds limit of ${MAX_TOTAL_IMAGE_SIZE_MB}MB`);
 				this._notificationService.notify({
 					severity: Severity.Warning,
 					message: `Images too large (${totalSizeMB.toFixed(1)}MB). Please use smaller images or fewer images.`,
@@ -3064,7 +3085,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		if (chatMode === 'code' && userMessage.length > 50 && !_isFromQueue) {
 			const isComplexRequest = this._detectComplexRequest(userMessage);
 			if (isComplexRequest && !thread.state.activeWorkflow) {
-				console.log('[chatThreadService] Complex request detected, initializing workflow...');
+				voidDevLog('[chatThreadService] Complex request detected, initializing workflow...');
 
 				// Create active workflow
 				thread.state.activeWorkflow = {
@@ -3083,7 +3104,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		}
 
 		if (this._settingsService.state.globalSettings.enableToolOrchestration) {
-			console.log('[chatThreadService] Running tool orchestration...');
+			voidDevLog('[chatThreadService] Running tool orchestration...');
 			this._setStreamState(threadId, { isRunning: 'idle', interrupt: 'not_needed' });
 			try {
 				orchestrationResult = await this._orchestrationService.orchestrate({
@@ -3093,7 +3114,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 						// Could show progress in UI if needed
 					},
 				});
-				console.log('[chatThreadService] Orchestration result:', orchestrationResult);
+				voidDevLog('[chatThreadService] Orchestration result:', orchestrationResult);
 			} catch (error) {
 				console.error('[chatThreadService] Orchestration error:', error);
 				orchestrationResult = { suggestions: [], reasoning: '', summary: '' };
@@ -3143,7 +3164,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 		// If the thread is running, queue the message instead of aborting
 		if (isRunning) {
-			console.log(`[chatThreadService] Thread ${threadId} is currently running. Queueing message.`);
+			voidDevLog(`[chatThreadService] Thread ${threadId} is currently running. Queueing message.`);
 			this._queueMessage(threadId, { userMessage, selections, images });
 			return;
 		}
@@ -3190,7 +3211,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		const queue = this.messageQueue[threadId];
 		const trimmed = message.userMessage.trim();
 		if (trimmed && queue.length > 0 && queue[queue.length - 1].userMessage.trim() === trimmed) {
-			console.log(`[chatThreadService] Skipping duplicate queued message for thread ${threadId}`);
+			voidDevLog(`[chatThreadService] Skipping duplicate queued message for thread ${threadId}`);
 			return;
 		}
 		// Also check against the last user message in the thread
@@ -3198,20 +3219,20 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		if (trimmed && threadMessages) {
 			const lastUserMsg = [...threadMessages].reverse().find(m => m.role === 'user');
 			if (lastUserMsg?.content?.trim() === trimmed) {
-				console.log(`[chatThreadService] Skipping duplicate queued message (matches last sent) for thread ${threadId}`);
+				voidDevLog(`[chatThreadService] Skipping duplicate queued message (matches last sent) for thread ${threadId}`);
 				return;
 			}
 		}
 		// MEMORY OPTIMIZATION: Limit queue size to prevent unbounded memory growth
 		if (this.messageQueue[threadId].length >= MAX_MESSAGE_QUEUE_PER_THREAD) {
-			console.warn(`[Memory] Message queue for thread ${threadId} is full (${MAX_MESSAGE_QUEUE_PER_THREAD}). Dropping oldest message.`);
+			voidDevWarn(`[Memory] Message queue for thread ${threadId} is full (${MAX_MESSAGE_QUEUE_PER_THREAD}). Dropping oldest message.`);
 			this.messageQueue[threadId].shift(); // Remove oldest message
 			// Notify UI that the queue changed
 			this._onDidChangeMessageQueue.fire({ threadId });
 			return;
 		}
 		this.messageQueue[threadId].push(message);
-		console.log(`[chatThreadService] Queued message for thread ${threadId}. Queue length: ${this.messageQueue[threadId].length}`);
+		voidDevLog(`[chatThreadService] Queued message for thread ${threadId}. Queue length: ${this.messageQueue[threadId].length}`);
 		// Fire dedicated queue event to update UI
 		this._onDidChangeMessageQueue.fire({ threadId });
 		// Trigger processing logic if we're idle
@@ -3237,7 +3258,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		const nextMessage = this.messageQueue[threadId].shift();
 		if (!nextMessage) return;
 
-		console.log(`[chatThreadService] Processing queued message. Remaining in queue: ${this.messageQueue[threadId].length}`);
+		voidDevLog(`[chatThreadService] Processing queued message. Remaining in queue: ${this.messageQueue[threadId].length}`);
 		// Fire dedicated queue event to update UI
 		this._onDidChangeMessageQueue.fire({ threadId });
 
@@ -3265,7 +3286,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 	removeQueuedMessage(threadId: string, index: number): void {
 		if (this.messageQueue[threadId] && this.messageQueue[threadId][index]) {
 			this.messageQueue[threadId].splice(index, 1);
-			console.log(`[chatThreadService] Removed queued message at index ${index}. Remaining: ${this.messageQueue[threadId].length}`);
+			voidDevLog(`[chatThreadService] Removed queued message at index ${index}. Remaining: ${this.messageQueue[threadId].length}`);
 			this._onDidChangeMessageQueue.fire({ threadId });
 		}
 	}
@@ -3273,7 +3294,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 	clearMessageQueue(threadId: string) {
 		if (this.messageQueue[threadId]) {
 			this.messageQueue[threadId] = [];
-			console.log(`[chatThreadService] Cleared message queue for thread ${threadId}`);
+			voidDevLog(`[chatThreadService] Cleared message queue for thread ${threadId}`);
 			this._onDidChangeMessageQueue.fire({ threadId });
 		}
 	}
@@ -3284,7 +3305,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 		// Remove from queue
 		this.messageQueue[threadId].splice(index, 1);
-		console.log(`[chatThreadService] Force sending queued message at index ${index}`);
+		voidDevLog(`[chatThreadService] Force sending queued message at index ${index}`);
 		this._onDidChangeMessageQueue.fire({ threadId });
 
 		// Abort current LLM if running — wait for the interrupt promise to resolve
@@ -3314,7 +3335,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		if (!thread) return;
 
 		if (thread.state.activeWorkflow) {
-			console.log('[chatThreadService] Workflow override requested, clearing workflow');
+			voidDevLog('[chatThreadService] Workflow override requested, clearing workflow');
 
 			// Mark workflow as cancelled/failed
 			thread.state.activeWorkflow = null;
@@ -3815,7 +3836,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 				const truncatedResult = resultStr.substring(0, 100) + `\n\n[... truncated for memory management - original size: ${(resultStr.length / 1024).toFixed(1)}KB]`;
 				truncatedMessage.result = truncatedResult;
 
-				console.log(`[Memory] Truncated tool result from ${(resultStr.length / 1024).toFixed(1)}KB to ${(truncatedResult.length / 1024).toFixed(1)}KB`);
+				voidDevLog(`[Memory] Truncated tool result from ${(resultStr.length / 1024).toFixed(1)}KB to ${(truncatedResult.length / 1024).toFixed(1)}KB`);
 			}
 		}
 
@@ -3826,7 +3847,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 				const maxChars = Math.floor((maxSizeKB / 2) * 1024);
 				if (truncatedMessage.displayContent.length > maxChars) {
 					truncatedMessage.displayContent = truncatedMessage.displayContent.substring(0, maxChars) + `\n\n[... truncated for memory management]`;
-					console.log(`[Memory] Truncated displayContent from ${(contentSize).toFixed(1)}KB to ${(maxSizeKB / 2).toFixed(1)}KB`);
+					voidDevLog(`[Memory] Truncated displayContent from ${(contentSize).toFixed(1)}KB to ${(maxSizeKB / 2).toFixed(1)}KB`);
 				}
 			}
 		}
@@ -3849,7 +3870,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		const messageSizeKB = this._calculateMessageSizeKB(message);
 
 		if (messageSizeKB > MAX_MESSAGE_SIZE_KB) {
-			console.log(`[Memory] Message size (${messageSizeKB.toFixed(1)}KB) exceeds limit (${MAX_MESSAGE_SIZE_KB}KB), truncating`);
+			voidDevLog(`[Memory] Message size (${messageSizeKB.toFixed(1)}KB) exceeds limit (${MAX_MESSAGE_SIZE_KB}KB), truncating`);
 			processedMessage = this._truncateMessageToFitSizeLimit(message, MAX_MESSAGE_SIZE_KB);
 		}
 
@@ -3859,13 +3880,13 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		// Limit total messages
 		if (messages.length > MAX_MESSAGES_PER_THREAD) {
 			messages = messages.slice(-MAX_MESSAGES_PER_THREAD);
-			console.log(`[Memory] Pruned thread ${threadId} total messages to ${messages.length}`);
+			voidDevLog(`[Memory] Pruned thread ${threadId} total messages to ${messages.length}`);
 		}
 
 		// SIZE-BASED LIMIT: Check total thread size and prune if necessary
 		let threadSizeMB = this._calculateThreadSizeMB(messages);
 		if (threadSizeMB > MAX_THREAD_SIZE_MB) {
-			console.log(`[Memory] Thread size (${threadSizeMB.toFixed(1)}MB) exceeds limit (${MAX_THREAD_SIZE_MB}MB), pruning old messages`);
+			voidDevLog(`[Memory] Thread size (${threadSizeMB.toFixed(1)}MB) exceeds limit (${MAX_THREAD_SIZE_MB}MB), pruning old messages`);
 
 			// Progressively remove oldest non-checkpoint messages until under limit
 			let removeIdx = 0;
@@ -3877,12 +3898,12 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 				}
 				messages.splice(removeIdx, 1);
 				threadSizeMB = this._calculateThreadSizeMB(messages);
-				console.log(`[Memory] Removed message at index ${removeIdx}, new size: ${threadSizeMB.toFixed(1)}MB`);
+				voidDevLog(`[Memory] Removed message at index ${removeIdx}, new size: ${threadSizeMB.toFixed(1)}MB`);
 			}
 
 			// If still over limit even after removing non-checkpoints, warn user
 			if (threadSizeMB > MAX_THREAD_SIZE_MB) {
-				console.warn(`[Memory] Thread ${threadId} still exceeds size limit (${threadSizeMB.toFixed(1)}MB) after pruning. Consider starting a new thread.`);
+				voidDevWarn(`[Memory] Thread ${threadId} still exceeds size limit (${threadSizeMB.toFixed(1)}MB) after pruning. Consider starting a new thread.`);
 			}
 		}
 
@@ -3896,7 +3917,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 			const numToRemove = checkpointIndices.length - MAX_CHECKPOINTS_PER_THREAD;
 			const indicesToRemove = new Set(checkpointIndices.slice(0, numToRemove));
 			messages = messages.filter((_, idx) => !indicesToRemove.has(idx));
-			console.log(`[Memory] Pruned ${numToRemove} old checkpoints from thread ${threadId}`);
+			voidDevLog(`[Memory] Pruned ${numToRemove} old checkpoints from thread ${threadId}`);
 		}
 
 		// update state and store it
@@ -3950,7 +3971,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 			}
 		} catch (error) {
 			// Silently fail - token counting is not critical
-			console.warn('[chatThreadService] Failed to update token usage:', error)
+			voidDevWarn('[chatThreadService] Failed to update token usage:', error)
 		}
 	}
 
@@ -4184,20 +4205,19 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 			)
 		)
 
-		// Update the first matching task to in_progress or completed
+		// Update the first matching task to completed (on success) or blocked (on error).
+		// When multiple tasks match the same tool, only the first is updated; the
+		// rest are left untouched (marking siblings pending is a separate product
+		// decision, not done here).
 		if (matchingTasks.length > 0) {
 			const taskToUpdate = matchingTasks[0]
 
-			// If successful and there are multiple matching tasks, update first to completed, others to pending
-			if (result === 'success' && matchingTasks.length > 1) {
+			if (result === 'success') {
 				this.updateTaskStatus(threadId, taskToUpdate.id, 'completed')
-				console.log(`[chatThreadService] Auto-updated task "${taskToUpdate.description}" to completed after ${toolName} success`)
-			} else if (result === 'success') {
-				this.updateTaskStatus(threadId, taskToUpdate.id, 'completed')
-				console.log(`[chatThreadService] Auto-updated task "${taskToUpdate.description}" to completed after ${toolName} success`)
+				voidDevLog(`[chatThreadService] Auto-updated task "${taskToUpdate.description}" to completed after ${toolName} success`)
 			} else {
 				this.updateTaskStatus(threadId, taskToUpdate.id, 'blocked')
-				console.log(`[chatThreadService] Auto-updated task "${taskToUpdate.description}" to blocked after ${toolName} error`)
+				voidDevLog(`[chatThreadService] Auto-updated task "${taskToUpdate.description}" to blocked after ${toolName} error`)
 			}
 
 			// NEW: Update workflow state if active
@@ -4209,7 +4229,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 				const allTasksComplete = tasks.every(t => t.status === 'completed');
 				if (allTasksComplete) {
 					workflow.status = 'completed';
-					console.log(`[chatThreadService] Workflow "${workflow.goal}" completed`);
+					voidDevLog(`[chatThreadService] Workflow "${workflow.goal}" completed`);
 					this._storeAllThreads(this.state.allThreads);
 					this._onDidChangeCurrentThread.fire();
 				}
@@ -4233,7 +4253,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 		this.taskPlans[threadId].push(task)
 		this._onDidChangeCurrentThread.fire() // Notify UI of change
-		console.log(`[chatThreadService] Created task: ${description}`)
+		voidDevLog(`[chatThreadService] Created task: ${description}`)
 		return task.id
 	}
 
@@ -4250,7 +4270,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		}
 
 		this._onDidChangeCurrentThread.fire() // Notify UI of change
-		console.log(`[chatThreadService] Updated task ${taskId} to status: ${status}`)
+		voidDevLog(`[chatThreadService] Updated task ${taskId} to status: ${status}`)
 	}
 
 	deleteTask(threadId: string, taskId: string): void {
@@ -4261,14 +4281,14 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		if (index !== -1) {
 			tasks.splice(index, 1)
 			this._onDidChangeCurrentThread.fire() // Notify UI of change
-			console.log(`[chatThreadService] Deleted task ${taskId}`)
+			voidDevLog(`[chatThreadService] Deleted task ${taskId}`)
 		}
 	}
 
 	clearTaskPlan(threadId: string): void {
 		this.taskPlans[threadId] = []
 		this._onDidChangeCurrentThread.fire() // Notify UI of change
-		console.log(`[chatThreadService] Cleared task plan for thread ${threadId}`)
+		voidDevLog(`[chatThreadService] Cleared task plan for thread ${threadId}`)
 	}
 
 	// ==================== Student Mode Session ====================
@@ -4314,7 +4334,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 		thread.state.studentSession!.activeExercises[exercise.id] = fullExercise
 		this._onDidChangeCurrentThread.fire()
-		console.log(`[chatThreadService] Added exercise ${exercise.id} for thread ${threadId}`)
+		voidDevLog(`[chatThreadService] Added exercise ${exercise.id} for thread ${threadId}`)
 		return fullExercise
 	}
 
@@ -4323,7 +4343,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		const exercise = thread?.state.studentSession?.activeExercises[exerciseId]
 
 		if (!exercise) {
-			console.warn(`[chatThreadService] Exercise ${exerciseId} not found in thread ${threadId}`)
+			voidDevWarn(`[chatThreadService] Exercise ${exerciseId} not found in thread ${threadId}`)
 			return 1 // Default to level 1 if not found
 		}
 
@@ -4331,7 +4351,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		const newLevel = Math.min(exercise.hintLevel + 1, 4)
 		exercise.hintLevel = newLevel
 		this._onDidChangeCurrentThread.fire()
-		console.log(`[chatThreadService] Updated exercise ${exerciseId} to hint level ${newLevel}`)
+		voidDevLog(`[chatThreadService] Updated exercise ${exerciseId} to hint level ${newLevel}`)
 		return newLevel
 	}
 
@@ -4341,14 +4361,14 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		const exercise = session?.activeExercises[exerciseId]
 
 		if (!exercise || !session) {
-			console.warn(`[chatThreadService] Exercise ${exerciseId} not found in thread ${threadId}`)
+			voidDevWarn(`[chatThreadService] Exercise ${exerciseId} not found in thread ${threadId}`)
 			return
 		}
 
 		exercise.status = 'completed'
 		session.completedExerciseCount++
 		this._onDidChangeCurrentThread.fire()
-		console.log(`[chatThreadService] Completed exercise ${exerciseId}. Total completed: ${session.completedExerciseCount}`)
+		voidDevLog(`[chatThreadService] Completed exercise ${exerciseId}. Total completed: ${session.completedExerciseCount}`)
 	}
 
 	addConceptLearned(threadId: string, concept: string): void {
@@ -4364,7 +4384,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		if (!session.conceptsLearned.includes(concept)) {
 			session.conceptsLearned.push(concept)
 			this._onDidChangeCurrentThread.fire()
-			console.log(`[chatThreadService] Added concept learned: ${concept}`)
+			voidDevLog(`[chatThreadService] Added concept learned: ${concept}`)
 		}
 	}
 
@@ -4381,7 +4401,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 				[skillName]: instructions
 			}
 		});
-		console.log(`[chatThreadService] Loaded skill: ${skillName} for thread: ${threadId}`);
+		voidDevLog(`[chatThreadService] Loaded skill: ${skillName} for thread: ${threadId}`);
 	}
 
 	// Workflow management methods
@@ -4417,7 +4437,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		payload: Record<string, unknown>;
 		metadata: { webhookId: string; triggerId: string; timestamp: string };
 	}): void => {
-		console.log('[ChatThreadService] Composio trigger received:', event.triggerSlug, 'webhookId:', event.metadata.webhookId);
+		voidDevLog('[ChatThreadService] Composio trigger received:', event.triggerSlug, 'webhookId:', event.metadata.webhookId);
 
 		// Get current thread or create a new one for processing
 		const threadId = this.state.currentThreadId;
@@ -4425,7 +4445,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		// If there's an active thread, emit an event so the UI can respond
 		// The agent can then process the trigger event based on its type
 		if (threadId) {
-			console.log('[ChatThreadService] Processing trigger event for thread:', threadId);
+			voidDevLog('[ChatThreadService] Processing trigger event for thread:', threadId);
 
 			// Add as a system message that the agent can process
 			const thread = this.state.allThreads[threadId];
@@ -4434,7 +4454,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 				this._onDidChangeCurrentThread.fire();
 			}
 		} else {
-			console.log('[ChatThreadService] No active thread for trigger event');
+			voidDevLog('[ChatThreadService] No active thread for trigger event');
 		}
 
 		// NOTE: A trigger queue/notification system could be added here for event-based workflows

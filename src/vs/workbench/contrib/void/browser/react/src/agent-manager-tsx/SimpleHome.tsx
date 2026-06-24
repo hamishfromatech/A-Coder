@@ -51,7 +51,7 @@ const QUICK_ACTIONS: QuickAction[] = [
  * friendly overview of every connected project.
  */
 export const SimpleHome = ({ onGoAdvanced }: { onGoAdvanced: () => void }) => {
-	const workspaces = useAllWorkspaces();
+	const { workspaces } = useAllWorkspaces();
 	const remoteControl = useWorkspaceRemoteControl();
 
 	const connected = useMemo(() => workspaces.filter(w => w.status === 'connected'), [workspaces]);

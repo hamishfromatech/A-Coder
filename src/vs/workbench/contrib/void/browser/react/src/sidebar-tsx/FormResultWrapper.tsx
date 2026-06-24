@@ -149,7 +149,7 @@ const QuestionItem = ({ question, value, onChange }: { question: Question; value
 						value={value || ''}
 						onChange={(e) => onChange(e.target.value)}
 						placeholder="Type your answer..."
-						className="w-full px-3 py-2 rounded-lg border border-void-border-2 bg-white text-black text-sm placeholder:text-void-fg-4 focus:outline-none focus:ring-2 focus:ring-void-accent/50 focus:border-void-accent transition-all"
+						className="w-full px-3 py-2 rounded-lg border border-void-border-2 bg-void-bg-2 text-void-fg-1 text-sm placeholder:text-void-fg-4 focus:outline-none focus:ring-2 focus:ring-void-accent/50 focus:border-void-accent transition-all"
 					/>
 				</div>
 			);
@@ -168,7 +168,7 @@ const QuestionItem = ({ question, value, onChange }: { question: Question; value
 						value={value || ''}
 						onChange={(e) => onChange(e.target.value)}
 						placeholder="Type your answer..."
-						className="w-full px-3 py-2 rounded-lg border border-void-border-2 bg-white text-black text-sm placeholder:text-void-fg-4 focus:outline-none focus:ring-2 focus:ring-void-accent/50 focus:border-void-accent transition-all"
+						className="w-full px-3 py-2 rounded-lg border border-void-border-2 bg-void-bg-2 text-void-fg-1 text-sm placeholder:text-void-fg-4 focus:outline-none focus:ring-2 focus:ring-void-accent/50 focus:border-void-accent transition-all"
 					/>
 				</div>
 			);

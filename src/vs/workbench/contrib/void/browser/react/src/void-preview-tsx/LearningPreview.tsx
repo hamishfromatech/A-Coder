@@ -286,6 +286,7 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 	const accessor = useAccessor();
 	const fileService = accessor.get('IFileService');
 	const workspaceContextService = accessor.get('IWorkspaceContextService');
+	const notificationService = accessor.get('INotificationService');
 
 	const [lessonState, setLessonState] = useState<LessonState>({
 		sections: {},
@@ -386,7 +387,7 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 			});
 
 			// Create directory if it doesn't exist
-			try { await fileService.createFolder(lessonDir); } catch (e) {}
+			try { await fileService.createFolder(lessonDir); } catch (e) { notificationService.error(`Couldn't create lesson folder: ${e instanceof Error ? e.message : String(e)}`) }
 			
 			// Write file
 			await fileService.writeFile(fileUri, VSBuffer.fromString(md));

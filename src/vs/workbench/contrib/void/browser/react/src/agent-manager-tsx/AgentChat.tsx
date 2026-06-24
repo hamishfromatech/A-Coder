@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------*/
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { voidDevWarn } from '../../../../common/devLog.js';
 import {
 	useAccessor,
 	useChatThreadsState,
@@ -61,11 +62,11 @@ const fileToBase64 = (file: File): Promise<ImageAttachment> => {
 const isValidImageFile = (file: File, currentCount: number): boolean => {
 	if (!SUPPORTED_IMAGE_TYPES.includes(file.type)) return false;
 	if (file.size > MAX_IMAGE_SIZE) {
-		console.warn(`Image ${file.name} exceeds ${MAX_IMAGE_SIZE / 1024 / 1024}MB limit`);
+		voidDevWarn(`Image ${file.name} exceeds ${MAX_IMAGE_SIZE / 1024 / 1024}MB limit`);
 		return false;
 	}
 	if (currentCount >= MAX_IMAGES) {
-		console.warn(`Maximum ${MAX_IMAGES} images allowed`);
+		voidDevWarn(`Maximum ${MAX_IMAGES} images allowed`);
 		return false;
 	}
 	return true;
@@ -78,13 +79,13 @@ const processImageFiles = async (files: FileList | File[], currentImages: ImageA
 
 	const availableSlots = MAX_IMAGES - currentImages.length;
 	if (availableSlots <= 0) {
-		console.warn(`Maximum ${MAX_IMAGES} images allowed`);
+		voidDevWarn(`Maximum ${MAX_IMAGES} images allowed`);
 		return [];
 	}
 
 	const oversized = imageFiles.filter(file => file.size > MAX_IMAGE_SIZE);
 	if (oversized.length > 0) {
-		console.warn(`Some images exceed ${MAX_IMAGE_SIZE / 1024 / 1024}MB limit`);
+		voidDevWarn(`Some images exceed ${MAX_IMAGE_SIZE / 1024 / 1024}MB limit`);
 	}
 
 	const validFiles = imageFiles
@@ -221,7 +222,7 @@ export const AgentChat = () => {
 		if (!text && attachedImages.length === 0) return;
 		if (isRunning) return;
 		if (!currentThread) {
-			console.warn('No active thread to send message to');
+			voidDevWarn('No active thread to send message to');
 			return;
 		}
 

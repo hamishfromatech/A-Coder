@@ -6,6 +6,7 @@
 import { SendLLMMessageParams, OnText, OnFinalMessage, OnError } from '../../common/sendLLMMessageTypes.js';
 import { IMetricsService, LLMGenerationEvent } from '../../common/metricsService.js';
 import { displayInfoOfProviderName } from '../../common/voidSettingsTypes.js';
+import { voidDevWarn } from '../../common/devLog.js';
 import { sendLLMMessageToProviderImplementation } from './sendLLMMessage.impl.js';
 import { generateUuid } from '../../../../../base/common/uuid.js';
 
@@ -151,7 +152,7 @@ export const sendLLMMessage = async ({
 
 		_didAbort = true
 		try { _aborter?.() } // aborter sometimes automatically throws an error
-		catch (e) { }
+		catch (e) { voidDevWarn('[sendLLMMessage] aborter threw:', e) }
 	}
 	abortRef_.current = onAbort
 

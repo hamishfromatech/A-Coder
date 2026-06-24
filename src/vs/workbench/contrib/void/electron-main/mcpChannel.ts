@@ -14,6 +14,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { MCPConfigFileJSON, MCPConfigFileEntryJSON, MCPServer, RawMCPToolCall, MCPToolErrorResponse, MCPServerEventResponse, MCPToolCallParams } from '../common/mcpServiceTypes.js';
+import { voidDevLog, voidDevWarn } from '../common/devLog.js';
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { MCPUserStateOfName } from '../common/voidSettingsTypes.js';
@@ -189,13 +190,13 @@ export class MCPChannel implements IServerChannel {
 		if (server.url) {
 			// first try HTTP, fall back to SSE
 			try {
-				console.log(`[MCP] Attempting HTTP connection to ${serverName} at ${server.url}`);
+				voidDevLog(`[MCP] Attempting HTTP connection to ${serverName} at ${server.url}`);
 				transport = new StreamableHTTPClientTransport(server.url);
 				await client.connect(transport);
-				console.log(`[MCP] Connected via HTTP to ${serverName}`);
+				voidDevLog(`[MCP] Connected via HTTP to ${serverName}`);
 				const { tools } = await client.listTools()
 				const toolsWithUniqueName = tools.map(({ name, ...rest }: { name: string, [key: string]: any }) => ({ name: this._addUniquePrefix(name, serverName), mcpServerName: serverName, ...rest }))
-				console.log(`\u{2705} Loaded ${toolsWithUniqueName.length} tools from ${serverName} via HTTP`);
+				voidDevLog(`\u{2705} Loaded ${toolsWithUniqueName.length} tools from ${serverName} via HTTP`);
 				info = {
 					status: isOn ? 'success' : 'offline',
 					tools: toolsWithUniqueName,
@@ -206,17 +207,17 @@ export class MCPChannel implements IServerChannel {
 				try { await client.close(); } catch { /* ignore */ }
 				try { transport?.close?.(); } catch { /* ignore */ }
 
-				console.warn(`[MCP] HTTP failed for ${serverName}, trying SSE…`, httpErr);
+				voidDevWarn(`[MCP] HTTP failed for ${serverName}, trying SSE…`, httpErr);
 				// Create a fresh client for SSE to avoid re-using a used client
 				const sseClient = new Client(clientConfig);
 				let sseTransport: Transport | undefined;
 				try {
 					sseTransport = new SSEClientTransport(server.url);
 					await sseClient.connect(sseTransport);
-					console.log(`[MCP] Connected via SSE to ${serverName}`);
+					voidDevLog(`[MCP] Connected via SSE to ${serverName}`);
 					const { tools } = await sseClient.listTools()
 					const toolsWithUniqueName = tools.map(({ name, ...rest }: { name: string, [key: string]: any }) => ({ name: this._addUniquePrefix(name, serverName), mcpServerName: serverName, ...rest }))
-					console.log(`\u{2705} Loaded ${toolsWithUniqueName.length} tools from ${serverName} via SSE`);
+					voidDevLog(`\u{2705} Loaded ${toolsWithUniqueName.length} tools from ${serverName} via SSE`);
 					info = {
 						status: isOn ? 'success' : 'offline',
 						tools: toolsWithUniqueName,
@@ -267,7 +268,7 @@ export class MCPChannel implements IServerChannel {
 					// Ignore fs errors
 				}
 				enhancedPath = `${additionalPaths.join(':')}:${enhancedPath}`;
-				console.log(`[MCP] Production mode - enhanced PATH for npx: ${enhancedPath.substring(0, 200)}...`);
+				voidDevLog(`[MCP] Production mode - enhanced PATH for npx: ${enhancedPath.substring(0, 200)}...`);
 			}
 
 			const env: Record<string, string> = {};
@@ -289,7 +290,7 @@ export class MCPChannel implements IServerChannel {
 			// Get the tools from the server
 			const { tools } = await client.listTools()
 			const toolsWithUniqueName = tools.map(({ name, ...rest }: { name: string, [key: string]: any }) => ({ name: this._addUniquePrefix(name, serverName), mcpServerName: serverName, ...rest }))
-			console.log(`\u{2705} Loaded ${toolsWithUniqueName.length} tools from ${serverName} (stdio)`);
+			voidDevLog(`\u{2705} Loaded ${toolsWithUniqueName.length} tools from ${serverName} (stdio)`);
 
 			// Create a full command string for display
 			const fullCommand = `${server.command} ${server.args?.join(' ') || ''}`
@@ -335,7 +336,7 @@ export class MCPChannel implements IServerChannel {
 			delete this.infoOfClientId[serverName]
 		})
 		await Promise.all(closePromises)
-		console.log('Closed all MCP servers');
+		voidDevLog('Closed all MCP servers');
 	}
 
 	private async _closeClient(serverName: string) {
@@ -349,14 +350,14 @@ export class MCPChannel implements IServerChannel {
 				console.error(`[MCP] Error closing client for ${serverName}:`, err)
 			}
 		}
-		console.log(`Closed MCP server ${serverName}`);
+		voidDevLog(`Closed MCP server ${serverName}`);
 	}
 
 
 	private async _toggleMCPServer(serverName: string, isOn: boolean) {
 		// Guard against concurrent refresh
 		if (this._refreshingServerNames.has(serverName)) {
-			console.warn(`[MCP] Cannot toggle server ${serverName}: refresh already in progress`);
+			voidDevWarn(`[MCP] Cannot toggle server ${serverName}: refresh already in progress`);
 			throw new Error(`Server ${serverName} is currently being refreshed`);
 		}
 
@@ -421,7 +422,7 @@ export class MCPChannel implements IServerChannel {
 		const { _client: client } = server
 		if (!client) throw new Error(`Client for server ${serverName} not found`)
 
-		console.log(`[mcpChannel] Calling tool "${toolName}" on server "${serverName}"`)
+		voidDevLog(`[mcpChannel] Calling tool "${toolName}" on server "${serverName}"`)
 		
 		// Call the tool with the provided parameters
 		// Use the tool name as-is since we're not adding prefixes anymore

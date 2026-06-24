@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAccessor, useSettingsState } from '../util/services.js';
+import { voidDevWarn } from '../../../../common/devLog.js';
 
 export type VoicePhase = 'idle' | 'listening' | 'transcribing' | 'thinking' | 'speaking' | 'error';
 
@@ -126,7 +127,7 @@ export const useVoiceMode = ({ threadId, onTranscription }: UseVoiceModeOptions)
 			animationFrameRef.current = null;
 		}
 		if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-			audioContextRef.current.close().catch(() => { });
+			audioContextRef.current.close().catch((e: unknown) => { voidDevWarn('[voiceMode] audioContext.close failed:', e) });
 			audioContextRef.current = null;
 		}
 		safeSetAudioLevel(0);
@@ -382,6 +383,7 @@ export const useVoiceMode = ({ threadId, onTranscription }: UseVoiceModeOptions)
 				});
 		});
 		return () => disposable.dispose();
+		// Deps intentionally omit the stable ref-based setters already captured above; re-subscribing on every render would churn the TTS stream.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [ttsEnabled, threadId, ttsServerUrl, ttsModel, ttsVoice, ttsApiKey, ttsResponseFormat, accessor, chatThreadsService, stopAudioPlayback, safeSetPhase, safeSetError]);
 

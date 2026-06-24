@@ -293,6 +293,7 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({ threadId, exitVo
 				});
 		});
 		return () => disposable.dispose();
+		// Deps intentionally omit the stable ref-based setters already captured above; re-subscribing on every render would churn the TTS stream.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [ttsEnabled, phase, threadId, ttsServerUrl, ttsModel, ttsVoice, ttsApiKey, accessor, chatThreadsService, stopAudioPlayback, safeSetPhase, safeSetError]);
 

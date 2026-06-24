@@ -204,7 +204,7 @@ const WorkspaceThreadGroup = ({
  * Multi-workspace thread selector with search
  */
 export const MultiWorkspaceThreadSelector = () => {
-	const workspaces = useAllWorkspaces();
+	const { workspaces } = useAllWorkspaces();
 	const { selectedId } = useSelectedWorkspace();
 	const remoteControl = useWorkspaceRemoteControl();
 	const [searchQuery, setSearchQuery] = useState('');

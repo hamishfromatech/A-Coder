@@ -751,18 +751,19 @@ export const useAllWorkspaces = () => {
 	const accessor = useAccessor()
 	const remoteControl = accessor.get(IWorkspaceRemoteControlService)
 	const [workspaces, setWorkspaces] = useState<WorkspaceConnection[]>(allWorkspacesState)
+	const [loadError, setLoadError] = useState<string | null>(null)
 
 	useEffect(() => {
 		// Defensive: in a stale build the service may not be registered yet.
 		// Degrade to an empty list rather than crashing the whole panel.
 		if (!remoteControl) return
 		let disposed = false
-		remoteControl.getWorkspaces().then(ws => { if (!disposed) { setWorkspaces(ws); updateAllWorkspacesState(ws) } }).catch(() => { })
-		const sub = remoteControl.onDidReceiveWorkspaces(ws => { if (!disposed) { setWorkspaces(ws); updateAllWorkspacesState(ws) } })
+		remoteControl.getWorkspaces().then(ws => { if (!disposed) { setWorkspaces(ws); updateAllWorkspacesState(ws); setLoadError(null) } }).catch((e: unknown) => { if (!disposed) { setLoadError(`Couldn't load projects from other windows. Please try again. (${e instanceof Error ? e.message : String(e)})`) } })
+		const sub = remoteControl.onDidReceiveWorkspaces(ws => { if (!disposed) { setWorkspaces(ws); updateAllWorkspacesState(ws); setLoadError(null) } })
 		return () => { disposed = true; sub.dispose() }
 	}, [remoteControl])
 
-	return workspaces
+	return { workspaces, loadError }
 }
 
 /**
@@ -797,7 +798,7 @@ export const useSelectedWorkspace = () => {
  * Hook to get aggregated stats across all workspaces
  */
 export const useMultiWorkspaceStats = () => {
-	const workspaces = useAllWorkspaces()
+	const { workspaces } = useAllWorkspaces()
 
 	return useMemo(() => {
 		let totalThreads = 0
@@ -825,7 +826,7 @@ export const useMultiWorkspaceStats = () => {
  * Hook to search threads across all workspaces
  */
 export const useMultiWorkspaceSearch = (query: string) => {
-	const workspaces = useAllWorkspaces()
+	const { workspaces } = useAllWorkspaces()
 
 	return useMemo(() => {
 		if (!query.trim()) {
@@ -921,7 +922,7 @@ export const useActiveStandaloneSession = () => {
  * Hook to get the workspace connection for a given session
  */
 export const useSessionWorkspace = (sessionId: string | null) => {
-	const workspaces = useAllWorkspaces()
+	const { workspaces } = useAllWorkspaces()
 	
 	return useMemo(() => {
 		if (!sessionId) return null

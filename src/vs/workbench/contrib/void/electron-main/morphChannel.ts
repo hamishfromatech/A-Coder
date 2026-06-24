@@ -8,6 +8,8 @@ import { Event } from '../../../../base/common/event.js';
 import { MorphClient } from '@morphllm/morphsdk';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import * as os from 'os';
+import { voidDevLog } from '../common/devLog.js';
 
 /**
  * IPC Channel for Morph Fast Apply using SDK
@@ -51,9 +53,9 @@ export class MorphChannel implements IServerChannel {
 					_requestId?: string;
 				};
 
-				console.log('[MorphChannel] Starting Fast Context (warpGrep)...');
-				console.log('[MorphChannel] Query:', query);
-				console.log('[MorphChannel] Repo root:', repoRoot);
+				voidDevLog('[MorphChannel] Starting Fast Context (warpGrep)...');
+				voidDevLog('[MorphChannel] Query:', query);
+				voidDevLog('[MorphChannel] Repo root:', repoRoot);
 
 				// Track this call so the renderer can abort it via `abortMorph`.
 				// The SDK may or may not honour the AbortSignal; either way the
@@ -74,7 +76,7 @@ export class MorphChannel implements IServerChannel {
 
 					// Execute warpGrep. Pass the abort signal best-effort; SDKs that
 					// ignore unknown options are unaffected.
-					console.log('[MorphChannel] Calling Morph warpGrep SDK...');
+					voidDevLog('[MorphChannel] Calling Morph warpGrep SDK...');
 					const result = await morph.warpGrep.execute({
 						query,
 						repoRoot,
@@ -86,7 +88,7 @@ export class MorphChannel implements IServerChannel {
 						throw new Error(`Morph warpGrep failed: ${result.error}`);
 					}
 
-					console.log(`[MorphChannel] Successfully received ${result.contexts.length} contexts from Morph`);
+					voidDevLog(`[MorphChannel] Successfully received ${result.contexts.length} contexts from Morph`);
 					return result.contexts;
 
 				} catch (error) {
@@ -260,33 +262,34 @@ export class MorphChannel implements IServerChannel {
 					apiKey: string;
 				};
 
-				console.log('[MorphChannel] Starting Fast Apply...');
-				console.log('[MorphChannel] Instruction:', instruction);
-				console.log('[MorphChannel] File path:', filePath);
-				console.log('[MorphChannel] Original code length:', originalCode.length);
-				console.log('[MorphChannel] Updated code length:', updatedCode.length);
+				voidDevLog('[MorphChannel] Starting Fast Apply...');
+				voidDevLog('[MorphChannel] Instruction:', instruction);
+				voidDevLog('[MorphChannel] File path:', filePath);
+				voidDevLog('[MorphChannel] Original code length:', originalCode.length);
+				voidDevLog('[MorphChannel] Updated code length:', updatedCode.length);
 
-				// Create temp file with original content in current directory
-				// SDK seems to treat paths as relative to CWD, so use current directory
+				// Create temp file with original content in the OS temp dir so a
+				// crash mid-apply can't leave stray files in the user's project.
 				const tempFileName = `morph-${Date.now()}-${path.basename(filePath)}`;
-				const tempFilePath = path.resolve(tempFileName);
+				const tempFilePath = path.join(os.tmpdir(), tempFileName);
 
 				try {
-					console.log('[MorphChannel] Writing temp file:', tempFilePath);
+					voidDevLog('[MorphChannel] Writing temp file:', tempFilePath);
 					await fs.writeFile(tempFilePath, originalCode, 'utf8');
 
 					// Get Morph client
 					const morph = this.getMorphClient(apiKey);
 
-					// Execute Fast Apply - use just filename since SDK prepends CWD
-					console.log('[MorphChannel] Calling Morph Fast Apply SDK...');
+					// Execute Fast Apply - pass the absolute temp path so the SDK
+					// reads/writes the tmp file regardless of its CWD handling.
+					voidDevLog('[MorphChannel] Calling Morph Fast Apply SDK...');
 					const result = await morph.fastApply.execute({
-						target_filepath: tempFileName,
+						target_filepath: tempFilePath,
 						instructions: instruction,
 						code_edit: updatedCode
 					});
 
-					console.log('[MorphChannel] Fast Apply result:', {
+					voidDevLog('[MorphChannel] Fast Apply result:', {
 						success: result.success,
 						linesAdded: result.changes?.linesAdded,
 						linesRemoved: result.changes?.linesRemoved,
@@ -300,7 +303,7 @@ export class MorphChannel implements IServerChannel {
 
 					// Read the modified file
 					const appliedCode = await fs.readFile(tempFilePath, 'utf8');
-					console.log('[MorphChannel] Successfully received applied code, length:', appliedCode.length);
+					voidDevLog('[MorphChannel] Successfully received applied code, length:', appliedCode.length);
 
 					return appliedCode;
 
@@ -312,7 +315,7 @@ export class MorphChannel implements IServerChannel {
 					try {
 						await fs.access(tempFilePath);
 						await fs.unlink(tempFilePath);
-						console.log('[MorphChannel] Cleaned up temp file');
+						voidDevLog('[MorphChannel] Cleaned up temp file');
 					} catch (cleanupError) {
 						// File doesn't exist or couldn't be deleted - that's fine
 						if ((cleanupError as NodeJS.ErrnoException).code !== 'ENOENT') {

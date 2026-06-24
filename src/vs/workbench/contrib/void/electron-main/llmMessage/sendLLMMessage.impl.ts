@@ -19,6 +19,8 @@ import { ChatMode, displayInfoOfProviderName, GlobalSettings, ModelSelectionOpti
 import { getSendableReasoningInfo, getModelCapabilities, getProviderCapabilities, defaultProviderSettings, getReservedOutputTokenSpace } from '../../common/modelCapabilities.js';
 import { availableTools, InternalToolInfo } from '../../common/prompt/prompts.js';
 import { generateUuid } from '../../../../../base/common/uuid.js';
+import { voidDevLog, voidDevWarn } from '../../common/devLog.js';
+import product from '../../../../../platform/product/common/product.js';
 
 const getGoogleApiKey = async () => {
 	// module‑level singleton
@@ -200,7 +202,7 @@ const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName, includ
 			baseURL: 'https://openrouter.ai/api/v1',
 			apiKey: thisConfig.apiKey,
 			defaultHeaders: {
-				'HTTP-Referer': 'https://theatechcorporation.com', // Optional, for including your app on openrouter.ai rankings.
+				'HTTP-Referer': 'https://a-coder.dev', // Optional, for including your app on openrouter.ai rankings.
 				'X-Title': 'A-Coder', // Optional. Shows in rankings on openrouter.ai.
 			},
 			...commonPayloadOpts,
@@ -270,10 +272,12 @@ const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName, includ
 	else if (providerName === 'aCoder') {
 		const thisConfig = settingsOfProvider[providerName]
 		return new OpenAI({
+			// LLM inference proxy. See voidSettingsTypes.ts (aCoder key link) for the
+			// source-of-truth note on A-Coder's three hostnames.
 			baseURL: 'https://provider.atech.industries/v1',
 			apiKey: thisConfig.apiKey,
 			defaultHeaders: {
-				'HTTP-User-Agent': 'A-Coder/1.0.0',
+				'HTTP-User-Agent': `A-Coder/${product.voidVersion || product.version}`,
 			},
 			...commonPayloadOpts
 		})
@@ -405,7 +409,7 @@ const findJsonObjectEnd = (str: string): number => {
 // convert LLM tool call to our tool format
 const rawToolCallObjOfParamsStr = (name: string, toolParamsStr: string, id: string, thought_signature?: string): RawToolCallObj | null => {
 	if (!toolParamsStr) {
-		console.log(`[sendLLMMessage] \u{26A0}\u{FE0F} Tool call "${name}" has empty parameters string`)
+		voidDevLog(`[sendLLMMessage] \u{26A0}\u{FE0F} Tool call "${name}" has empty parameters string`)
 		return null
 	}
 
@@ -421,12 +425,12 @@ const rawToolCallObjOfParamsStr = (name: string, toolParamsStr: string, id: stri
 			const firstObject = toolParamsStr.substring(0, firstObjectEnd + 1)
 			try {
 				input = JSON.parse(firstObject)
-				console.log(`[sendLLMMessage] \u{26A0}\u{FE0F} LLM sent concatenated tool calls, extracting first one for "${name}"`)
+				voidDevLog(`[sendLLMMessage] \u{26A0}\u{FE0F} LLM sent concatenated tool calls, extracting first one for "${name}"`)
 			} catch (e2) {
 				// Fallback to partial JSON parser for very malformed but mostly complete JSON
 				input = parsePartialJSON(toolParamsStr)
 				if (Object.keys(input as object).length === 0) {
-					console.log(`[sendLLMMessage] \u{26A0}\u{FE0F} Failed to parse tool parameters for "${name}":`, e)
+					voidDevLog(`[sendLLMMessage] \u{26A0}\u{FE0F} Failed to parse tool parameters for "${name}":`, e)
 					return null
 				}
 			}
@@ -434,19 +438,19 @@ const rawToolCallObjOfParamsStr = (name: string, toolParamsStr: string, id: stri
 			// Fallback to partial JSON parser
 			input = parsePartialJSON(toolParamsStr)
 			if (Object.keys(input as object).length === 0) {
-				console.log(`[sendLLMMessage] \u{26A0}\u{FE0F} Failed to parse tool parameters for "${name}":`, e)
+				voidDevLog(`[sendLLMMessage] \u{26A0}\u{FE0F} Failed to parse tool parameters for "${name}":`, e)
 				return null
 			}
 		}
 	}
 
 	if (input === null || typeof input !== 'object') {
-		console.log(`[sendLLMMessage] \u{26A0}\u{FE0F} Tool call "${name}" parsed to invalid type:`, typeof input)
+		voidDevLog(`[sendLLMMessage] \u{26A0}\u{FE0F} Tool call "${name}" parsed to invalid type:`, typeof input)
 		return null
 	}
 
 	const rawParams: RawToolParamsObj = input as any
-	console.log(`[sendLLMMessage] ✓ Successfully parsed tool call "${name}" with ${Object.keys(rawParams).length} parameters`)
+	voidDevLog(`[sendLLMMessage] ✓ Successfully parsed tool call "${name}" with ${Object.keys(rawParams).length} parameters`)
 	return { id, name: name as any, rawParams, doneParams: Object.keys(rawParams) as any[], isDone: true, thought_signature }
 }
 
@@ -519,7 +523,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		...additionalOpenAIPayload
 	}
 
-	console.log(`[sendLLMMessage] Reasoning config:`, {
+	voidDevLog(`[sendLLMMessage] Reasoning config:`, {
 		reasoningCapabilities,
 		reasoningInfo,
 		includeInPayload: providerReasoningIOSettings?.input?.includeInPayload?.(reasoningInfo),
@@ -536,14 +540,14 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		{ tools: potentialTools } as const
 		: {}
 
-	console.log(`[sendLLMMessage] OpenAI-compatible - chatMode: ${chatMode}, tools count: ${potentialTools?.length ?? 0}, model: ${modelName}, provider: ${providerName}, specialToolFormat: ${specialToolFormat}`)
+	voidDevLog(`[sendLLMMessage] OpenAI-compatible - chatMode: ${chatMode}, tools count: ${potentialTools?.length ?? 0}, model: ${modelName}, provider: ${providerName}, specialToolFormat: ${specialToolFormat}`)
 	if (potentialTools && potentialTools.length > 0 && specialToolFormat === 'openai-style') {
-		console.log(`[sendLLMMessage] \u{2705} Sending ${potentialTools.length} tools via native API`)
-		console.log(`[sendLLMMessage] Tool names:`, potentialTools.map(t => t.function.name).join(', '))
+		voidDevLog(`[sendLLMMessage] \u{2705} Sending ${potentialTools.length} tools via native API`)
+		voidDevLog(`[sendLLMMessage] Tool names:`, potentialTools.map(t => t.function.name).join(', '))
 	} else if (potentialTools && potentialTools.length > 0) {
-		console.log(`[sendLLMMessage] \u{26A0}\u{FE0F} NOT sending tools - specialToolFormat is '${specialToolFormat}', will use XML tool calling instead`)
+		voidDevLog(`[sendLLMMessage] \u{26A0}\u{FE0F} NOT sending tools - specialToolFormat is '${specialToolFormat}', will use XML tool calling instead`)
 	} else {
-		console.log(`[sendLLMMessage] \u{26A0}\u{FE0F} NO TOOLS - chatMode: ${chatMode}, mcpTools: ${mcpTools?.length ?? 0}`)
+		voidDevLog(`[sendLLMMessage] \u{26A0}\u{FE0F} NO TOOLS - chatMode: ${chatMode}, mcpTools: ${mcpTools?.length ?? 0}`)
 	}
 
 	// instance
@@ -567,7 +571,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		// max_completion_tokens: maxTokens,
 	}
 
-	console.log(`[sendLLMMessage] Request options:`, JSON.stringify({
+	voidDevLog(`[sendLLMMessage] Request options:`, JSON.stringify({
 		model: options.model,
 		messageCount: options.messages.length,
 		hasTools: 'tools' in options,
@@ -578,9 +582,9 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 
 	// Debug: Log full payload size and check for issues at position 17371
 	const fullPayload = JSON.stringify(options)
-	console.log(`[sendLLMMessage] Full payload size: ${fullPayload.length} chars`)
+	voidDevLog(`[sendLLMMessage] Full payload size: ${fullPayload.length} chars`)
 	if (fullPayload.length > 17000) {
-		console.log(`[sendLLMMessage] Payload around position 17371: "${fullPayload.substring(17350, 17400)}"`)
+		voidDevLog(`[sendLLMMessage] Payload around position 17371: "${fullPayload.substring(17350, 17400)}"`)
 	}
 
 	const { nameOfFieldInDelta: nameOfReasoningFieldInDelta } = providerReasoningIOSettings?.output ?? {}
@@ -616,7 +620,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 
 		if (fn.name && !toolCalls[index].name) {
 			toolCalls[index].name = fn.name
-			console.log(`[sendLLMMessage] Tool call [${index}] detected: ${fn.name}`)
+			voidDevLog(`[sendLLMMessage] Tool call [${index}] detected: ${fn.name}`)
 		}
 
 		if (typeof fn.arguments === 'string') {
@@ -648,7 +652,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 			}))
 	}
 
-	console.log(`[sendLLMMessage] Creating request with options:`, JSON.stringify({
+	voidDevLog(`[sendLLMMessage] Creating request with options:`, JSON.stringify({
 		model: options.model,
 		messageCount: options.messages?.length,
 		hasTools: !!options.tools,
@@ -658,25 +662,25 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 
 	// Log the actual messages being sent (first 3 for debugging)
 	if (options.messages && options.messages.length > 0) {
-		console.log(`[sendLLMMessage] Message sequence (${options.messages.length} messages):`)
+		voidDevLog(`[sendLLMMessage] Message sequence (${options.messages.length} messages):`)
 		options.messages.forEach((m: any, idx: number) => {
 			const contentStr = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
 			const hasTools = !!m.tool_calls
 			const toolCount = m.tool_calls?.length ?? 0
 			const toolId = m.tool_call_id ?? ''
-			console.log(`  [${idx}] role: ${m.role}${toolId ? ` (id: ${toolId})` : ''}${hasTools ? ` (${toolCount} tools)` : ''}, content length: ${contentStr?.length ?? 0}`)
+			voidDevLog(`  [${idx}] role: ${m.role}${toolId ? ` (id: ${toolId})` : ''}${hasTools ? ` (${toolCount} tools)` : ''}, content length: ${contentStr?.length ?? 0}`)
 		})
 
-		console.log(`[sendLLMMessage] First message:`, JSON.stringify(options.messages[0], null, 2).substring(0, 500))
+		voidDevLog(`[sendLLMMessage] First message:`, JSON.stringify(options.messages[0], null, 2).substring(0, 500))
 		if (options.messages.length > 1) {
-			console.log(`[sendLLMMessage] Last message:`, JSON.stringify(options.messages[options.messages.length - 1], null, 2).substring(0, 500))
+			voidDevLog(`[sendLLMMessage] Last message:`, JSON.stringify(options.messages[options.messages.length - 1], null, 2).substring(0, 500))
 		}
 	}
 
 	openai.chat.completions
 		.create(options)
 		.then(async response => {
-			console.log(`[sendLLMMessage] Request created successfully, starting to read stream`)
+			voidDevLog(`[sendLLMMessage] Request created successfully, starting to read stream`)
 			_setAborter(() => response.controller.abort())
 
 			// Import XML stripping function for streaming
@@ -688,11 +692,11 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 			for await (const chunk of response) {
 				chunkCount++
 				if (chunkCount <= 3) {
-					console.log(`[sendLLMMessage] Chunk ${chunkCount} received:`, JSON.stringify(chunk, null, 2))
+					voidDevLog(`[sendLLMMessage] Chunk ${chunkCount} received:`, JSON.stringify(chunk, null, 2))
 				}
 				const choice = chunk.choices?.[0]
 				if (!choice) {
-					console.log(`[sendLLMMessage] Chunk ${chunkCount} has no choice, skipping`)
+					voidDevLog(`[sendLLMMessage] Chunk ${chunkCount} has no choice, skipping`)
 					continue
 				}
 
@@ -701,7 +705,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 				}
 
 				if (choice.finish_reason && choice.finish_reason !== 'stop' && choice.finish_reason !== 'tool_calls') {
-					console.log(`[sendLLMMessage] Unexpected finish_reason: ${choice.finish_reason}, chunk:`, JSON.stringify(chunk))
+					voidDevLog(`[sendLLMMessage] Unexpected finish_reason: ${choice.finish_reason}, chunk:`, JSON.stringify(chunk))
 					onError({ message: `Model ended response with finish_reason "${choice.finish_reason}"`, fullError: null })
 					return
 				}
@@ -712,7 +716,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 						promptTokens: chunk.usage.prompt_tokens,
 						completionTokens: chunk.usage.completion_tokens
 					};
-					console.log(`[sendLLMMessage] Usage stats received:`, finalUsage);
+					voidDevLog(`[sendLLMMessage] Usage stats received:`, finalUsage);
 				}
 
 				const delta = choice.delta ?? {}
@@ -740,7 +744,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 						''
 					) + ''
 					if (reasoningDelta && chunkCount <= 5) {
-						console.log(`[sendLLMMessage] Chunk ${chunkCount} reasoning delta:`, reasoningDelta.substring(0, 100))
+						voidDevLog(`[sendLLMMessage] Chunk ${chunkCount} reasoning delta:`, reasoningDelta.substring(0, 100))
 					}
 					// Accumulate reasoning if reasoning is enabled in settings, OR if it's an unrecognized model (reasoningInfo is null)
 					if (!reasoningInfo || reasoningInfo.isReasoningEnabled) {
@@ -770,7 +774,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 			const truncatedFullText = fullTextSoFar.length > 500 ? fullTextSoFar.substring(0, 500) + '...' : fullTextSoFar;
 			const truncatedReasoning = fullReasoningSoFar.length > 500 ? fullReasoningSoFar.substring(0, 500) + '...' : fullReasoningSoFar;
 			
-			console.log(`[sendLLMMessage] Stream completed. Total chunks: ${chunkCount}, fullText: "${truncatedFullText}", reasoning: "${truncatedReasoning}", toolCalls count: ${toolCalls.length}`)
+			voidDevLog(`[sendLLMMessage] Stream completed. Total chunks: ${chunkCount}, fullText: "${truncatedFullText}", reasoning: "${truncatedReasoning}", toolCalls count: ${toolCalls.length}`)
 
 			// Fallback: If no native tool call detected, check for XML tool calls in both content and reasoning
 			if (toolCalls.length === 0 && (fullTextSoFar || fullReasoningSoFar)) {
@@ -788,7 +792,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 				}
 				if (xmlToolCallsInText.length > 0) {
 					fullTextSoFar = stripXMLBlocks(fullTextSoFar)
-					console.log(`[sendLLMMessage] \u{2705} Extracted ${xmlToolCallsInText.length} XML tool calls from text`)
+					voidDevLog(`[sendLLMMessage] \u{2705} Extracted ${xmlToolCallsInText.length} XML tool calls from text`)
 				}
 				
 				// 2. Check reasoning (Nemotron and other models sometimes put tools here)
@@ -804,7 +808,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 					}
 					if (xmlToolCallsInReasoning.length > 0) {
 						fullReasoningSoFar = stripXMLBlocks(fullReasoningSoFar)
-						console.log(`[sendLLMMessage] \u{2705} Extracted ${xmlToolCallsInReasoning.length} XML tool calls from reasoning`)
+						voidDevLog(`[sendLLMMessage] \u{2705} Extracted ${xmlToolCallsInReasoning.length} XML tool calls from reasoning`)
 					}
 				}
 			}
@@ -813,7 +817,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 			const hasEmptyResponse = !fullTextSoFar && !fullReasoningSoFar && toolCalls.length === 0
 
 			if (hasEmptyResponse) {
-				console.log(`[sendLLMMessage] \u{274C} Empty response detected`)
+				voidDevLog(`[sendLLMMessage] \u{274C} Empty response detected`)
 				// ... (guiding messages for Ollama)
 				onError({ message: 'A-Coder: Response from model was empty.', fullError: null })
 			}
@@ -827,30 +831,30 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 				const firstValidToolCall = toolCalls.find(tc => !!tc);
 				const anthropicReasoning: AnthropicReasoning[] | null = fullReasoningSoFar ? [{ type: 'thinking', thinking: fullReasoningSoFar, signature: firstValidToolCall?.thoughtSignature || '' }] : null
 				
-				console.log(`[sendLLMMessage] Final message - text length: ${fullTextSoFar.length}, reasoning length: ${fullReasoningSoFar.length}, toolCalls: ${finalToolCalls.length}`)
+				voidDevLog(`[sendLLMMessage] Final message - text length: ${fullTextSoFar.length}, reasoning length: ${fullReasoningSoFar.length}, toolCalls: ${finalToolCalls.length}`)
 				onFinalMessage({ fullText: fullTextSoFar, fullReasoning: fullReasoningSoFar, anthropicReasoning, ...toolCallObj, usage: finalUsage, stopReason: lastFinishReason });
 			}
 		})
 		// when error/fail - this catches errors of both .create() and .then(for await)
 		.catch(async error => {
-			console.log(`[sendLLMMessage] Error caught:`, error)
-			console.log(`[sendLLMMessage] Error type:`, error?.constructor?.name)
-			console.log(`[sendLLMMessage] Error status:`, error?.status)
-			console.log(`[sendLLMMessage] Error message:`, error?.message)
+			voidDevLog(`[sendLLMMessage] Error caught:`, error)
+			voidDevLog(`[sendLLMMessage] Error type:`, error?.constructor?.name)
+			voidDevLog(`[sendLLMMessage] Error status:`, error?.status)
+			voidDevLog(`[sendLLMMessage] Error message:`, error?.message)
 
 			// Retry on 500 errors (server-side issues) - wait 3 seconds and try once more
 			// Don't call onError yet - let the UI keep showing "thinking" state
 			if (error instanceof OpenAI.APIError && error.status === 500 && !(options as any)._isRetry) {
-				console.log(`[sendLLMMessage] \u{23F3} Server returned 500 error, retrying in 3 seconds...`)
+				voidDevLog(`[sendLLMMessage] \u{23F3} Server returned 500 error, retrying in 3 seconds...`)
 				await new Promise(resolve => setTimeout(resolve, 3000))
-				console.log(`[sendLLMMessage] \u{1F504} Retrying request...`)
+				voidDevLog(`[sendLLMMessage] \u{1F504} Retrying request...`)
 
 				// Retry the request with a flag to prevent infinite retries
 				const retryOptions = { ...options, _isRetry: true } as typeof options & { _isRetry: boolean }
 				openai.chat.completions
 					.create(retryOptions)
 					.then(async retryResponse => {
-						console.log(`[sendLLMMessage] \u{2705} Retry succeeded, processing response`)
+						voidDevLog(`[sendLLMMessage] \u{2705} Retry succeeded, processing response`)
 						_setAborter(() => (retryResponse as any).controller?.abort?.())
 
 						// Reset state for retry
@@ -917,7 +921,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 							})
 						}
 
-						console.log(`[sendLLMMessage] Retry stream completed. Chunks: ${chunkCount}`)
+						voidDevLog(`[sendLLMMessage] Retry stream completed. Chunks: ${chunkCount}`)
 
 						// Fallback: If no native tool call detected, check for XML tool calls in both content and reasoning
 						if (toolCalls.length === 0 && (fullTextSoFar || fullReasoningSoFar)) {
@@ -963,7 +967,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 						onFinalMessage({ fullText: fullTextSoFar, fullReasoning: fullReasoningSoFar, anthropicReasoning, ...toolCallObj, stopReason: retryFinishReason })
 					})
 					.catch(retryError => {
-						console.log(`[sendLLMMessage] \u{274C} Retry also failed:`, retryError?.message)
+						voidDevLog(`[sendLLMMessage] \u{274C} Retry also failed:`, retryError?.message)
 						try {
 							onError({ message: retryError + '', fullError: retryError })
 						} catch (e) {
@@ -1071,11 +1075,11 @@ const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessag
 		{ tools: potentialTools, tool_choice: { type: 'auto' } } as const
 		: {}
 
-	console.log(`[sendLLMMessage] Anthropic - chatMode: ${chatMode}, tools count: ${potentialTools?.length ?? 0}, specialToolFormat: ${specialToolFormat}`)
+	voidDevLog(`[sendLLMMessage] Anthropic - chatMode: ${chatMode}, tools count: ${potentialTools?.length ?? 0}, specialToolFormat: ${specialToolFormat}`)
 	if (potentialTools && potentialTools.length > 0 && specialToolFormat === 'anthropic-style') {
-		console.log(`[sendLLMMessage] Tool names:`, potentialTools.map(t => t.name).join(', '))
+		voidDevLog(`[sendLLMMessage] Tool names:`, potentialTools.map(t => t.name).join(', '))
 	} else if (potentialTools && potentialTools.length > 0) {
-		console.log(`[sendLLMMessage] \u{26A0}\u{FE0F} TOOLS NOT SENT - specialToolFormat is ${specialToolFormat}, expected 'anthropic-style'`)
+		voidDevLog(`[sendLLMMessage] \u{26A0}\u{FE0F} TOOLS NOT SENT - specialToolFormat is ${specialToolFormat}, expected 'anthropic-style'`)
 	}
 
 	// instance
@@ -1132,7 +1136,7 @@ const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessag
 				runOnText()
 			}
 			else if (e.content_block.type === 'redacted_thinking') {
-				console.log('delta', e.content_block.type)
+				voidDevLog('delta', e.content_block.type)
 				if (fullReasoning) fullReasoning += '\n\n' // starting a 2nd reasoning block
 				fullReasoning += '[redacted_thinking]'
 				runOnText()
@@ -1359,36 +1363,36 @@ const _sendOllamaChatWithFallback = async (params: SendChatParams_Internal) => {
 	})
 	const hasTools = potentialTools && potentialTools.length > 0
 
-	console.log(`[sendOllamaChatWithFallback] Model: ${modelName}, specialToolFormat: ${specialToolFormat}, hasTools: ${hasTools}`)
+	voidDevLog(`[sendOllamaChatWithFallback] Model: ${modelName}, specialToolFormat: ${specialToolFormat}, hasTools: ${hasTools}`)
 
 	// For models with native tool support, try OpenAI-compatible endpoint first
 	if (hasNativeTools && hasTools) {
-		console.log(`[sendOllamaChatWithFallback] \u{1F680} Trying OpenAI - compatible endpoint with native tools`)
+		voidDevLog(`[sendOllamaChatWithFallback] \u{1F680} Trying OpenAI - compatible endpoint with native tools`)
 
 		try {
 			// Try the OpenAI-compatible endpoint
 			await _sendOpenAICompatibleChat(params)
-			console.log(`[sendOllamaChatWithFallback] \u{2705} OpenAI - compatible endpoint succeeded`)
+			voidDevLog(`[sendOllamaChatWithFallback] \u{2705} OpenAI - compatible endpoint succeeded`)
 			return
 		} catch (error) {
-			console.warn(`[sendOllamaChatWithFallback] \u{26A0}\u{FE0F} OpenAI - compatible endpoint failed: `, error)
+			voidDevWarn(`[sendOllamaChatWithFallback] \u{26A0}\u{FE0F} OpenAI - compatible endpoint failed: `, error)
 
 			// Check if it's a transient server error (5xx) that might be worth retrying
 			const isTransientServerError = error?.status >= 500 && error?.status < 600
 			if (isTransientServerError) {
-				console.log(`[sendOllamaChatWithFallback] \u{1F504} Detected transient server error(${error.status}), retrying once...`)
+				voidDevLog(`[sendOllamaChatWithFallback] \u{1F504} Detected transient server error(${error.status}), retrying once...`)
 				try {
 					// Wait a moment before retry
 					await new Promise(resolve => setTimeout(resolve, 1000))
 					await _sendOpenAICompatibleChat(params)
-					console.log(`[sendOllamaChatWithFallback] \u{2705} Retry succeeded`)
+					voidDevLog(`[sendOllamaChatWithFallback] \u{2705} Retry succeeded`)
 					return
 				} catch (retryError) {
-					console.warn(`[sendOllamaChatWithFallback] \u{26A0}\u{FE0F} Retry also failed: `, retryError)
+					voidDevWarn(`[sendOllamaChatWithFallback] \u{26A0}\u{FE0F} Retry also failed: `, retryError)
 				}
 			}
 
-			console.log(`[sendOllamaChatWithFallback] \u{1F504} Retrying without native tool format`)
+			voidDevLog(`[sendOllamaChatWithFallback] \u{1F504} Retrying without native tool format`)
 		}
 	}
 
@@ -1398,20 +1402,20 @@ const _sendOllamaChatWithFallback = async (params: SendChatParams_Internal) => {
 			// For the fallback, we'll just try the same function but let it naturally fall back
 			// to XML tool calling if the model doesn't support native tools
 			await _sendOpenAICompatibleChat(params)
-			console.log(`[sendOllamaChatWithFallback] \u{2705} Fallback succeeded`)
+			voidDevLog(`[sendOllamaChatWithFallback] \u{2705} Fallback succeeded`)
 		} catch (error) {
 			// Check if it's a transient server error that might be worth retrying
 			const isTransientServerError = error?.status >= 500 && error?.status < 600
 			if (isTransientServerError) {
-				console.log(`[sendOllamaChatWithFallback] \u{1F504} Detected transient server error in fallback(${error.status}), retrying once...`)
+				voidDevLog(`[sendOllamaChatWithFallback] \u{1F504} Detected transient server error in fallback(${error.status}), retrying once...`)
 				try {
 					// Wait a moment before retry
 					await new Promise(resolve => setTimeout(resolve, 2000))
 					await _sendOpenAICompatibleChat(params)
-					console.log(`[sendOllamaChatWithFallback] \u{2705} Fallback retry succeeded`)
+					voidDevLog(`[sendOllamaChatWithFallback] \u{2705} Fallback retry succeeded`)
 					return
 				} catch (retryError) {
-					console.warn(`[sendOllamaChatWithFallback] \u{26A0}\u{FE0F} Fallback retry also failed: `, retryError)
+					voidDevWarn(`[sendOllamaChatWithFallback] \u{26A0}\u{FE0F} Fallback retry also failed: `, retryError)
 				}
 			}
 
@@ -1420,7 +1424,7 @@ const _sendOllamaChatWithFallback = async (params: SendChatParams_Internal) => {
 		}
 	} else {
 		// No tools needed, use standard OpenAI-compatible chat
-		console.log(`[sendOllamaChatWithFallback] 💬 No tools needed, using standard chat`)
+		voidDevLog(`[sendOllamaChatWithFallback] 💬 No tools needed, using standard chat`)
 		await _sendOpenAICompatibleChat(params)
 	}
 }
@@ -1465,7 +1469,7 @@ const sendGeminiChat = async ({
 			{ thinkingBudget: reasoningInfo.reasoningBudget }
 			: undefined // Gemini only supports budget_slider, not effort_slider
 
-	console.log(`[sendLLMMessage] Gemini reasoning config:`, {
+	voidDevLog(`[sendLLMMessage] Gemini reasoning config:`, {
 		reasoningInfo,
 		thinkingConfig
 	})

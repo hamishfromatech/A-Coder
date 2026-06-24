@@ -17,6 +17,7 @@ import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase 
 import { IEditorService } from '../../../services/editor/common/editorService.js';
 import { IMCPService } from '../common/mcpService.js';
 import { ChatMode } from '../common/voidSettingsTypes.js';
+import { IMarkerService, MarkerSeverity } from '../../../../platform/markers/common/markers.js';
 
 // console.log('[Void] Loading apiServiceBridge.ts');
 
@@ -48,6 +49,7 @@ export class ApiServiceBridge extends Disposable implements IApiServiceBridge {
 		@IMainProcessService private readonly mainProcessService: IMainProcessService,
 		@IEditorService private readonly editorService: IEditorService,
 		@IMCPService private readonly mcpService: IMCPService,
+		@IMarkerService private readonly markerService: IMarkerService,
 	) {
 		super();
 		this.initializeApiServer();
@@ -754,29 +756,35 @@ export class ApiServiceBridge extends Disposable implements IApiServiceBridge {
 	}
 
 	private async getFileOutline(path: string) {
-		// This would require integration with the outline service
-		// For now, return a placeholder
-		return {
-			path,
-			outline: [],
-		};
+		// Not yet wired to IOutlineService. Throw rather than return an empty
+		// outline so the API surfaces "not implemented" instead of masquerading
+		// as "this file has no symbols".
+		throw new Error('getFileOutline is not implemented yet');
 	}
 
 	private async searchFiles(query: string, type: string = 'content') {
-		// This would require integration with the search service
-		// For now, return empty results
-		return {
-			query,
-			type,
-			results: [],
-		};
+		// Not yet wired to ISearchService. Throw rather than return empty
+		// results so the API surfaces "not implemented" instead of looking like
+		// "no matches found".
+		throw new Error('searchFiles is not implemented yet');
 	}
 
 	private async getDiagnostics() {
-		// This would require integration with the diagnostics service
-		// For now, return empty diagnostics
+		// Workspace diagnostics from the marker service.
+		const markers = this.markerService.read();
+		const diagnostics = markers.map(marker => ({
+			resource: marker.resource.toString(),
+			severity: MarkerSeverity.toString(marker.severity),
+			message: marker.message,
+			source: marker.source,
+			code: marker.code,
+			startLine: marker.startLineNumber,
+			startColumn: marker.startColumn,
+			endLine: marker.endLineNumber,
+			endColumn: marker.endColumn,
+		}));
 		return {
-			diagnostics: [],
+			diagnostics,
 		};
 	}
 

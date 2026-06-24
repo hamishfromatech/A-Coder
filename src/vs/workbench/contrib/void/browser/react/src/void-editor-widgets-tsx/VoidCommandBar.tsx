@@ -99,6 +99,9 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 
 	const dropdownRef = useRef<HTMLDivElement>(null)
 	const ellipsisRef = useRef<HTMLButtonElement>(null)
+	// Declared unconditionally (Rules of Hooks): the early returns below used to skip this
+	// ref, causing "Rendered more hooks than during the previous render" when uri.scheme flipped.
+	const highWaterRef = useRef(0)
 
 	// Dismiss the Accept All / Reject All dropdown on outside pointer-down or Escape.
 	// The ellipsis button is excluded so its own click can toggle without racing.
@@ -233,7 +236,6 @@ export const VoidCommandBar = ({ uri, editor }: VoidCommandBarProps) => {
 	// moving backwards when accepting the last diff in a file. The high-water
 	// mark resets once everything is cleared, so a fresh batch starts at 0.
 	const totalDiffs = sortedCommandBarURIs.reduce((sum, u) => sum + (commandBarState[u.fsPath]?.sortedDiffIds?.length || 0), 0);
-	const highWaterRef = useRef(0)
 	if (totalDiffs === 0) highWaterRef.current = 0
 	else if (totalDiffs > highWaterRef.current) highWaterRef.current = totalDiffs
 	const disposedDiffs = Math.max(0, highWaterRef.current - totalDiffs)

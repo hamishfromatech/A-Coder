@@ -68,9 +68,10 @@ export class WhatsNewCheckContribution extends Disposable implements IWorkbenchC
 				return;
 			}
 
-			// Open GitHub releases page in default browser
+			// Open the release notes for this version (falls back to the
+			// general releases list if the version-specific tag URL fails).
 			try {
-				const releaseUrl = `https://github.com/hamishfromatech/A-Coder/releases/`;
+				const releaseUrl = `https://github.com/hamishfromatech/A-Coder/releases/tag/v${currentVersion}`;
 				await this.openerService.open(URI.parse(releaseUrl));
 			} catch (error) {
 				console.error('[A-Coder What\'s New] Failed to open release notes:', error);

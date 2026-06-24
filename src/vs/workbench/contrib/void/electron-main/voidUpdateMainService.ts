@@ -101,8 +101,12 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 			const data = await response.json();
 			const version = data.tag_name;
 
-			const myVersion = this._productService.version
-			const latestVersion = version
+			// Compare the A-Coder release version (product.json `voidVersion`)
+			// against the GitHub release tag, stripping the leading `v` so
+			// e.g. "1.8.5" === "v1.8.5". Do NOT use `productService.version` —
+			// that's the VS Code base version (1.99.3) and never matches.
+			const myVersion = (this._productService.voidVersion || '').replace(/^v/, '')
+			const latestVersion = (version || '').replace(/^v/, '')
 
 			const isUpToDate = myVersion === latestVersion // only makes sense if response.ok
 

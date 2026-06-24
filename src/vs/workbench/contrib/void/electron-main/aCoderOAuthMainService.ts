@@ -10,11 +10,15 @@ import { generateUuid } from '../../../../base/common/uuid.js';
 import * as http from 'http';
 import * as crypto from 'crypto';
 import { ACoderAuthState, ACoderModelResponse, IACoderOAuthMainService, OAuthProvider } from '../common/aCoderOAuthServiceTypes.js';
+import { StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
+import { IApplicationStorageMainService } from '../../../../platform/storage/electron-main/storageMainService.js';
 
 /**
  * A-Coder Backend API URL
  * All requests are proxied through this backend which holds the master API key
  */
+// OAuth/backend. See voidSettingsTypes.ts (aCoder key link) for the source-of-truth
+// note on A-Coder's three hostnames (api.a-coder.dev / a-coder.dev / provider.atech.industries).
 const ACODER_BACKEND_URL = process.env.ACODER_API_URL || 'https://api.a-coder.dev/v1';
 
 /**
@@ -133,13 +137,19 @@ export class ACoderOAuthMainService implements IACoderOAuthMainService {
 	// Token refresh timer
 	private _refreshTimer: NodeJS.Timeout | null = null;
 
-	constructor() {
+	constructor(
+		@IApplicationStorageMainService private readonly _appStorage: IApplicationStorageMainService,
+	) {
 		// Initialize from encrypted storage
 		this._authState = {
 			isAuthenticated: false,
 		};
 
-		this.loadEncryptedTokens();
+		// The application storage (sqlite .vscdb) opens asynchronously; wait
+		// for it before loading tokens so the read sees persisted values.
+		this._appStorage.whenReady.then(() => {
+			this.loadEncryptedTokens();
+		});
 		this.startTokenRefreshMonitor();
 	}
 
@@ -239,31 +249,27 @@ export class ACoderOAuthMainService implements IACoderOAuthMainService {
 	}
 
 	/**
-	 * Helper to read from app storage (using safeStorage for sensitive data)
+	 * Helper to read from application storage. Sensitive values are stored
+	 * already-encrypted (see encryptData); storage itself just holds the
+	 * base64 string in the per-user .vscdb store.
 	 */
 	private readFromStorage(key: string): string | null {
-		// For now, use electron-store or similar
-		// In production, this should use Electron's safeStorage properly
-		// This is a placeholder - implement actual storage
-		return null;
+		const val = this._appStorage.get(key, StorageScope.APPLICATION)
+		return val ?? null
 	}
 
 	/**
-	 * Helper to write to app storage (using safeStorage for sensitive data)
+	 * Helper to write to application storage.
 	 */
 	private writeToStorage(key: string, value: string): void {
-		// For now, use electron-store or similar
-		// In production, this should use Electron's safeStorage properly
-		// This is a placeholder - implement actual storage
+		this._appStorage.store(key, value, StorageScope.APPLICATION, StorageTarget.USER)
 	}
 
 	/**
-	 * Helper to remove from app storage
+	 * Helper to remove from app storage.
 	 */
 	private removeFromStorage(key: string): void {
-		// For now, use electron-store or similar
-		// In production, this should use Electron's safeStorage properly
-		// This is a placeholder - implement actual storage
+		this._appStorage.remove(key, StorageScope.APPLICATION)
 	}
 
 	/**

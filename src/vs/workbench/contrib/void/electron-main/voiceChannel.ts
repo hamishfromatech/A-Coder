@@ -5,6 +5,7 @@
 
 import { IServerChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { Event } from '../../../../base/common/event.js';
+import { voidDevLog } from '../common/devLog.js';
 
 interface STTRequest {
 	baseUrl: string;
@@ -165,7 +166,7 @@ export class VoiceChannel implements IServerChannel {
 				headers['Authorization'] = `Bearer ${apiKey}`;
 			}
 
-			console.log('[VoiceChannel] STT request to:', url);
+			voidDevLog('[VoiceChannel] STT request to:', url);
 
 			const response = await this.fetchWithTimeout(url, {
 				method: 'POST',
@@ -191,7 +192,7 @@ export class VoiceChannel implements IServerChannel {
 				};
 			}
 
-			console.log('[VoiceChannel] STT success');
+			voidDevLog('[VoiceChannel] STT success');
 			return {
 				success: true,
 				text: data.text,
@@ -239,7 +240,7 @@ export class VoiceChannel implements IServerChannel {
 				headers['Authorization'] = `Bearer ${apiKey}`;
 			}
 
-			console.log('[VoiceChannel] TTS request to:', url);
+			voidDevLog('[VoiceChannel] TTS request to:', url);
 
 			const response = await this.fetchWithTimeout(url, {
 				method: 'POST',
@@ -261,7 +262,7 @@ export class VoiceChannel implements IServerChannel {
 			const buffer = Buffer.from(arrayBuffer);
 			const audioBase64 = buffer.toString('base64');
 
-			console.log('[VoiceChannel] TTS success');
+			voidDevLog('[VoiceChannel] TTS success');
 			return {
 				success: true,
 				audioBase64,

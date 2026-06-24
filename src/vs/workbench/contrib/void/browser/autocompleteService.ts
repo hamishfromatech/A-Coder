@@ -696,7 +696,7 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 
 			if (cachedAutocompletion.status === 'finished') {
 
-				const inlineCompletions = toInlineCompletions({ autocompletionMatchup, autocompletion: cachedAutocompletion, prefixAndSuffix, position, debug: true })
+				const inlineCompletions = toInlineCompletions({ autocompletionMatchup, autocompletion: cachedAutocompletion, prefixAndSuffix, position })
 				return inlineCompletions
 
 			} else if (cachedAutocompletion.status === 'pending') {

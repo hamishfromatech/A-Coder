@@ -12,6 +12,8 @@ import { useAccessor, useClipboardService, useIsDark, useIsOptedOut, useRefreshM
 import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, List, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User, Download, Star, MessageCircle, Store, Plug, ExternalLink, AlertTriangle, Eye, EyeOff, ChevronRight, Wind, Brain, Terminal, Code, BookOpen, Target, Trophy, Palette, Image as ImageIcon, Volume2, Play, Mic, Bot } from 'lucide-react'
 import { URI } from '../../../../../../../base/common/uri.js'
 import { VSBuffer } from '../../../../../../../base/common/buffer.js'
+import { generateUuid } from '../../../../../../../base/common/uuid.js'
+import { voidDevWarn } from '../../../../common/devLog.js'
 import { ModelDropdown } from './ModelDropdown.js'
 import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js'
 import { WarningBox } from './WarningBox.js'
@@ -1486,7 +1488,7 @@ const ComposioSettingsSection = ({
 										<span className="text-[10px] text-void-fg-4">Defaults to API port</span>
 									</div>
 									<VoidSimpleInputBox
-										placeholder="3000"
+										placeholder="3737"
 										value={settingsState.globalSettings.composioTriggerPort?.toString() || ''}
 										onChangeValue={(val) => {
 											const port = parseInt(val);
@@ -1553,7 +1555,7 @@ const ComposioSettingsSection = ({
 									Configure this URL in Composio to receive trigger events:
 								</p>
 								<code className="text-xs bg-void-bg-1 px-2 py-1 rounded block overflow-x-auto">
-									{settingsState.globalSettings.composioTriggerTunnelUrl || `http://localhost:${settingsState.globalSettings.composioTriggerPort || settingsState.globalSettings.apiPort || 3000}`}/api/v1/composio/triggers
+									{settingsState.globalSettings.composioTriggerTunnelUrl || `http://localhost:${settingsState.globalSettings.composioTriggerPort || settingsState.globalSettings.apiPort || 3737}`}/api/v1/composio/triggers
 								</code>
 							</div>
 						</div>
@@ -1793,7 +1795,7 @@ export const AIInstructionsBox = () => {
 	return <VoidInputBox2
 		className='min-h-[81px] p-3 rounded-sm'
 		initValue={voidSettingsState.globalSettings.aiInstructions}
-		placeholder={`Do not change my indentation or delete my comments. When writing TS or JS, do not add ;'s. Write new code using Rust if possible. `}
+		placeholder={`Describe how A-Coder should write code — preferred languages, style, and what to avoid. e.g. "Use TypeScript, match my indentation, and don't delete comments."`}
 		multiline
 		onChangeText={(newText) => {
 			voidSettingsService.setGlobalSetting('aiInstructions', newText)
@@ -1844,9 +1846,13 @@ export const OllamaSetupInstructions = ({ sayWeAutoDetect }: { sayWeAutoDetect?:
 const RedoOnboardingButton = ({ className }: { className?: string }) => {
 	const accessor = useAccessor()
 	const voidSettingsService = accessor.get('IVoidSettingsService')
+	const redoOnboarding = () => { voidSettingsService.setGlobalSetting('isOnboardingComplete', false) }
 	return <div
+		role="button"
+		tabIndex={0}
 		className={`text-void-fg-4 flex flex-nowrap text-nowrap items-center hover:brightness-110 cursor-pointer ${className}`}
-		onClick={() => { voidSettingsService.setGlobalSetting('isOnboardingComplete', false) }}
+		onClick={redoOnboarding}
+		onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); redoOnboarding() } }}
 	>
 		See onboarding screen?
 	</div>
@@ -4073,7 +4079,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 													</button>
 												</div>
 												<VoidSimpleInputBox
-													placeholder="3000"
+													placeholder="3737"
 													value={settingsState.globalSettings.apiPort.toString()}
 													onChangeValue={(val) => {
 														// Allow empty or partial input while typing, but validate only on numeric values
@@ -4084,11 +4090,11 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 																voidSettingsService.setGlobalSetting('apiPort', port);
 															}
 														} else if (val === '') {
-															voidSettingsService.setGlobalSetting('apiPort', 3000); // Default if cleared
+															voidSettingsService.setGlobalSetting('apiPort', 3737); // Default if cleared
 														}
 													}}
 												/>
-												<p className="text-[10px] text-void-fg-4 mt-1.5 italic">Standard: 3000, Range: 1024-65535</p>
+												<p className="text-[10px] text-void-fg-4 mt-1.5 italic">Standard: 3737, Range: 1024-65535</p>
 											</SettingBox>
 											<SettingBox>
 												<div className="flex items-center justify-between mb-2">
@@ -4130,6 +4136,22 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 																	<button
 																		type="button"
 																		onClick={() => {
+																			// Prefer the modern async clipboard APIs; fall back to the
+																			// deprecated execCommand only if those are unavailable.
+																			const onCopied = (ok: boolean) => {
+																				if (!ok) {
+																					voidDevWarn('[Settings] copy token failed')
+																					notificationService.error('Couldn\'t copy the token — please copy it manually.')
+																				}
+																			}
+																			if (clipboardService) {
+																				clipboardService.writeText(token).then(() => onCopied(true)).catch((err: unknown) => { voidDevWarn('[Settings] clipboardService copy failed:', err); onCopied(false) })
+																				return
+																			}
+																			if (navigator.clipboard) {
+																				navigator.clipboard.writeText(token).then(() => onCopied(true)).catch((err: unknown) => { voidDevWarn('[Settings] navigator.clipboard copy failed:', err); onCopied(false) })
+																				return
+																			}
 																			try {
 																				const textArea = document.createElement('textarea');
 																				textArea.value = token;
@@ -4139,12 +4161,10 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 																				textArea.select();
 																				const success = document.execCommand('copy');
 																				document.body.removeChild(textArea);
-																				if (success) return;
-																			} catch (e) {}
-																			if (clipboardService) {
-																				clipboardService.writeText(token).catch(err => console.error('Failed to copy:', err));
-																			} else if (navigator.clipboard) {
-																				navigator.clipboard.writeText(token).catch(err => console.error('Failed to copy:', err));
+																				onCopied(success)
+																			} catch (e) {
+																				voidDevWarn('[Settings] execCommand copy failed:', e)
+																				onCopied(false)
 																			}
 																		}}
 																		className="p-1.5 text-void-fg-3 hover:text-blue-400 hover:bg-blue-400/10 rounded transition-all"
@@ -4169,7 +4189,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 													variant="primary"
 													className="mt-4 w-full py-2.5 rounded-xl shadow-void-accent/20"
 													onClick={() => {
-														const token = `acoder_${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
+														const token = `acoder_${generateUuid()}`;
 														voidSettingsService.setGlobalSetting('apiTokens', [...settingsState.globalSettings.apiTokens, token]);
 													}}
 												>
@@ -4359,7 +4379,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 									{/* CTA — elevated and more prominent */}
 									<div className="mt-6">
 										<a
-											href="https://github.com/hamishfromatech/a-coder/releases"
+											href="https://github.com/hamishfromatech/A-Coder/releases"
 											target="_blank"
 											rel="noreferrer"
 											className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] no-underline"
@@ -4425,7 +4445,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 
 									{/* Footer */}
 									<div className="mt-10 pt-6 border-t border-void-border-2/40 text-center space-y-2">
-										<p className="text-xs text-void-fg-3 font-medium">What Void Should&apos;ve Been.</p>
+										<p className="text-xs text-void-fg-3 font-medium">A-Coder — your AI-native editor.</p>
 										<p className="text-xs text-void-fg-4">
 											© {new Date().getFullYear()} The A-Tech Corporation. All rights reserved.
 										</p>
