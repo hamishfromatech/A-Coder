@@ -287,8 +287,10 @@ const ApplyButtonsForTerminal = ({
 			interruptToolRef.current = interrupt
 			metricsService.capture('Execute Shell', { length: codeStr.length })
 		} catch (e) {
-			setIsShellRunning(false)
 			console.error('Failed to execute in terminal:', e)
+		} finally {
+			// Always reset so the Run button recovers — not only on error.
+			setIsShellRunning(false)
 		}
 	}, [codeStr, uri, applyBoxId, metricsService, terminalToolService, isShellRunning])
 

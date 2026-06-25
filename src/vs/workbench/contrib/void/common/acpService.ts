@@ -251,13 +251,14 @@ class ACPService extends Disposable implements IACPService {
 		const addedServerNames = newConfigFileNames.filter(serverName => !oldConfigFileNames.includes(serverName)); // in new and not in old
 		const removedServerNames = oldConfigFileNames.filter(serverName => !newConfigFileNames.includes(serverName)); // in old and not in new
 
-		// set isOn to any new servers in the config
+		// set isOn to any new servers in the config (ACP keeps its own user-state
+		// map, separate from MCP, so same-named MCP/ACP servers don't collide)
 		const addedUserStateOfName: MCPUserStateOfName = {}
 		for (const name of addedServerNames) { addedUserStateOfName[name] = { isOn: true } }
-		await this.voidSettingsService.addMCPUserStateOfNames(addedUserStateOfName);
+		await this.voidSettingsService.addACPUserStateOfNames(addedUserStateOfName);
 
 		// delete isOn for any servers that no longer show up in the config
-		await this.voidSettingsService.removeMCPUserStateOfNames(removedServerNames);
+		await this.voidSettingsService.removeACPUserStateOfNames(removedServerNames);
 
 		// set all servers to loading
 		for (const serverName in newConfigFileJSON.acpServers) {
@@ -271,7 +272,7 @@ class ACPService extends Disposable implements IACPService {
 				addedServerNames,
 				removedServerNames,
 				updatedServerNames,
-				userStateOfName: this.voidSettingsService.state.mcpUserStateOfName,
+				userStateOfName: this.voidSettingsService.state.acpUserStateOfName,
 			})
 		} catch (err) {
 			this._setHasError(String(err))
@@ -285,11 +286,11 @@ class ACPService extends Disposable implements IACPService {
 		return result.text || ''
 	}
 
-	// toggle ACP server and update isOn in void settings
+	// toggle ACP server and update isOn in void settings (ACP's own user-state map)
 	public async toggleServerIsOn(serverName: string, isOn: boolean): Promise<void> {
 		this._setACPServerState(serverName, { status: 'loading', agents: [] })
 
-		await this.voidSettingsService.setMCPServerState(serverName, { isOn });
+		await this.voidSettingsService.setACPServerState(serverName, { isOn });
 		await this.channel.call('toggleACPServer', { serverName, isOn })
 	}
 

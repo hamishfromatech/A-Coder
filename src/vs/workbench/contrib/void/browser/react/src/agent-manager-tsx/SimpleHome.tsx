@@ -4,9 +4,9 @@
  *--------------------------------------------------------------------------------------*/
 
 import React, { useMemo, useState } from 'react';
-import { WorkspaceConnection, WorkspaceThreadSummary } from '../../../../common/workspaceRegistryTypes.js';
+import { WorkspaceConnection, WorkspaceThreadSummary, WorkspaceRemoteCommand } from '../../../../common/workspaceRegistryTypes.js';
 import { useAllWorkspaces, useWorkspaceRemoteControl } from '../util/services.js';
-import { Send, Sparkles, Bug, Wrench, BookOpen, Folder, ExternalLink, CornerDownLeft, Circle } from 'lucide-react';
+import { Send, Sparkles, Bug, Wrench, BookOpen, Folder, ExternalLink, CornerDownLeft, Circle, AlertTriangle, RefreshCw } from 'lucide-react';
 
 /**
  * Friendly, plain-language summary of what a project is doing right now.
@@ -51,7 +51,7 @@ const QUICK_ACTIONS: QuickAction[] = [
  * friendly overview of every connected project.
  */
 export const SimpleHome = ({ onGoAdvanced }: { onGoAdvanced: () => void }) => {
-	const { workspaces } = useAllWorkspaces();
+	const { workspaces, loadError, retry } = useAllWorkspaces();
 	const remoteControl = useWorkspaceRemoteControl();
 
 	const connected = useMemo(() => workspaces.filter(w => w.status === 'connected'), [workspaces]);
@@ -59,6 +59,8 @@ export const SimpleHome = ({ onGoAdvanced }: { onGoAdvanced: () => void }) => {
 	const [targetId, setTargetId] = useState<string | null>(null);
 	const [draft, setDraft] = useState('');
 	const [sent, setSent] = useState<{ to: string, text: string } | null>(null);
+	const [sending, setSending] = useState(false);
+	const [sendError, setSendError] = useState<string | null>(null);
 
 	// Default target: the first connected project.
 	const target = useMemo(() => {
@@ -66,30 +68,62 @@ export const SimpleHome = ({ onGoAdvanced }: { onGoAdvanced: () => void }) => {
 		return connected[0] ?? null;
 	}, [connected, targetId]);
 
-	const send = () => {
-		const text = draft.trim();
-		if (!text || !target) return;
-		remoteControl.sendCommand({ type: 'sendMessage', targetWorkspaceId: target.id, userMessage: text });
-		setSent({ to: target.name, text });
-		setDraft('');
-	};
+	// Wrapper that awaits the (promise-returning) sendCommand and surfaces a
+	// user-facing error instead of silently assuming success.
+	const runCommand = async (cmd: WorkspaceRemoteCommand, errorMsg: string): Promise<boolean> => {
+		setSendError(null)
+		try {
+			await remoteControl.sendCommand(cmd)
+			return true
+		} catch (e) {
+			setSendError(`${errorMsg} (${e instanceof Error ? e.message : String(e)})`)
+			return false
+		}
+	}
+
+	const send = async () => {
+		const text = draft.trim()
+		if (!text || !target || sending) return
+		setSending(true)
+		const ok = await runCommand({ type: 'sendMessage', targetWorkspaceId: target.id, userMessage: text }, `Couldn't send to ${target.name}`)
+		if (ok) {
+			setSent({ to: target.name, text })
+			setDraft('')
+		}
+		setSending(false)
+	}
 
 	if (connected.length === 0) {
 		return (
 			<div className="h-full flex flex-col items-center justify-center p-8 text-center">
 				<div className="w-14 h-14 rounded-2xl bg-void-bg-2 border border-void-border-2 flex items-center justify-center mb-4">
-					<Folder className="w-7 h-7 text-void-fg-4" />
+					{loadError ? <AlertTriangle className="w-7 h-7 text-amber-500" /> : <Folder className="w-7 h-7 text-void-fg-4" />}
 				</div>
-				<h2 className="text-lg font-semibold text-void-fg-1">Open a project to get started</h2>
-				<p className="text-xs text-void-fg-4 mt-2 max-w-sm">
-					A-Coder works on your projects. Open a folder in an A-Coder window, and it will show up here so you can tell A-Coder what to do.
-				</p>
-				<button
-					onClick={onGoAdvanced}
-					className="mt-5 px-4 py-2 rounded-lg bg-void-bg-2 border border-void-border-2 hover:bg-void-bg-3 text-xs font-medium text-void-fg-2 transition-colors"
-				>
-					Open the full control panel
-				</button>
+				{loadError ? (
+					<>
+						<h2 className="text-lg font-semibold text-void-fg-1">Couldn't load your projects</h2>
+						<p className="text-xs text-void-fg-4 mt-2 max-w-sm">{loadError}</p>
+						<button
+							onClick={retry}
+							className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-void-bg-2 border border-void-border-2 hover:bg-void-bg-3 text-xs font-medium text-void-fg-2 transition-colors"
+						>
+							<RefreshCw className="w-3.5 h-3.5" /> Try again
+						</button>
+					</>
+				) : (
+					<>
+						<h2 className="text-lg font-semibold text-void-fg-1">Open a project to get started</h2>
+						<p className="text-xs text-void-fg-4 mt-2 max-w-sm">
+							A-Coder works on your projects. Open a folder in an A-Coder window, and it will show up here so you can tell A-Coder what to do.
+						</p>
+						<button
+							onClick={onGoAdvanced}
+							className="mt-5 px-4 py-2 rounded-lg bg-void-bg-2 border border-void-border-2 hover:bg-void-bg-3 text-xs font-medium text-void-fg-2 transition-colors"
+						>
+							Open the full control panel
+						</button>
+					</>
+				)}
 			</div>
 		);
 	}
@@ -138,13 +172,25 @@ export const SimpleHome = ({ onGoAdvanced }: { onGoAdvanced: () => void }) => {
 						<span className="text-[10px] text-void-fg-4">Press ⌘↵ to send</span>
 						<button
 							onClick={send}
-							disabled={!draft.trim() || !target}
+							disabled={!draft.trim() || !target || sending}
 							className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--vscode-button-background)] text-white hover:bg-[var(--vscode-button-hoverBackground)] disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold transition-colors"
 						>
-							<Send className="w-3.5 h-3.5" /> Send to A-Coder
+							<Send className="w-3.5 h-3.5" /> {sending ? 'Sending…' : 'Send to A-Coder'}
 						</button>
 					</div>
 				</div>
+
+				{/* Send error */}
+				{sendError && (
+					<div className="mt-3 p-3 rounded-xl border border-amber-500/30 bg-amber-500/5 flex items-start gap-2">
+						<AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+						<p className="text-[11px] text-void-fg-2 flex-1">{sendError}</p>
+						<button
+							onClick={() => setSendError(null)}
+							className="text-[11px] text-void-fg-4 hover:text-void-fg-2 flex-shrink-0"
+						>Dismiss</button>
+					</div>
+				)}
 
 				{/* Quick actions */}
 				<div className="mt-6">
@@ -177,7 +223,7 @@ export const SimpleHome = ({ onGoAdvanced }: { onGoAdvanced: () => void }) => {
 							<p className="text-[11px] text-void-fg-4 truncate">"{sent.text}"</p>
 						</div>
 						<button
-							onClick={() => remoteControl.sendCommand({ type: 'focus', targetWorkspaceId: target.id })}
+							onClick={() => runCommand({ type: 'focus', targetWorkspaceId: target.id }, 'Couldn\'t focus the project window')}
 							className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2 text-[11px] font-medium text-void-fg-2 transition-colors flex-shrink-0"
 						>
 							<ExternalLink className="w-3 h-3" /> Go to window
@@ -205,13 +251,19 @@ const ProjectCard = ({ workspace }: { workspace: WorkspaceConnection }) => {
 		[workspace.threads]
 	);
 
-	const focus = () => remoteControl.sendCommand({ type: 'focus', targetWorkspaceId: workspace.id });
-	const openLatest = () => {
-		if (latestThread) {
-			remoteControl.sendCommand({ type: 'openThread', targetWorkspaceId: workspace.id, threadId: latestThread.id });
-		} else {
-			focus();
-		}
+	const focus = async () => {
+		// sendCommand is promise-returning at runtime; await so a failure is
+		// caught here rather than surfacing as an unhandled rejection.
+		try { await remoteControl.sendCommand({ type: 'focus', targetWorkspaceId: workspace.id }) } catch { /* focus is best-effort */ }
+	};
+	const openLatest = async () => {
+		try {
+			if (latestThread) {
+				await remoteControl.sendCommand({ type: 'openThread', targetWorkspaceId: workspace.id, threadId: latestThread.id });
+			} else {
+				await focus();
+			}
+		} catch { /* best-effort */ }
 	};
 
 	return (

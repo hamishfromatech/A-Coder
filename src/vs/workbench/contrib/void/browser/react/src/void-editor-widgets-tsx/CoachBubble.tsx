@@ -24,15 +24,17 @@ export const CoachBubble: React.FC<CoachBubbleProps> = ({
 }) => {
 	const [isVisible, setIsVisible] = useState(false);
 
-	// Guard against undefined observation
-	if (!observation) {
-		return null;
-	}
-
+	// Hooks must run on every render — keep them above any early return so the
+	// Rules of Hooks aren't violated when `observation` is undefined.
 	useEffect(() => {
 		const timer = setTimeout(() => setIsVisible(true), 100);
 		return () => clearTimeout(timer);
 	}, []);
+
+	// Guard against undefined observation (only the JSX is skipped, never hooks)
+	if (!observation) {
+		return null;
+	}
 
 	const severityConfig = {
 		error: {

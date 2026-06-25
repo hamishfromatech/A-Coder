@@ -135,36 +135,3 @@ export type {
 // Re-export Enhanced VoidPreview
 export { EnhancedVoidPreview } from '../void-preview-tsx/EnhancedVoidPreview.js';
 export type { EnhancedVoidPreviewProps } from '../void-preview-tsx/EnhancedVoidPreview.js';
-
-// Default exports for convenience
-export default {
-	// Components
-	InlineExerciseBlock,
-	CollapsibleLessonSection,
-	ProgressTracker,
-	MiniProgressBar,
-	SectionCompletionTracker,
-	ScoreCard,
-	HintSystem,
-	InlineHintButton,
-	HintPopup,
-	CelebrationEffect,
-	LessonThemeProvider,
-	ThemePattern,
-	EnhancedVoidPreview,
-
-	// Hooks
-	useLessonTheme,
-	useCelebration,
-	useHoverEffect,
-	useRippleEffect,
-
-	// Utilities
-	SeededRNG,
-	generateLessonTheme,
-	generateHSLFromSeed,
-	generateComplementaryColors,
-	getHoverEffectStyles,
-	smoothScrollTo,
-	createRipple,
-};

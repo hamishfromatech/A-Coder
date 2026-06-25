@@ -44,6 +44,7 @@ export type VoidSettingsState = {
 	readonly overridesOfModel: OverridesOfModel;
 	readonly globalSettings: GlobalSettings;
 	readonly mcpUserStateOfName: MCPUserStateOfName; // user-controlled state of MCP servers
+	readonly acpUserStateOfName: MCPUserStateOfName; // user-controlled state of ACP servers (separate from MCP to avoid same-name collisions)
 
 	readonly _modelOptions: ModelOption[] // computed based on the two above items
 }
@@ -79,6 +80,10 @@ export interface IVoidSettingsService {
 	addMCPUserStateOfNames(userStateOfName: MCPUserStateOfName): Promise<void>;
 	removeMCPUserStateOfNames(serverNames: string[]): Promise<void>;
 	setMCPServerState(serverName: string, state: MCPUserState): Promise<void>;
+
+	addACPUserStateOfNames(userStateOfName: MCPUserStateOfName): Promise<void>;
+	removeACPUserStateOfNames(serverNames: string[]): Promise<void>;
+	setACPServerState(serverName: string, state: MCPUserState): Promise<void>;
 }
 
 
@@ -230,6 +235,7 @@ const defaultState = () => {
 		overridesOfModel: deepClone(defaultOverridesOfModel),
 		_modelOptions: [], // computed later
 		mcpUserStateOfName: {},
+		acpUserStateOfName: {},
 	}
 	return d
 }
@@ -272,8 +278,10 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 		this.state = _validatedModelState(newState)
 		await this._storeState()
 		this._onDidChangeState.fire()
-		this._onUpdate_syncApplyToChat()
-		this._onUpdate_syncSCMToChat()
+		// Only propagate Chat model to Apply/SCM when their sync flags are on
+		// (matches the gating in setGlobalSetting below).
+		if (this.state.globalSettings.syncApplyToChat) this._onUpdate_syncApplyToChat()
+		if (this.state.globalSettings.syncSCMToChat) this._onUpdate_syncSCMToChat()
 	}
 	async resetState() {
 		await this.dangerousSetState(defaultState())
@@ -326,7 +334,7 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 				readS.globalSettings.imageGenerationModel = 'x/flux2-klein:4b';
 			}
 			if (readS.globalSettings.enableMediaGeneration === undefined) {
-				readS.globalSettings.enableMediaGeneration = true;
+				readS.globalSettings.enableMediaGeneration = false;
 			}
 			if (readS.globalSettings.imageGenerationApiKey === undefined) {
 				readS.globalSettings.imageGenerationApiKey = '';
@@ -375,6 +383,14 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 			readS = {
 				...defaultState(),
 				...readS,
+				// Deep-merge globalSettings over defaults so fields added in newer
+				// versions backfill for upgraded installs (a plain spread above
+				// would replace the whole default globalSettings blob, leaving new
+				// fields undefined and crashing callers that assume they exist).
+				globalSettings: {
+					...defaultGlobalSettings,
+					...(readS.globalSettings ?? {}),
+				},
 				// no idea why this was here, seems like a bug
 				// ...defaultSettingsOfProvider,
 				// ...readS.settingsOfProvider,
@@ -463,6 +479,7 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 		const newGlobalSettings = this.state.globalSettings
 		const newOverridesOfModel = this.state.overridesOfModel
 		const newMCPUserStateOfName = this.state.mcpUserStateOfName
+		const newACPUserStateOfName = this.state.acpUserStateOfName
 
 		const newState = {
 			modelSelectionOfFeature: newModelSelectionOfFeature,
@@ -471,6 +488,7 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 			globalSettings: newGlobalSettings,
 			overridesOfModel: newOverridesOfModel,
 			mcpUserStateOfName: newMCPUserStateOfName,
+			acpUserStateOfName: newACPUserStateOfName,
 		}
 
 		this.state = _validatedModelState(newState)
@@ -529,9 +547,10 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 
 		// hooks
 		if (featureName === 'Chat') {
-			// When Chat model changes, update synced features
-			this._onUpdate_syncApplyToChat()
-			this._onUpdate_syncSCMToChat()
+			// When Chat model changes, update synced features (only if their
+			// sync flags are on, matching setGlobalSetting).
+			if (this.state.globalSettings.syncApplyToChat) this._onUpdate_syncApplyToChat()
+			if (this.state.globalSettings.syncSCMToChat) this._onUpdate_syncSCMToChat()
 		}
 	}
 
@@ -700,6 +719,56 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 		}
 		await this._setMCPUserStateOfName(newMCPServerStates)
 		this._metricsService.capture('Update MCP Server State', { serverName, state });
+	}
+
+	// ACP servers keep their own user-state map so a same-named MCP and ACP
+	// server don't collide on the same `mcpUserStateOfName` entry.
+	private _setACPUserStateOfName = async (newStates: MCPUserStateOfName) => {
+		const newState: VoidSettingsState = {
+			...this.state,
+			acpUserStateOfName: {
+				...this.state.acpUserStateOfName,
+				...newStates
+			}
+		};
+		this.state = _validatedModelState(newState);
+		await this._storeState();
+		this._onDidChangeState.fire();
+		this._metricsService.capture('Set ACP Server States', { newStates });
+	}
+
+	addACPUserStateOfNames = async (newACPStates: MCPUserStateOfName) => {
+		const { acpUserStateOfName: acpServerStates } = this.state
+		const newACPServerStates = {
+			...acpServerStates,
+			...newACPStates,
+		}
+		await this._setACPUserStateOfName(newACPServerStates)
+		this._metricsService.capture('Add ACP Servers', { servers: Object.keys(newACPStates).join(', ') });
+	}
+
+	removeACPUserStateOfNames = async (serverNames: string[]) => {
+		const { acpUserStateOfName: acpServerStates } = this.state
+		const newACPServerStates = {
+			...acpServerStates,
+		}
+		serverNames.forEach(serverName => {
+			if (serverName in newACPServerStates) {
+				delete newACPServerStates[serverName]
+			}
+		})
+		await this._setACPUserStateOfName(newACPServerStates)
+		this._metricsService.capture('Remove ACP Servers', { servers: serverNames.join(', ') });
+	}
+
+	setACPServerState = async (serverName: string, state: MCPUserState) => {
+		const { acpUserStateOfName } = this.state
+		const newACPServerStates = {
+			...acpUserStateOfName,
+			[serverName]: state,
+		}
+		await this._setACPUserStateOfName(newACPServerStates)
+		this._metricsService.capture('Update ACP Server State', { serverName, state });
 	}
 
 }

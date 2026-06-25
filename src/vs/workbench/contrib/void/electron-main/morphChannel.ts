@@ -12,6 +12,58 @@ import * as os from 'os';
 import { voidDevLog } from '../common/devLog.js';
 
 /**
+ * Experimental Morph SDK surface that A-Coder uses but that isn't present in
+ * the shipped `@morphllm/morphsdk` typings (warpGrep, codebaseSearch, git.*).
+ * `fastApply` IS typed on `MorphClient`, so it isn't listed here.
+ *
+ * Every method is optional so the per-call guards (`morph?.git?.init`) can
+ * detect older SDKs that lack a given method and throw a helpful upgrade
+ * message. We cast the client to this instead of `as any` so the call sites
+ * stay type-checked.
+ */
+interface MorphExperimentalClient {
+	warpGrep?: {
+		execute(req: { query: string; repoRoot: string; signal?: AbortSignal }): Promise<{
+			success: boolean
+			error?: string
+			contexts: unknown[]
+		}>
+	}
+	codebaseSearch?: {
+		search(req: {
+			query: string
+			repoId: string
+			branch?: string
+			commitHash?: string
+			target_directories: string[]
+			limit: number
+			signal?: AbortSignal
+		}): Promise<unknown>
+	}
+	git?: {
+		init?(req: { repoId?: string; dir?: string }): Promise<unknown>
+		clone?(req: { repoId: string; dir: string }): Promise<unknown>
+		add?(req: { dir?: string; filepath?: string }): Promise<unknown>
+		commit?(req: { dir?: string; message: string; metadata?: Record<string, unknown> }): Promise<unknown>
+		push?(req: { dir?: string; branch?: string; index?: boolean; waitForEmbeddings?: boolean }): Promise<unknown>
+		pull?(req: { dir?: string }): Promise<unknown>
+		status?(req: { dir?: string; filepath: string }): Promise<unknown>
+		statusMatrix?(req: { dir?: string }): Promise<unknown>
+		log?(req: { dir?: string; depth?: number }): Promise<unknown>
+		checkout?(req: { dir?: string; ref: string }): Promise<unknown>
+		branch?(req: { dir?: string; name: string }): Promise<unknown>
+		listBranches?(req: { dir?: string }): Promise<unknown>
+		currentBranch?(req: { dir?: string }): Promise<unknown>
+		resolveRef?(req: { dir?: string; ref: string }): Promise<unknown>
+		getCommitMetadata?(req: { repoId?: string; commitHash: string }): Promise<unknown>
+		waitForEmbeddings?(req: { repoId?: string; timeout?: number }): Promise<unknown>
+	}
+}
+
+/** Narrow a `MorphClient` to the experimental (untyped) surface above. */
+type MorphExperimental = MorphClient & MorphExperimentalClient
+
+/**
  * IPC Channel for Morph Fast Apply using SDK
  * Handles code application requests from renderer
  */
@@ -26,11 +78,13 @@ export class MorphChannel implements IServerChannel {
 	 */
 	private inFlightAbort = new Map<string, AbortController>();
 
-	private getMorphClient(apiKey: string): MorphClient {
+	private getMorphClient(apiKey: string): MorphExperimental {
 		if (!this.morphClients.has(apiKey)) {
 			this.morphClients.set(apiKey, new MorphClient({ apiKey }));
 		}
-		return this.morphClients.get(apiKey)!;
+		// Cast once at the boundary: the SDK typings don't expose the
+		// experimental warpGrep/codebaseSearch/git.* surface we use.
+		return this.morphClients.get(apiKey)! as unknown as MorphExperimental;
 	}
 
 	async call(_: unknown, command: string, arg?: any): Promise<any> {
@@ -66,8 +120,8 @@ export class MorphChannel implements IServerChannel {
 				}
 
 				try {
-					// Get Morph client (cast to any to access experimental APIs not in typings)
-					const morph = this.getMorphClient(apiKey) as any;
+					// Get Morph client (typed experimental surface — see MorphExperimentalClient)
+					const morph = this.getMorphClient(apiKey);
 
 					// Guard against older SDKs that don't expose warpGrep
 					if (!morph?.warpGrep?.execute) {
@@ -113,7 +167,7 @@ export class MorphChannel implements IServerChannel {
 					_requestId?: string;
 				};
 
-				const morph = this.getMorphClient(apiKey) as any;
+				const morph = this.getMorphClient(apiKey);
 				if (!morph?.codebaseSearch?.search) {
 					throw new Error('Morph SDK does not support codebaseSearch. Please update @morphllm/morphsdk to a git-enabled version.');
 				}
@@ -143,112 +197,112 @@ export class MorphChannel implements IServerChannel {
 
 			case 'repoInit': {
 				const { apiKey, repoId, dir } = arg as { apiKey: string; repoId?: string; dir?: string };
-				const morph = this.getMorphClient(apiKey) as any;
+				const morph = this.getMorphClient(apiKey);
 				if (!morph?.git?.init) throw new Error('Morph SDK does not support git.init. Please update @morphllm/morphsdk.');
 				return morph.git.init({ repoId, dir });
 			}
 
 			case 'repoClone': {
 				const { apiKey, repoId, dir } = arg as { apiKey: string; repoId: string; dir: string };
-				const morph = this.getMorphClient(apiKey) as any;
+				const morph = this.getMorphClient(apiKey);
 				if (!morph?.git?.clone) throw new Error('Morph SDK does not support git.clone. Please update @morphllm/morphsdk.');
 				return morph.git.clone({ repoId, dir });
 			}
 
 			case 'repoAdd': {
 				const { apiKey, dir, filepath } = arg as { apiKey: string; dir?: string; filepath?: string };
-				const morph = this.getMorphClient(apiKey) as any;
+				const morph = this.getMorphClient(apiKey);
 				if (!morph?.git?.add) throw new Error('Morph SDK does not support git.add. Please update @morphllm/morphsdk.');
 				return morph.git.add({ dir, filepath });
 			}
 
 			case 'repoCommit': {
 				const { apiKey, dir, message, metadata } = arg as { apiKey: string; dir?: string; message: string; metadata?: Record<string, any> };
-				const morph = this.getMorphClient(apiKey) as any;
+				const morph = this.getMorphClient(apiKey);
 				if (!morph?.git?.commit) throw new Error('Morph SDK does not support git.commit. Please update @morphllm/morphsdk.');
 				return morph.git.commit({ dir, message, metadata });
 			}
 
 			case 'repoPush': {
 				const { apiKey, dir, branch, index, waitForEmbeddings } = arg as { apiKey: string; dir?: string; branch?: string; index?: boolean; waitForEmbeddings?: boolean };
-				const morph = this.getMorphClient(apiKey) as any;
+				const morph = this.getMorphClient(apiKey);
 				if (!morph?.git?.push) throw new Error('Morph SDK does not support git.push. Please update @morphllm/morphsdk.');
 				return morph.git.push({ dir, branch, index, waitForEmbeddings });
 			}
 
 			case 'repoPull': {
 				const { apiKey, dir } = arg as { apiKey: string; dir?: string };
-				const morph = this.getMorphClient(apiKey) as any;
+				const morph = this.getMorphClient(apiKey);
 				if (!morph?.git?.pull) throw new Error('Morph SDK does not support git.pull. Please update @morphllm/morphsdk.');
 				return morph.git.pull({ dir });
 			}
 
 			case 'repoStatus': {
 				const { apiKey, dir, filepath } = arg as { apiKey: string; dir?: string; filepath: string };
-				const morph = this.getMorphClient(apiKey) as any;
+				const morph = this.getMorphClient(apiKey);
 				if (!morph?.git?.status) throw new Error('Morph SDK does not support git.status. Please update @morphllm/morphsdk.');
 				return morph.git.status({ dir, filepath });
 			}
 
 			case 'repoStatusMatrix': {
 				const { apiKey, dir } = arg as { apiKey: string; dir?: string };
-				const morph = this.getMorphClient(apiKey) as any;
+				const morph = this.getMorphClient(apiKey);
 				if (!morph?.git?.statusMatrix) throw new Error('Morph SDK does not support git.statusMatrix. Please update @morphllm/morphsdk.');
 				return morph.git.statusMatrix({ dir });
 			}
 
 			case 'repoLog': {
 				const { apiKey, dir, depth } = arg as { apiKey: string; dir?: string; depth?: number };
-				const morph = this.getMorphClient(apiKey) as any;
+				const morph = this.getMorphClient(apiKey);
 				if (!morph?.git?.log) throw new Error('Morph SDK does not support git.log. Please update @morphllm/morphsdk.');
 				return morph.git.log({ dir, depth });
 			}
 
 			case 'repoCheckout': {
 				const { apiKey, dir, ref } = arg as { apiKey: string; dir?: string; ref: string };
-				const morph = this.getMorphClient(apiKey) as any;
+				const morph = this.getMorphClient(apiKey);
 				if (!morph?.git?.checkout) throw new Error('Morph SDK does not support git.checkout. Please update @morphllm/morphsdk.');
 				return morph.git.checkout({ dir, ref });
 			}
 
 			case 'repoBranch': {
 				const { apiKey, dir, name } = arg as { apiKey: string; dir?: string; name: string };
-				const morph = this.getMorphClient(apiKey) as any;
+				const morph = this.getMorphClient(apiKey);
 				if (!morph?.git?.branch) throw new Error('Morph SDK does not support git.branch. Please update @morphllm/morphsdk.');
 				return morph.git.branch({ dir, name });
 			}
 
 			case 'repoListBranches': {
 				const { apiKey, dir } = arg as { apiKey: string; dir?: string };
-				const morph = this.getMorphClient(apiKey) as any;
+				const morph = this.getMorphClient(apiKey);
 				if (!morph?.git?.listBranches) throw new Error('Morph SDK does not support git.listBranches. Please update @morphllm/morphsdk.');
 				return morph.git.listBranches({ dir });
 			}
 
 			case 'repoCurrentBranch': {
 				const { apiKey, dir } = arg as { apiKey: string; dir?: string };
-				const morph = this.getMorphClient(apiKey) as any;
+				const morph = this.getMorphClient(apiKey);
 				if (!morph?.git?.currentBranch) throw new Error('Morph SDK does not support git.currentBranch. Please update @morphllm/morphsdk.');
 				return morph.git.currentBranch({ dir });
 			}
 
 			case 'repoResolveRef': {
 				const { apiKey, dir, ref } = arg as { apiKey: string; dir?: string; ref: string };
-				const morph = this.getMorphClient(apiKey) as any;
+				const morph = this.getMorphClient(apiKey);
 				if (!morph?.git?.resolveRef) throw new Error('Morph SDK does not support git.resolveRef. Please update @morphllm/morphsdk.');
 				return morph.git.resolveRef({ dir, ref });
 			}
 
 			case 'repoGetCommitMetadata': {
 				const { apiKey, repoId, commitHash } = arg as { apiKey: string; repoId?: string; commitHash: string };
-				const morph = this.getMorphClient(apiKey) as any;
+				const morph = this.getMorphClient(apiKey);
 				if (!morph?.git?.getCommitMetadata) throw new Error('Morph SDK does not support git.getCommitMetadata. Please update @morphllm/morphsdk.');
 				return morph.git.getCommitMetadata({ repoId, commitHash });
 			}
 
 			case 'repoWaitForEmbeddings': {
 				const { apiKey, repoId, timeoutMs } = arg as { apiKey: string; repoId?: string; timeoutMs?: number };
-				const morph = this.getMorphClient(apiKey) as any;
+				const morph = this.getMorphClient(apiKey);
 				if (!morph?.git?.waitForEmbeddings) throw new Error('Morph SDK does not support git.waitForEmbeddings. Please update @morphllm/morphsdk.');
 				return morph.git.waitForEmbeddings({ repoId, timeout: timeoutMs });
 			}

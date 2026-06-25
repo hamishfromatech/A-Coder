@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useAccessor, useIsDark, useSettingsState } from '../util/services.js';
-import { Brain, Check, ChevronLeft, ChevronRight, DollarSign, ExternalLink, Lock, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { displayInfoOfProviderName, ProviderName, providerNames, localProviderNames, featureNames, FeatureName, isFeatureNameDisabled } from '../../../../common/voidSettingsTypes.js';
 import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js';
 import { OllamaSetupInstructions, OneClickSwitchButton, SettingsForProvider, ModelDump, SettingBox, SettingRow, SettingCard } from '../void-settings-tsx/Settings.js';
@@ -51,28 +51,6 @@ export const VoidOnboarding = () => {
 			</div>
 		</div>
 	)
-}
-
-const VoidIcon = () => {
-	const accessor = useAccessor()
-	const themeService = accessor.get('IThemeService')
-
-	const divRef = useRef<HTMLDivElement | null>(null)
-
-	useEffect(() => {
-		// void icon style
-		const updateTheme = () => {
-			if (divRef.current) {
-				divRef.current.style.maxWidth = '220px'
-				divRef.current.style.opacity = '50%'
-			}
-		}
-		updateTheme()
-		const d = themeService.onDidColorThemeChange(updateTheme)
-		return () => d.dispose()
-	}, [])
-
-	return <div ref={divRef} className='@@void-icon' />
 }
 
 const FADE_DURATION_MS = 2000
@@ -313,10 +291,23 @@ const NextButton = ({ onClick, ...props }: { onClick: () => void } & React.Butto
 
 	const { disabled, ...buttonProps } = props;
 
+	// Debounce + guard: a double-click used to fire onClick again (via the
+	// old onDoubleClick handler) and skip a page. Ignore repeat clicks within
+	// a short window so each Next advances at most one page, and only when not
+	// disabled (validation is enforced synchronously via the `disabled` prop
+	// before any state transition).
+	const lastClickRef = useRef(0)
+	const guardedClick = () => {
+		if (disabled) return
+		const now = Date.now()
+		if (now - lastClickRef.current < 350) return
+		lastClickRef.current = now
+		onClick()
+	}
+
 	return (
 		<button
-			onClick={disabled ? undefined : onClick}
-			onDoubleClick={onClick}
+			onClick={guardedClick}
 			className={`px-8 py-2.5 bg-void-fg-1 text-void-bg-1 font-semibold rounded-lg transition-all duration-200 flex items-center justify-center gap-2
 				${disabled
 					? 'opacity-40 cursor-not-allowed'
@@ -364,53 +355,6 @@ const OnboardingPageShell = ({ top, bottom, content, hasMaxWidth = true, classNa
 			{bottom && <div className='w-full pb-8'>{bottom}</div>}
 		</div>
 	)
-}
-
-const OllamaDownloadOrRemoveModelButton = ({ modelName, isModelInstalled, sizeGb }: { modelName: string, isModelInstalled: boolean, sizeGb: number | false | 'not-known' }) => {
-	// for now just link to the ollama download page
-	return <a
-		href={`https://ollama.com/library/${modelName}`}
-		target="_blank"
-		rel="noopener noreferrer"
-		className="flex items-center justify-center text-void-fg-2 hover:text-void-fg-1"
-	>
-		<ExternalLink className="w-3.5 h-3.5" />
-	</a>
-
-}
-
-
-const YesNoText = ({ val }: { val: boolean | null }) => {
-
-	return <div
-		className={
-			val === true ? "text text-emerald-500"
-				: val === false ? 'text-rose-600'
-					: "text text-amber-300"
-		}
-	>
-		{
-			val === true ? "Yes"
-				: val === false ? 'No'
-					: "Yes*"
-		}
-	</div>
-
-}
-
-
-
-const abbreviateNumber = (num: number): string => {
-	if (num >= 1000000) {
-		// For millions
-		return Math.floor(num / 1000000) + 'M';
-	} else if (num >= 1000) {
-		// For thousands
-		return Math.floor(num / 1000) + 'K';
-	} else {
-		// For numbers less than 1000
-		return num.toString();
-	}
 }
 
 

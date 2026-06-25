@@ -93,11 +93,6 @@ export type {
 } from './services.js';
 
 export { inputs } from './inputs.js';
-export type {
-	InputProps,
-	SelectProps,
-	TextareaProps,
-} from './inputs.js';
 
 export * from './services.js';
 export * from './inputs.js';

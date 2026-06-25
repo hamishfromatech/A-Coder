@@ -129,7 +129,7 @@ export class ContextCompressionService {
 		console.log(`[ContextCompression] Compressing ${messages.length} messages (${originalTokens} tokens) to target ${targetTokens} tokens (context: ${contextWindow})`);
 
 		// Step 1: Identify system message, split messages, and identify critical messages
-		const { systemMessage, recentMessages, oldMessages, criticalMessages } = this.splitMessages(messages);
+		const { systemMessage, recentMessages, oldMessages, criticalMessages } = this.splitMessages(messages, fullConfig.keepLastNMessages);
 
 		console.log(`[ContextCompression] Identified ${criticalMessages.size} critical messages to preserve`);
 
@@ -223,7 +223,7 @@ export class ContextCompressionService {
 	 * Split messages into system, recent, and old categories
 	 * Also identifies critical user intent messages to preserve
 	 */
-	private splitMessages(messages: LLMChatMessage[]): {
+	private splitMessages(messages: LLMChatMessage[], keepLastNMessages: number): {
 		systemMessage: LLMChatMessage | null;
 		recentMessages: LLMChatMessage[];
 		oldMessages: LLMChatMessage[];
@@ -257,6 +257,13 @@ export class ContextCompressionService {
 			}
 		}
 
+		// Split so the last `keepLastNMessages` content messages are kept verbatim
+		// as "recent" and everything before them is "old" (eligible for
+		// compression/summarization). This respects the configured keepLastNMessages
+		// instead of always splitting 50/50. If there's nothing older than the kept
+		// window, oldMessages is empty (nothing to compress this pass).
+		const splitPoint = (total: number) => Math.max(0, total - keepLastNMessages);
+
 		if (hasSystemMessage) {
 			// System message is first, then we have user/assistant/tool
 			const systemMessage = firstMsg;
@@ -268,17 +275,16 @@ export class ContextCompressionService {
 				if (idx > 0) adjustedCritical.add(idx - 1);
 			}
 
-			// Last half of content messages are "recent", first half are "old"
-			const midpoint = Math.floor(contentMessages.length / 2);
-			const recentMessages = contentMessages.slice(midpoint);
-			const oldMessages = contentMessages.slice(0, midpoint);
+			const splitIdx = splitPoint(contentMessages.length);
+			const recentMessages = contentMessages.slice(splitIdx);
+			const oldMessages = contentMessages.slice(0, splitIdx);
 
 			return { systemMessage, recentMessages, oldMessages, criticalMessages: adjustedCritical };
 		} else {
 			// No system message, all messages are content
-			const midpoint = Math.floor(messages.length / 2);
-			const recentMessages = messages.slice(midpoint);
-			const oldMessages = messages.slice(0, midpoint);
+			const splitIdx = splitPoint(messages.length);
+			const recentMessages = messages.slice(splitIdx);
+			const oldMessages = messages.slice(0, splitIdx);
 
 			return { systemMessage: null, recentMessages, oldMessages, criticalMessages };
 		}

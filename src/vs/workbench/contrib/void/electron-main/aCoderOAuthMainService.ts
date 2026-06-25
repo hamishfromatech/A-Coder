@@ -192,18 +192,26 @@ export class ACoderOAuthMainService implements IACoderOAuthMainService {
 				this._expiresAt = parseInt(expiresAtStr || '0', 10);
 
 				if (this._sessionToken && this._refreshToken) {
+					// Validate expiry: expired tokens are treated as unauthenticated so
+					// the renderer doesn't show a stale "signed in" state at startup.
+					const isExpired = this._expiresAt > 0 && Date.now() > this._expiresAt;
 					this._authState = {
-						isAuthenticated: true,
+						isAuthenticated: !isExpired,
 						userEmail: parsed.userEmail ?? undefined,
 						authProvider: parsed.authProvider ?? undefined,
 						userId: this._userId ?? undefined,
 						expiresAt: this._expiresAt,
 					};
-					console.log('[ACoderOAuth] Loaded encrypted tokens from storage');
+					console.log(`[ACoderOAuth] Loaded encrypted tokens from storage (authenticated=${!isExpired})`);
 				}
 			}
 		} catch (e) {
 			console.error('[ACoderOAuth] Failed to load encrypted tokens:', e);
+		} finally {
+			// Notify the renderer of the resolved startup auth state (authentic or not)
+			// so it doesn't stay on a stale default. OAuth UI remains disabled; this
+			// only readies the plumbing for future releases.
+			this._onDidChangeAuthState.fire(this._authState);
 		}
 	}
 

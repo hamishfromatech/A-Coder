@@ -69,6 +69,7 @@ import { CommandToolResultWrapper, TerminalCommandApproval } from './TerminalRes
 import { EditToolResultWrapper, EditToolChildren } from './EditToolResultWrapper.tsx';
 import { MCPToolResultWrapper } from './MCPToolResultWrapper.js';
 import { MediaResultWrapper } from './MediaResultWrapper.js';
+import { WebviewResultWrapper } from './WebviewResultWrapper.js';
 import { SkillsResultWrapper } from './SkillsResultWrapper.js';
 import { FormResultWrapper } from './FormResultWrapper.js';
 import { QuizResultWrapper } from './QuizResultWrapper.js';
@@ -2074,6 +2075,19 @@ type WrapperProps<T extends ToolName> = { toolMessage: Exclude<ToolMessage<T>, {
 // Default wrapper for tools that just show their result as markdown
 
 
+// Webview/browser tool names that render via WebviewResultWrapper rather than
+// the generic MCP wrapper. Mirrors the WebviewToolName union in WebviewResultWrapper.
+const WEBVIEW_TOOL_NAMES = new Set<string>([
+	'open_url',
+	'fetch_url',
+	'open_devtools',
+	'click_element',
+	'get_page_text',
+	'webview_screenshot',
+	'search_web',
+	'browse_resources',
+])
+
 const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: ResultWrapper<T>, } } = {
 	'read_file': { resultWrapper: FileResultWrapper as ResultWrapper<'read_file'> },
 	'outline_file': { resultWrapper: FileResultWrapper as ResultWrapper<'outline_file'> },
@@ -2149,7 +2163,7 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 			const title = getTitle(toolMessage)
 			const { desc1, desc1Info } = toolNameToDesc(toolMessage.name, toolMessage.params, accessor)
 			if (toolMessage.type === 'tool_request') {
-				return <TerminalCommandApproval command={`Open persistent terminal`} cwd={toolMessage.params.cwd} threadId={threadId} />
+				return <TerminalCommandApproval command={`Open persistent terminal`} cwd={toolMessage.params.cwd} threadId={threadId} toolId={toolMessage.id} />
 			}
 			const isRejected = toolMessage.type === 'rejected'
 			const { params } = toolMessage
@@ -2396,7 +2410,9 @@ const _ChatBubble = ({ threadId, chatMessage, currCheckpointIdx, isCommitted, me
 
 		const toolName = chatMessage.name
 		const isBuiltInTool = isABuiltinToolName(toolName)
+		const isWebviewTool = WEBVIEW_TOOL_NAMES.has(toolName)
 		const ToolResultWrapper = isBuiltInTool ? builtinToolNameToComponent[toolName]?.resultWrapper as ResultWrapper<ToolName>
+			: isWebviewTool ? WebviewResultWrapper as ResultWrapper<ToolName>
 			: MCPToolResultWrapper as ResultWrapper<ToolName>
 
 		if (ToolResultWrapper)
@@ -3072,14 +3088,15 @@ export const SidebarChat = () => {
 	const [tasks, setTasks] = useState<TaskPlan[]>([])
 	const threadId = chatThreadsState.currentThreadId
 
-	// Load tasks when thread changes
+	// Load tasks when the thread changes OR when the current thread's task plan
+	// changes. createTask/updateTaskStatus/deleteTask fire onDidChangeCurrentThread,
+	// which changes chatThreadsState — depending on it here means tasks refresh on
+	// every task update instead of going stale until the thread switches.
 	useEffect(() => {
 		if (threadId) {
 			setTasks(chatThreadsService.getTaskPlan(threadId))
 		}
-		// Only run when threadId changes, not on every chatThreadsState change
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [threadId])
+	}, [threadId, chatThreadsState, chatThreadsService])
 
 		// Notification sound: play when the LLM finishes a response with no
 		// pending tool calls — i.e. the turn is truly done ("finished responding
@@ -3377,9 +3394,7 @@ export const SidebarChat = () => {
 		// Turn off the active microphone after sending so the assistant can speak without being re-recorded.
 		setVoiceModeActive(false);
 
-	}, [chatThreadsService, isDisabled, textAreaRef, textAreaFnsRef, setSelections, setSlashMenuOpen, setSlashQuery, attachedImages, selections, voiceModeActive, prepareResponseTTS])
-	// Note: settingsState and isRunng removed from deps - isDisabled already includes settingsState info
-	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [chatThreadsService, isDisabled, textAreaRef, textAreaFnsRef, setSelections, setSlashMenuOpen, setSlashQuery, attachedImages, selections, voiceModeActive, prepareResponseTTS]) // eslint-disable-line react-hooks/exhaustive-deps -- deps intentionally omitted: settingsState & isRunning (isDisabled already reflects settingsState; re-running on those would reset mid-stream)
 
 	const onAbort = async () => {
 		const threadId = currentThread.id
@@ -3616,8 +3631,6 @@ export const SidebarChat = () => {
 
 	// Quick tools that should NOT show any loading UI - just wait for completed result
 	const isQuickTool = (name: string | undefined) => {
-		return false;
-		/*
 		return name === 'read_file' ||
 			name === 'outline_file' ||
 			name === 'ls_dir' ||
@@ -3626,7 +3639,6 @@ export const SidebarChat = () => {
 			name === 'search_for_files' ||
 			name === 'search_in_file' ||
 			name === 'read_lint_errors';
-		*/
 	};
 
 	// ReAct Phase Indicator - show when we have a detected ReAct phase

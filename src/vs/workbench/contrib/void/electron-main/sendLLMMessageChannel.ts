@@ -12,6 +12,7 @@ import { EventLLMMessageOnTextParams, EventLLMMessageOnErrorParams, EventLLMMess
 import { sendLLMMessage } from './llmMessage/sendLLMMessage.js'
 import { IMetricsService } from '../common/metricsService.js';
 import { sendLLMMessageToProviderImplementation } from './llmMessage/sendLLMMessage.impl.js';
+import { voidDevWarn } from '../common/devLog.js';
 
 // NODE IMPLEMENTATION - calls actual sendLLMMessage() and returns listeners to it
 
@@ -85,7 +86,23 @@ export class LLMMessageChannel implements IServerChannel {
 			}
 		}
 		catch (e) {
-			console.log('llmMessageChannel: Call Error:', e)
+			voidDevWarn('llmMessageChannel: Call Error:', e)
+			// Surface the failure to the renderer so it can reset its UI instead of
+			// hanging on a request that never produced onText/onFinalMessage/onError.
+			const message = e instanceof Error ? e.message : String(e)
+			const requestId = params?.requestId
+			if (typeof requestId === 'string') {
+				if (command === 'sendLLMMessage' && requestId in this._infoOfRunningRequest) {
+					this.llmMessageEmitters.onError.fire({ requestId, message, fullError: e instanceof Error ? e : null })
+					delete this._infoOfRunningRequest[requestId]
+				}
+				else if (command === 'ollamaList') {
+					this.listEmitters.ollama.error.fire({ requestId, error: message })
+				}
+				else if (command === 'openAICompatibleList') {
+					this.listEmitters.openaiCompat.error.fire({ requestId, error: message })
+				}
+			}
 		}
 	}
 

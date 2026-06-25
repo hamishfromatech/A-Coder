@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------*/
 
 import React, { memo } from 'react';
-import { Globe } from 'lucide-react';
+import { Globe, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useAllWorkspaces, useMultiWorkspaceStats } from '../util/services.js';
 import { WorkspaceList } from './WorkspaceList.js';
 import { MultiWorkspaceThreadSelector } from './MultiWorkspaceThreadSelector.js';
@@ -15,7 +15,7 @@ interface MultiViewProps {
 }
 
 export const MultiView = memo(({ onNewThread, onOpenSettings }: MultiViewProps) => {
-	const { workspaces: allWorkspaces } = useAllWorkspaces();
+	const { workspaces: allWorkspaces, loadError, retry } = useAllWorkspaces();
 	const multiStats = useMultiWorkspaceStats();
 
 	return (
@@ -62,6 +62,20 @@ export const MultiView = memo(({ onNewThread, onOpenSettings }: MultiViewProps) 
 					</div>
 				</div>
 			</div>
+
+			{/* Load error banner */}
+			{loadError && (
+				<div className="mx-6 mt-4 p-3 rounded-xl border border-amber-500/30 bg-amber-500/5 flex items-start gap-2">
+					<AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+					<p className="text-[11px] text-void-fg-2 flex-1">{loadError}</p>
+					<button
+						onClick={retry}
+						className="inline-flex items-center gap-1.5 text-[11px] font-medium text-void-fg-2 hover:text-void-fg-1 flex-shrink-0"
+					>
+						<RefreshCw className="w-3 h-3" /> Try again
+					</button>
+				</div>
+			)}
 
 			{/* Two-column layout */}
 			<div className="flex-1 flex overflow-hidden min-h-0">

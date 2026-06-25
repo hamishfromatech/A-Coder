@@ -92,13 +92,22 @@ export class ApiRouter {
 		const patternParts = pattern.split('/').filter(p => p);
 		const pathParts = pathname.split('/').filter(p => p);
 
-		if (patternParts.length !== pathParts.length) {
+		const params: any = {};
+
+		// A trailing '*' is a greedy wildcard: it matches zero or more remaining
+		// path segments and captures them (joined with '/') into params['*'].
+		// This lets nested paths like /folder/src/components match /folder/*.
+		const hasWildcard = patternParts.length > 0 && patternParts[patternParts.length - 1] === '*';
+		const comparableParts = hasWildcard ? patternParts.slice(0, -1) : patternParts;
+
+		if (hasWildcard) {
+			if (pathParts.length < comparableParts.length) return null;
+		} else if (patternParts.length !== pathParts.length) {
 			return null;
 		}
 
-		const params: any = {};
-		for (let i = 0; i < patternParts.length; i++) {
-			const patternPart = patternParts[i];
+		for (let i = 0; i < comparableParts.length; i++) {
+			const patternPart = comparableParts[i];
 			const pathPart = pathParts[i];
 
 			if (patternPart.startsWith(':')) {
@@ -109,6 +118,11 @@ export class ApiRouter {
 				// Mismatch
 				return null;
 			}
+		}
+
+		if (hasWildcard) {
+			const remainder = pathParts.slice(comparableParts.length);
+			params['*'] = remainder.length ? remainder.map(p => decodeURIComponent(p)).join('/') : '';
 		}
 
 		return { params };

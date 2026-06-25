@@ -786,13 +786,37 @@ const StreamingMarkdownRender = ({ string, inPTag, chatMessageLocation, ...optio
 				if (segment.type === 'code') {
 					// Code blocks are rendered properly even during streaming
 					const language = segment.language || 'plaintext';
-					return (
+					const inner = (
 						<BlockCode
 							key={`seg-${segIdx}`}
 							initValue={segment.content}
 							language={language}
 						/>
 					);
+
+					// When apply is enabled and the code block is complete (closing
+					// ``` received), wrap it in the same apply affordance the
+					// non-streaming renderer uses, so users can Apply mid-stream.
+					if (options.isApplyEnabled && chatMessageLocation && segment.isComplete) {
+						const applyBoxId = getApplyBoxId({
+							threadId: chatMessageLocation.threadId,
+							messageIdx: chatMessageLocation.messageIdx,
+							tokenIdx: `stream-${segIdx}`,
+						});
+						return (
+							<BlockCodeApplyWrapper
+								key={`seg-${segIdx}`}
+								canApply={true}
+								applyBoxId={applyBoxId}
+								codeStr={segment.content}
+								language={language}
+								uri={'current'}
+							>
+								{inner}
+							</BlockCodeApplyWrapper>
+						);
+					}
+					return inner;
 				} else if (segment.type === 'inline-code') {
 					// Inline code
 					return (
@@ -832,8 +856,8 @@ const hashContent = (content: string): string => {
 
 // Parse streaming content into stable segments
 // This is more tolerant than full markdown parsing
-function parseStreamingContent(text: string): Array<{ type: 'text' | 'code' | 'inline-code', content: string, language?: string, key: string }> {
-	const segments: Array<{ type: 'text' | 'code' | 'inline-code', content: string, language?: string, key: string }> = [];
+function parseStreamingContent(text: string): Array<{ type: 'text' | 'code' | 'inline-code', content: string, language?: string, isComplete?: boolean, key: string }> {
+	const segments: Array<{ type: 'text' | 'code' | 'inline-code', content: string, language?: string, isComplete?: boolean, key: string }> = [];
 
 	// Find code blocks (fenced with ```)
 	const codeBlockRegex = /```(\w*)\n([\s\S]*?)(```|$)/g;
@@ -862,6 +886,7 @@ function parseStreamingContent(text: string): Array<{ type: 'text' | 'code' | 'i
 			type: 'code',
 			content: code,
 			language,
+			isComplete,
 			key: `code-${segmentIndex}-${language}-${hashContent(code)}`
 		});
 		segmentIndex++;
@@ -945,30 +970,48 @@ function renderInlineFormatting(text: string, chatMessageLocation: ChatMessageLo
 	return parts;
 }
 
-// Render text with basic inline formatting (bold, italic)
+// Render text with basic inline formatting (links during streaming; bold/italic
+// are intentionally left to the full parser once streaming completes, to avoid
+// flicker while markers are being typed).
 function renderTextWithFormatting(text: string, keyBase: string): React.ReactNode {
-	// Simple regex-based formatting for streaming
-	// Bold: **text** or __text__
-	// Italic: *text* or _text_
+	// Render complete markdown links [text](url). Incomplete links (no closing
+	// ')') are left as raw text so they don't flicker while being typed.
+	const linkRegex = /\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+	const parts: React.ReactNode[] = [];
+	let lastIndex = 0;
+	let match: RegExpExecArray | null;
+	let i = 0;
 
-	// For streaming, we'll render these as-is if incomplete
-	// This prevents flickering when ** is being typed
+	while ((match = linkRegex.exec(text)) !== null) {
+		if (match.index > lastIndex) {
+			parts.push(<span key={`${keyBase}-txt-${i}`}>{text.slice(lastIndex, match.index)}</span>);
+		}
+		const linkText = match[1];
+		const href = match[2];
+		parts.push(
+			<a
+				key={`${keyBase}-link-${i}`}
+				href={href}
+				onClick={() => { window.open(href) }}
+				className='underline cursor-pointer hover:brightness-90 transition-all duration-200 text-void-fg-2'
+			>
+				{linkText}
+			</a>
+		);
+		lastIndex = match.index + match[0].length;
+		i++;
+	}
 
-	// Check if there are unclosed formatting markers
-	const boldCount = (text.match(/\*\*/g) || []).length;
-	const italicStarCount = (text.match(/(?<!\*)\*(?!\*)/g) || []).length;
-	const italicUnderscoreCount = (text.match(/(?<!_)_(?!_)/g) || []).length;
+	if (lastIndex < text.length) {
+		parts.push(<span key={`${keyBase}-txt-end`}>{text.slice(lastIndex)}</span>);
+	}
 
-	// If odd number of markers, content is incomplete - render as-is
-	if (boldCount % 2 !== 0 || italicStarCount % 2 !== 0 || italicUnderscoreCount % 2 !== 0) {
-		// Try to format complete portions
+	// No links — preserve the original plain-span behaviour.
+	if (parts.length === 0) {
 		return <span key={keyBase}>{text}</span>;
 	}
 
-	// All markers are paired - we can safely format
-	// For simplicity during streaming, just return the text
-	// The full markdown parser will handle formatting when complete
-	return <span key={keyBase}>{text}</span>;
+	return parts;
 }
 
 export const ChatMarkdownRender = ({ string, inPTag = false, chatMessageLocation, isStreaming = false, ...options }: { string: string, inPTag?: boolean, codeURI?: URI, chatMessageLocation: ChatMessageLocation | undefined, isStreaming?: boolean } & RenderTokenOptions) => {

@@ -10,7 +10,7 @@ import { IVoidSettingsService } from '../common/voidSettingsService.js';
 import { IFileService } from '../../../../platform/files/common/files.js';
 import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
 import { URI } from '../../../../base/common/uri.js';
-import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
+import { createDecorator, IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import { registerSingleton, InstantiationType } from '../../../../platform/instantiation/common/extensions.js';
 import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
 import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
@@ -18,6 +18,10 @@ import { IEditorService } from '../../../services/editor/common/editorService.js
 import { IMCPService } from '../common/mcpService.js';
 import { ChatMode } from '../common/voidSettingsTypes.js';
 import { IMarkerService, MarkerSeverity } from '../../../../platform/markers/common/markers.js';
+import { ISearchService, resultIsMatch, ITextSearchResult } from '../../../services/search/common/search.js';
+import { QueryBuilder } from '../../../services/search/common/queryBuilder.js';
+import { CancellationToken } from '../../../../base/common/cancellation.js';
+import { mainWindow } from '../../../../base/browser/window.js';
 
 // console.log('[Void] Loading apiServiceBridge.ts');
 
@@ -50,6 +54,8 @@ export class ApiServiceBridge extends Disposable implements IApiServiceBridge {
 		@IEditorService private readonly editorService: IEditorService,
 		@IMCPService private readonly mcpService: IMCPService,
 		@IMarkerService private readonly markerService: IMarkerService,
+		@ISearchService private readonly searchService: ISearchService,
+		@IInstantiationService private readonly instantiationService: IInstantiationService,
 	) {
 		super();
 		this.initializeApiServer();
@@ -207,6 +213,25 @@ export class ApiServiceBridge extends Disposable implements IApiServiceBridge {
 
 		// Register with the main process
 		await apiChannel.call('registerRenderer', {});
+
+		// Decrement the renderer count when this window closes/reloads so the
+		// main process doesn't keep aggregating against a stale rendererCount
+		// (leak / wrong getWorkspace aggregation). beforeunload is the most
+		// reliable window-close hook in the renderer; guarded so we only
+		// unregister once even if both beforeunload and dispose fire.
+		let didUnregister = false;
+		const unregisterRenderer = () => {
+			if (didUnregister) return;
+			didUnregister = true;
+			apiChannel.call('unregisterRenderer', {}).catch(() => { /* best-effort during teardown */ });
+		};
+		mainWindow.addEventListener('beforeunload', unregisterRenderer);
+		this._register({
+			dispose: () => {
+				mainWindow.removeEventListener('beforeunload', unregisterRenderer);
+				unregisterRenderer();
+			}
+		});
 		// console.log('[ApiServiceBridge] Registered with main process');
 		// Check if API is enabled and start server
 		const settings = this.settingsService.state.globalSettings;
@@ -756,17 +781,51 @@ export class ApiServiceBridge extends Disposable implements IApiServiceBridge {
 	}
 
 	private async getFileOutline(path: string) {
-		// Not yet wired to IOutlineService. Throw rather than return an empty
-		// outline so the API surfaces "not implemented" instead of masquerading
-		// as "this file has no symbols".
-		throw new Error('getFileOutline is not implemented yet');
+		// Not yet wired to IOutlineService (it requires a resolved editor pane to
+		// produce an outline, which is heavier than this file-path-only API
+		// contract supports). Return a structured not-implemented marker instead
+		// of an empty outline so the API can surface a 501 rather than
+		// masquerading as "this file has no symbols".
+		return {
+			notImplemented: true,
+			message: 'File outline is not implemented yet',
+		};
 	}
 
 	private async searchFiles(query: string, type: string = 'content') {
-		// Not yet wired to ISearchService. Throw rather than return empty
-		// results so the API surfaces "not implemented" instead of looking like
-		// "no matches found".
-		throw new Error('searchFiles is not implemented yet');
+		// Wired to ISearchService. Only content (text) search is supported here;
+		// path/filename search is not exposed via this endpoint.
+		if (type !== 'content') {
+			return {
+				notImplemented: true,
+				message: `Search type '${type}' is not supported; use 'content'.`,
+			};
+		}
+
+		const folders = this.workspaceContextService.getWorkspace().folders.map(f => f.uri);
+		if (folders.length === 0) {
+			return { results: [] };
+		}
+
+		const queryBuilder = this.instantiationService.createInstance(QueryBuilder);
+		const textQuery = queryBuilder.text({ pattern: query, isRegExp: false }, folders);
+		const completed = await this.searchService.textSearch(textQuery, CancellationToken.None);
+
+		const results = completed.results.map(fileMatch => {
+			const matchResults = (fileMatch.results ?? []).map((r: ITextSearchResult) => {
+				if (resultIsMatch(r)) {
+					const lineNumber = r.rangeLocations.length > 0 ? r.rangeLocations[0].source.startLineNumber : 0;
+					return { kind: 'match', previewText: r.previewText, lineNumber };
+				}
+				return { kind: 'context', text: r.text, lineNumber: r.lineNumber };
+			});
+			return {
+				path: fileMatch.resource.fsPath,
+				matches: matchResults,
+			};
+		});
+
+		return { results };
 	}
 
 	private async getDiagnostics() {
@@ -813,9 +872,35 @@ export class ApiServiceBridge extends Disposable implements IApiServiceBridge {
 	private async getSettings() {
 		const state = this.settingsService.state;
 		return {
-			globalSettings: state.globalSettings,
+			// Redact all credential-bearing fields before exposing settings over the
+			// mobile API — never leak API keys, tokens, or webhook secrets.
+			globalSettings: this.redactGlobalSettings(state.globalSettings),
 			modelSelectionOfFeature: state.modelSelectionOfFeature,
 		};
+	}
+
+	private redactGlobalSettings(globalSettings: any) {
+		if (!globalSettings || typeof globalSettings !== 'object') {
+			return globalSettings;
+		}
+		// Keys that carry secrets. Any key whose name contains apikey/token/secret
+		// (case-insensitive) is blanked; the rest of the shape is preserved so
+		// consumers don't break. This catches apiTokens (plural) as well as the
+		// *ApiKey / *Secret fields.
+		const SECRET_MARKERS = ['apikey', 'token', 'secret'];
+		const redacted: any = { ...globalSettings };
+		for (const key of Object.keys(redacted)) {
+			const lower = key.toLowerCase();
+			const isSecret = SECRET_MARKERS.some(marker => lower.includes(marker));
+			if (isSecret) {
+				if (Array.isArray(redacted[key])) {
+					redacted[key] = [];
+				} else {
+					redacted[key] = '';
+				}
+			}
+		}
+		return redacted;
 	}
 
 	private async getModels() {

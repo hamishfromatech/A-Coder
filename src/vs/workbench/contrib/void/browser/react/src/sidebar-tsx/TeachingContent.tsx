@@ -117,7 +117,13 @@ const SectionHeader: React.FC<{
 	onBookmark?: () => void;
 	isBookmarked?: boolean;
 }> = ({ section, isExpanded, onToggle, onToggleComplete, onBookmark, isBookmarked }) => (
-	<button onClick={onToggle} className="w-full px-3 py-2.5 flex items-start gap-2 hover:bg-void-bg-2/50 transition-colors text-left group">
+	<div
+		role="button"
+		tabIndex={0}
+		onClick={onToggle}
+		onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
+		className="w-full px-3 py-2.5 flex items-start gap-2 hover:bg-void-bg-2/50 transition-colors text-left group cursor-pointer"
+	>
 		<span className="flex-shrink-0 mt-0.5 transition-transform duration-200">
 			{isExpanded ? <ChevronDown size={14} className="text-void-accent" /> : <ChevronRight size={14} className="text-void-fg-3" />}
 		</span>
@@ -148,7 +154,7 @@ const SectionHeader: React.FC<{
 				</button>
 			)}
 		</div>
-	</button>
+	</div>
 );
 
 const SectionBody: React.FC<{

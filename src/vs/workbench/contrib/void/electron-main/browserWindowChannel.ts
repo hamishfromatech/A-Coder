@@ -119,7 +119,7 @@ export class BrowserWindowChannel implements IServerChannel {
 		}
 	}
 
-	private handleExecuteJavaScript(request: ExecuteJavaScriptRequest): BrowserWindowChannelResponse {
+	private async handleExecuteJavaScript(request: ExecuteJavaScriptRequest): Promise<BrowserWindowChannelResponse> {
 		const { windowId, javascript } = request;
 
 		const browserWindow = this.browserWindows.get(windowId);
@@ -139,7 +139,10 @@ export class BrowserWindowChannel implements IServerChannel {
 		}
 
 		try {
-			const result = browserWindow.webContents.executeJavaScript(javascript);
+			// executeJavaScript returns a Promise that resolves with the evaluated
+			// result (or rejects on a page error). Await it so callers receive the
+			// actual value rather than a serialized Promise object.
+			const result = await browserWindow.webContents.executeJavaScript(javascript);
 			return {
 				success: true,
 				data: { result }
@@ -360,12 +363,15 @@ export class BrowserWindowChannel implements IServerChannel {
 			// Wait a bit for JavaScript to execute
 			await new Promise(resolve => setTimeout(resolve, 500));
 
+			// Selector is passed as a JSON.stringify'd IIFE argument rather than
+			// interpolated into the JS source — interpolation (even single-quote-escaped)
+			// lets a crafted selector break out of the string literal and inject code.
 			const result = await browserWindow.webContents.executeJavaScript(`
-				(() => {
+				((sel) => {
 					try {
-						const element = document.querySelector('${selector.replace(/'/g, "\\'")}');
+						const element = document.querySelector(sel);
 						if (!element) {
-							return { success: false, error: 'Element not found with selector: ${selector}' };
+							return { success: false, error: 'Element not found with selector: ' + sel };
 						}
 
 						// Scroll element into view first
@@ -400,7 +406,7 @@ export class BrowserWindowChannel implements IServerChannel {
 					} catch (e) {
 						return { success: false, error: e.toString() };
 					}
-				})()
+				})(${JSON.stringify(selector)})
 			`);
 
 			if (!result.success) {
@@ -453,12 +459,12 @@ export class BrowserWindowChannel implements IServerChannel {
 			// Wait a bit for JavaScript to execute
 			await new Promise(resolve => setTimeout(resolve, 500));
 
-			const escapedText = text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n');
-
+			// Selector and text are passed as JSON.stringify'd IIFE arguments (see
+			// handleClickElement) to avoid source-string injection.
 			const result = await browserWindow.webContents.executeJavaScript(`
-				(() => {
+				((sel, txt) => {
 					try {
-						const element = document.querySelector('${selector.replace(/'/g, "\\'")}');
+						const element = document.querySelector(sel);
 						if (!element) {
 							return { success: false, error: 'Element not found' };
 						}
@@ -467,18 +473,18 @@ export class BrowserWindowChannel implements IServerChannel {
 						}
 						element.focus();
 						if (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') {
-							element.value = '${escapedText}';
+							element.value = txt;
 							element.dispatchEvent(new Event('input', { bubbles: true }));
 							element.dispatchEvent(new Event('change', { bubbles: true }));
 						} else if (element.isContentEditable) {
-							element.textContent = '${escapedText}';
+							element.textContent = txt;
 							element.dispatchEvent(new Event('input', { bubbles: true }));
 						}
 						return { success: true };
 					} catch (e) {
 						return { success: false, error: e.toString() };
 					}
-				})()
+				})(${JSON.stringify(selector)}, ${JSON.stringify(text)})
 			`);
 
 			if (!result.success) {

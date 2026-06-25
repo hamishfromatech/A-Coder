@@ -170,6 +170,19 @@ function serializeToHtml(obj: unknown): string {
 		.replace(/\\u2029/g, '\\u2029');
 }
 
+// Allow only safe URL schemes in lesson markdown links. Anything else
+// (javascript:, data:, vbscript:, etc.) is dropped — the link text is kept
+// but not made clickable, so authored content can't inject executable hrefs.
+function sanitizeLessonUrl(url: string): string | null {
+	const trimmed = (url || '').trim();
+	if (trimmed === '') return null;
+	// Relative, root-relative, or anchor URLs are safe.
+	if (/^[/#.]/.test(trimmed) || /^[?]/.test(trimmed)) return trimmed;
+	// Absolute URLs: only http(s) and mailto.
+	if (/^https?:\/\//i.test(trimmed) || /^mailto:/i.test(trimmed)) return trimmed;
+	return null;
+}
+
 // Apply inline formatting (bold, italic, code, links) to a plain-text block.
 function applyInlineFormatting(text: string): string {
 	// Inline code first so it doesn't get caught by bold/italic regexes.
@@ -177,7 +190,11 @@ function applyInlineFormatting(text: string): string {
 		.replace(/`([^`]+)`/g, '<code class="px-1.5 py-0.5 rounded bg-slate-700/50 text-pink-400 font-mono text-sm">$1</code>')
 		.replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold text-white">$1</strong>')
 		.replace(/\*(.+?)\*/g, '<em class="italic">$1</em>')
-		.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-[var(--primary)] hover:underline" target="_blank" rel="noopener">$1</a>');
+		.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label: string, url: string) => {
+			const safeUrl = sanitizeLessonUrl(url);
+			if (!safeUrl) return String(label); // drop unsafe link, keep the text
+			return `<a href="${safeUrl}" class="text-[var(--primary)] hover:underline" target="_blank" rel="noopener noreferrer">${label}</a>`;
+		});
 	return escapeHtml(html).replace(/&lt;(strong|em|code|a)(\s[^>]*)?&gt;/g, '<$1$2>').replace(/&lt;\/(strong|em|code|a)&gt;/g, '</$1>');
 }
 
@@ -1048,6 +1065,13 @@ export function generateLessonHtml(data: LessonData, course?: CourseData): strin
 
 		// Hint system
 		let hintLevels = {};
+		// Hint text is untrusted (user/author-authored); escape it before inserting
+		// via innerHTML so it can't inject markup or scripts.
+		function escapeHintText(s) {
+			return String(s).replace(/[&<>"']/g, function (c) {
+				return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+			});
+		}
 		function getHint(exerciseId) {
 			const exercise = lessonData.sections
 				.flatMap(s => s.exercises || [])
@@ -1073,7 +1097,7 @@ export function generateLessonHtml(data: LessonData, course?: CourseData): strin
 				for (let i = 0; i <= currentLevel && i < exercise.hints.length; i++) {
 					hintHtml += \`<p class="\${i === currentLevel ? 'text-white font-medium' : 'text-gray-400'}">
 						<span class="text-xs uppercase tracking-wider text-gray-500">Hint \${i + 1}</span><br>
-						\${exercise.hints[i]}
+						\${escapeHintText(exercise.hints[i])}
 					</p>\`;
 				}
 				hintHtml += '</div>';

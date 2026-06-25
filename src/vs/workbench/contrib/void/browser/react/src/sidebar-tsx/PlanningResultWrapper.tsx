@@ -10,7 +10,7 @@ import { WrapperProps } from './ToolResultHelpers.js'
 
 interface TaskItem {
 	text: string
-	status: 'complete' | 'in_progress' | 'pending'
+	status: 'complete' | 'in_progress' | 'pending' | 'failed'
 }
 
 type PlanningResult = {
@@ -37,7 +37,7 @@ const parseMarkdownTasks = (markdown: string): { tasks: TaskItem[], goal: string
 		// - [x] completed
 		// - [~] in progress
 		// - [ ] pending
-		// - [!] failed (treat as pending)
+		// - [!] failed
 		// - [-] skipped (treat as complete)
 		const checkboxMatch = line.match(/^-\s*\[([ x~!\-])\]\s*(.+)$/)
 		if (checkboxMatch) {
@@ -54,6 +54,8 @@ const parseMarkdownTasks = (markdown: string): { tasks: TaskItem[], goal: string
 				status = 'complete'
 			} else if (marker === '~') {
 				status = 'in_progress'
+			} else if (marker === '!') {
+				status = 'failed'
 			}
 
 			tasks.push({ text: text.trim(), status })
@@ -83,6 +85,17 @@ const StatusIcon: React.FC<{ status: TaskItem['status'], index?: number }> = ({ 
 		)
 	}
 
+	if (status === 'failed') {
+		// Failed - red circle with X (distinct from pending's empty circle)
+		return (
+			<div className="w-4 h-4 rounded-full bg-red-500 flex items-center justify-center flex-shrink-0">
+				<svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 6l12 12M18 6L6 18" />
+				</svg>
+			</div>
+		)
+	}
+
 	// Pending - empty circle
 	return (
 		<div className="w-4 h-4 rounded-full border border-void-fg-4 flex-shrink-0" />
@@ -99,7 +112,9 @@ const TaskRow: React.FC<{ task: TaskItem, index: number }> = ({ task, index }) =
 			<span className={`text-sm ${
 				task.status === 'complete'
 					? 'text-void-fg-3'
-					: 'text-void-fg-2'
+					: task.status === 'failed'
+						? 'text-red-400'
+						: 'text-void-fg-2'
 			}`}>
 				{task.text}
 			</span>
@@ -201,14 +216,20 @@ const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 				</span>
 			</div>
 
-			{/* Task list - collapsible */}
-			{isExpanded && (
-				<div className="space-y-0.5 px-3 pb-3 pt-1 max-h-[800px] overflow-auto">
-					{tasks.map((task, index) => (
-						<TaskRow key={index} task={task} index={index} />
-					))}
-				</div>
-			)}
+			{/* Task list - shows first 2 when collapsed, all when expanded */}
+			<div className={`space-y-0.5 px-3 pb-3 pt-1 ${isExpanded ? 'max-h-[800px] overflow-auto' : ''}`}>
+				{visibleTasks.map((task, index) => (
+					<TaskRow key={index} task={task} index={index} />
+				))}
+				{!isExpanded && hiddenCount > 0 && (
+					<button
+						onClick={(e) => { e.stopPropagation(); setIsExpanded(true) }}
+						className="text-void-fg-4 text-xs italic hover:text-void-fg-2 transition-colors py-0.5"
+					>
+						+{hiddenCount} more…
+					</button>
+				)}
+			</div>
 		</div>
 	)
 }

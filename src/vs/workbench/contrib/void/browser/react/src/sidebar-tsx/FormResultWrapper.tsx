@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { Check, Square, Circle, Type, Send, AlertTriangle, Ban } from 'lucide-react';
 import { useAccessor, useChatThreadsStreamState } from '../util/services.js';
 import { BuiltinToolName } from '../../../../common/toolsServiceTypes.js';
+import { voidDevLog } from '../../../../common/devLog.js';
 import {
 	ToolHeaderWrapper,
 	ToolChildrenWrapper,
@@ -181,8 +182,8 @@ export const FormResultWrapper: ResultWrapper<'render_form'> = ({ toolMessage, t
 	const chatThreadsService = accessor.get('IChatThreadService');
 
 	// Debug logging to understand what's happening
-	console.log('[FormResultWrapper] toolMessage.type:', toolMessage.type);
-	console.log('[FormResultWrapper] toolMessage.params:', toolMessage.params);
+	voidDevLog('[FormResultWrapper] toolMessage.type:', toolMessage.type);
+	voidDevLog('[FormResultWrapper] toolMessage.params:', toolMessage.params);
 
 	const title = getTitle(toolMessage);
 	const { desc1 } = toolNameToDesc(toolMessage.name as BuiltinToolName, toolMessage.params, accessor);
@@ -197,27 +198,38 @@ export const FormResultWrapper: ResultWrapper<'render_form'> = ({ toolMessage, t
 
        // Safety check for params
        if (!params || !params.questions || !Array.isArray(params.questions)) {
-	       console.log('[FormResultWrapper] Safety check failed - params:', params, 'questions:', params?.questions);
+	       voidDevLog('[FormResultWrapper] Safety check failed - params:', params, 'questions:', params?.questions);
+	       // Show a spinner only while the tool is still running or awaiting approval.
+	       // Once it has settled with no valid params, surface an explicit error state
+	       // instead of spinning forever.
+	       const stillRunning = toolMessage.type === 'running_now' || toolMessage.type === 'tool_request'
                const componentParams: ToolHeaderParams = {
                        title,
                        desc1,
-                       isError: false,
+                       isError: !stillRunning,
                        icon: <Type size={12} strokeWidth={2.5} />,
                        isRejected,
                        isOpen: true,
                        children: (
                                <ToolChildrenWrapper>
-                                       <div className="flex items-center gap-2 py-2 mb-3">
-                                               <div className="w-3 h-3 border-2 border-void-accent border-t-transparent rounded-full animate-spin" />
-                                               <span className="text-xs italic text-void-fg-3">Loading form...</span>
-                                       </div>
+				       {stillRunning ? (
+					       <div className="flex items-center gap-2 py-2 mb-3">
+						       <div className="w-3 h-3 border-2 border-void-accent border-t-transparent rounded-full animate-spin" />
+						       <span className="text-xs italic text-void-fg-3">Loading form...</span>
+					       </div>
+				       ) : (
+					       <div className="flex items-center gap-2 py-2 mb-3 text-void-error">
+						       <AlertTriangle size={14} />
+						       <span className="text-xs">Form data missing or invalid.</span>
+					       </div>
+				       )}
                                </ToolChildrenWrapper>
                        )
                };
                return <ToolHeaderWrapper {...componentParams} />;
        }
 
-       console.log('[FormResultWrapper] params.questions length:', params.questions.length);
+       voidDevLog('[FormResultWrapper] params.questions length:', params.questions.length);
 
        // Check if all required questions are answered
        const validateForm = (): boolean => {
@@ -274,7 +286,7 @@ export const FormResultWrapper: ResultWrapper<'render_form'> = ({ toolMessage, t
 	};
 
 	if (toolMessage.type === 'success') {
-		console.log('[FormResultWrapper] Rendering success state');
+		voidDevLog('[FormResultWrapper] Rendering success state');
 		const result = toolMessage.result as any;
 		const resultTemplate = result?.template || '';
 
@@ -290,7 +302,7 @@ export const FormResultWrapper: ResultWrapper<'render_form'> = ({ toolMessage, t
 			</ToolChildrenWrapper>
 		);
 	} else if (toolMessage.type === 'tool_request' || toolMessage.type === 'running_now') {
-		console.log('[FormResultWrapper] Rendering form with questions');
+		voidDevLog('[FormResultWrapper] Rendering form with questions');
 		const activity = streamState?.isRunning === 'tool' && streamState.toolInfo.id === toolMessage.id
 			? streamState.toolInfo.content
 			: undefined;

@@ -264,8 +264,8 @@ const PastThreadElement = ({ pastThread, idx, hoveredIdx, setHoveredIdx, isRunni
 	>
 		<div className="flex items-center justify-between gap-2">
 			<span className="flex items-center gap-2 min-w-0 overflow-hidden">
-				{/* spinner or checkmark */}
-				{isRunning === 'LLM' || isRunning === 'tool' || isRunning === 'idle' ?
+				{/* spinner (only while actively running), question (awaiting input), check (idle/done) */}
+				{isRunning === 'LLM' || isRunning === 'tool' ?
 					<LoaderCircle className="animate-spin text-void-fg-3 flex-shrink-0 flex-grow-0" size={14} />
 					:
 					isRunning === 'awaiting_user' ?

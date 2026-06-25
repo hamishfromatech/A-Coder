@@ -22,6 +22,37 @@ import { generateUuid } from '../../../../../base/common/uuid.js';
 import { voidDevLog, voidDevWarn } from '../../common/devLog.js';
 import product from '../../../../../platform/product/common/product.js';
 
+/**
+ * Read a provider-specific reasoning field from an OpenAI-compatible streaming
+ * delta. The SDK's `ChatCompletionChunk.Choice.Delta` type only declares
+ * `content`/`role`/`tool_calls`/`function`/`refusal`, but providers (Ollama,
+ * DeepSeek, etc.) add `reasoning`/`thinking`/custom fields. We narrow the delta
+ * to a string-keyed record instead of `as any` so the access stays type-safe.
+ * Mirrors the original `delta?.[field] || delta?.reasoning || delta?.thinking`
+ * truthy-fallback semantics, then coerces to string (the old `+ ''`).
+ */
+const readReasoningFromDelta = (delta: object, fieldName: string | undefined): string => {
+	const d = delta as Record<string, unknown>
+	const v = (fieldName ? d[fieldName] : undefined) || d['reasoning'] || d['thinking'] || ''
+	return typeof v === 'string' ? v : (v === null || v === undefined) ? '' : String(v)
+}
+
+/**
+ * Gemini streaming chunks expose `text`/`functionCalls` in the `@google/genai`
+ * typings, but `candidates` (finish-reason + thought parts) and the non-standard
+ * `thought_signature` on function calls aren't typed. Narrow to these shapes
+ * instead of `as any`.
+ */
+interface GeminiStreamChunkExtras {
+	candidates?: Array<{
+		finishReason?: string
+		content?: { parts?: Array<{ thought?: boolean, text?: string }> }
+	}>
+}
+interface GeminiFunctionCallExtras {
+	thought_signature?: string
+}
+
 const getGoogleApiKey = async () => {
 	// module‑level singleton
 	const auth = new GoogleAuth({ scopes: `https://www.googleapis.com/auth/cloud-platform` });
@@ -163,7 +194,7 @@ const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName, includ
 			apiKey: 'noop',
 			// Add specific configurations for better Ollama compatibility
 			defaultHeaders: {
-				'HTTP-User-Agent': 'A-Coder/1.0.0'
+				'HTTP-User-Agent': `A-Coder/${product.voidVersion || product.version}`
 			},
 			// Increase timeout for Ollama models which can be slower
 			timeout: 120000, // 2 minutes
@@ -177,7 +208,7 @@ const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName, includ
 			apiKey: thisConfig.apiKey,
 			// Add specific configurations for better Ollama compatibility
 			defaultHeaders: {
-				'HTTP-User-Agent': 'A-Coder/1.0.0'
+				'HTTP-User-Agent': `A-Coder/${product.voidVersion || product.version}`
 			},
 			// Increase timeout for Ollama models which can be slower
 			timeout: 120000, // 2 minutes
@@ -677,10 +708,17 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		}
 	}
 
+	// Create an AbortController BEFORE create() so a fast Stop during the
+	// connect/request-send window (before .then() resolves and wires the stream's
+	// own controller) actually cancels the in-flight fetch instead of being a no-op.
+	const preConnectAbort = new AbortController()
+	_setAborter(() => preConnectAbort.abort())
+
 	openai.chat.completions
-		.create(options)
+		.create(options, { signal: preConnectAbort.signal })
 		.then(async response => {
 			voidDevLog(`[sendLLMMessage] Request created successfully, starting to read stream`)
+			// Switch the aborter to the stream's own controller for in-stream cancels.
 			_setAborter(() => response.controller.abort())
 
 			// Import XML stripping function for streaming
@@ -705,9 +743,18 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 				}
 
 				if (choice.finish_reason && choice.finish_reason !== 'stop' && choice.finish_reason !== 'tool_calls') {
-					voidDevLog(`[sendLLMMessage] Unexpected finish_reason: ${choice.finish_reason}, chunk:`, JSON.stringify(chunk))
-					onError({ message: `Model ended response with finish_reason "${choice.finish_reason}"`, fullError: null })
-					return
+					// 'length' means the response hit the max-output-token cap mid-generation.
+					// The partial text has already been streamed via onText, so treat this as
+					// successful completion (fall through to onFinalMessage below) and surface a
+					// non-blocking warning instead of discarding the partial content as an error.
+					if (choice.finish_reason === 'length') {
+						voidDevWarn(`[sendLLMMessage] Response truncated at max output tokens (finish_reason: "length"); delivering partial content.`)
+					}
+					else {
+						voidDevLog(`[sendLLMMessage] Unexpected finish_reason: ${choice.finish_reason}, chunk:`, JSON.stringify(chunk))
+						onError({ message: `Model ended response with finish_reason "${choice.finish_reason}"`, fullError: null })
+						return
+					}
 				}
 
 				// Capture usage statistics if available
@@ -736,13 +783,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 				if (nameOfReasoningFieldInDelta) {
 					// Check configured field first, then fallback to common alternatives
 					// Different providers use different field names for reasoning content
-					const deltaAny = delta as any
-					const reasoningDelta = (
-						deltaAny?.[nameOfReasoningFieldInDelta] ||
-						deltaAny?.reasoning ||  // Ollama Cloud uses 'reasoning' for some models
-						deltaAny?.thinking ||   // Ollama uses 'thinking' for local models
-						''
-					) + ''
+					const reasoningDelta = readReasoningFromDelta(delta, nameOfReasoningFieldInDelta)
 					if (reasoningDelta && chunkCount <= 5) {
 						voidDevLog(`[sendLLMMessage] Chunk ${chunkCount} reasoning delta:`, reasoningDelta.substring(0, 100))
 					}
@@ -759,12 +800,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 					fullText: displayText,
 					fullReasoning: fullReasoningSoFar,
 					textDelta: newText,
-					reasoningDelta: nameOfReasoningFieldInDelta ? (
-						(delta as any)?.[nameOfReasoningFieldInDelta] ||
-						(delta as any)?.reasoning ||
-						(delta as any)?.thinking ||
-						''
-					) + '' : undefined,
+					reasoningDelta: nameOfReasoningFieldInDelta ? readReasoningFromDelta(delta, nameOfReasoningFieldInDelta) : undefined,
 					toolCalls: toolCalls.length === 0 ? undefined : mapToRawToolCalls(toolCalls),
 					// Pass raw text so chatThreadService can detect XML tool calls for repetition detection
 					_rawTextBeforeStripping: !specialToolFormat ? fullTextSoFar : undefined,
@@ -851,8 +887,11 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 
 				// Retry the request with a flag to prevent infinite retries
 				const retryOptions = { ...options, _isRetry: true } as typeof options & { _isRetry: boolean }
+				// Fresh controller so a Stop during the 3s wait / retry connect still cancels.
+				const retryAbort = new AbortController()
+				_setAborter(() => retryAbort.abort())
 				openai.chat.completions
-					.create(retryOptions)
+					.create(retryOptions, { signal: retryAbort.signal })
 					.then(async retryResponse => {
 						voidDevLog(`[sendLLMMessage] \u{2705} Retry succeeded, processing response`)
 						_setAborter(() => (retryResponse as any).controller?.abort?.())
@@ -895,8 +934,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 							}
 
 							if (nameOfReasoningFieldInDelta && (!reasoningInfo || reasoningInfo.isReasoningEnabled)) {
-								const deltaAny = delta as any
-								const reasoningDelta = (deltaAny?.[nameOfReasoningFieldInDelta] || deltaAny?.reasoning || deltaAny?.thinking || '') + ''
+								const reasoningDelta = readReasoningFromDelta(delta, nameOfReasoningFieldInDelta)
 								fullReasoningSoFar += reasoningDelta
 							}
 
@@ -910,12 +948,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 								fullText: displayText,
 								fullReasoning: fullReasoningSoFar,
 								textDelta: newText,
-								reasoningDelta: nameOfReasoningFieldInDelta && (!reasoningInfo || reasoningInfo.isReasoningEnabled) ? (
-									(delta as any)?.[nameOfReasoningFieldInDelta] ||
-									(delta as any)?.reasoning ||
-									(delta as any)?.thinking ||
-									''
-								) : undefined,
+								reasoningDelta: nameOfReasoningFieldInDelta && (!reasoningInfo || reasoningInfo.isReasoningEnabled) ? readReasoningFromDelta(delta, nameOfReasoningFieldInDelta) : undefined,
 								toolCalls: toolCalls.length === 0 ? undefined : mapToRawToolCalls(toolCalls),
 								_rawTextBeforeStripping: !specialToolFormat ? fullTextSoFar : undefined,
 							})
@@ -1365,67 +1398,85 @@ const _sendOllamaChatWithFallback = async (params: SendChatParams_Internal) => {
 
 	voidDevLog(`[sendOllamaChatWithFallback] Model: ${modelName}, specialToolFormat: ${specialToolFormat}, hasTools: ${hasTools}`)
 
+	// _sendOpenAICompatibleChat fires its streaming chain (create().then().catch())
+	// and resolves before the stream actually runs, so a plain try/catch around it
+	// can never see stream/API failures. Wrap onFinalMessage/onError so the promise
+	// below settles only when the stream truly completes (success or error).
+	const runAttempt = (attemptParams: SendChatParams_Internal): Promise<{ failed: boolean; error: any }> => {
+		return new Promise(resolve => {
+			let settled = false
+			const settle = (result: { failed: boolean; error: any }) => {
+				if (!settled) { settled = true; resolve(result) }
+			}
+			const wrappedParams: SendChatParams_Internal = {
+				...attemptParams,
+				onFinalMessage: (p) => { attemptParams.onFinalMessage(p); settle({ failed: false, error: null }) },
+				onError: (p) => { attemptParams.onError(p); settle({ failed: true, error: p.fullError ?? null }) },
+			}
+			// .catch covers synchronous setup errors thrown before the callbacks are wired.
+			_sendOpenAICompatibleChat(wrappedParams).catch(e => settle({ failed: true, error: e }))
+		})
+	}
+	const isTransientServerError = (error: any) => error?.status >= 500 && error?.status < 600
+
 	// For models with native tool support, try OpenAI-compatible endpoint first
 	if (hasNativeTools && hasTools) {
 		voidDevLog(`[sendOllamaChatWithFallback] \u{1F680} Trying OpenAI - compatible endpoint with native tools`)
 
-		try {
-			// Try the OpenAI-compatible endpoint
-			await _sendOpenAICompatibleChat(params)
+		const first = await runAttempt(params)
+		if (!first.failed) {
 			voidDevLog(`[sendOllamaChatWithFallback] \u{2705} OpenAI - compatible endpoint succeeded`)
 			return
-		} catch (error) {
-			voidDevWarn(`[sendOllamaChatWithFallback] \u{26A0}\u{FE0F} OpenAI - compatible endpoint failed: `, error)
-
-			// Check if it's a transient server error (5xx) that might be worth retrying
-			const isTransientServerError = error?.status >= 500 && error?.status < 600
-			if (isTransientServerError) {
-				voidDevLog(`[sendOllamaChatWithFallback] \u{1F504} Detected transient server error(${error.status}), retrying once...`)
-				try {
-					// Wait a moment before retry
-					await new Promise(resolve => setTimeout(resolve, 1000))
-					await _sendOpenAICompatibleChat(params)
-					voidDevLog(`[sendOllamaChatWithFallback] \u{2705} Retry succeeded`)
-					return
-				} catch (retryError) {
-					voidDevWarn(`[sendOllamaChatWithFallback] \u{26A0}\u{FE0F} Retry also failed: `, retryError)
-				}
-			}
-
-			voidDevLog(`[sendOllamaChatWithFallback] \u{1F504} Retrying without native tool format`)
 		}
+		voidDevWarn(`[sendOllamaChatWithFallback] \u{26A0}\u{FE0F} OpenAI - compatible endpoint failed: `, first.error)
+
+		// Transient 5xx → retry once with the same params before dropping tools.
+		if (isTransientServerError(first.error)) {
+			voidDevLog(`[sendOllamaChatWithFallback] \u{1F504} Detected transient server error(${first.error.status}), retrying once...`)
+			await new Promise(resolve => setTimeout(resolve, 1000))
+			const retry = await runAttempt(params)
+			if (!retry.failed) {
+				voidDevLog(`[sendOllamaChatWithFallback] \u{2705} Retry succeeded`)
+				return
+			}
+			voidDevWarn(`[sendOllamaChatWithFallback] \u{26A0}\u{FE0F} Retry also failed: `, retry.error)
+		}
+
+		voidDevLog(`[sendOllamaChatWithFallback] \u{1F504} Retrying without native tool format`)
 	}
 
-	// Fallback: Try without native tools if the first attempt failed
+	// Fallback: retry without tools if the native-tools attempt failed. Sending no
+	// tools lets the model at least respond as a plain chat instead of erroring.
 	if (hasTools) {
-		try {
-			// For the fallback, we'll just try the same function but let it naturally fall back
-			// to XML tool calling if the model doesn't support native tools
-			await _sendOpenAICompatibleChat(params)
-			voidDevLog(`[sendOllamaChatWithFallback] \u{2705} Fallback succeeded`)
-		} catch (error) {
-			// Check if it's a transient server error that might be worth retrying
-			const isTransientServerError = error?.status >= 500 && error?.status < 600
-			if (isTransientServerError) {
-				voidDevLog(`[sendOllamaChatWithFallback] \u{1F504} Detected transient server error in fallback(${error.status}), retrying once...`)
-				try {
-					// Wait a moment before retry
-					await new Promise(resolve => setTimeout(resolve, 2000))
-					await _sendOpenAICompatibleChat(params)
-					voidDevLog(`[sendOllamaChatWithFallback] \u{2705} Fallback retry succeeded`)
-					return
-				} catch (retryError) {
-					voidDevWarn(`[sendOllamaChatWithFallback] \u{26A0}\u{FE0F} Fallback retry also failed: `, retryError)
-				}
-			}
-
-			console.error(`[sendOllamaChatWithFallback] \u{274C} Both attempts failed: `, error)
-			params.onError({ message: `Model produced a result A - Coder couldn't apply`, fullError: error })
+		const noToolParams: SendChatParams_Internal = {
+			...params,
+			mcpTools: [],
+			acpTools: [],
+			composioTools: [],
 		}
+		const fallback = await runAttempt(noToolParams)
+		if (!fallback.failed) {
+			voidDevLog(`[sendOllamaChatWithFallback] \u{2705} Fallback succeeded`)
+			return
+		}
+
+		if (isTransientServerError(fallback.error)) {
+			voidDevLog(`[sendOllamaChatWithFallback] \u{1F504} Detected transient server error in fallback(${fallback.error.status}), retrying once...`)
+			await new Promise(resolve => setTimeout(resolve, 2000))
+			const retry = await runAttempt(noToolParams)
+			if (!retry.failed) {
+				voidDevLog(`[sendOllamaChatWithFallback] \u{2705} Fallback retry succeeded`)
+				return
+			}
+			voidDevWarn(`[sendOllamaChatWithFallback] \u{26A0}\u{FE0F} Fallback retry also failed: `, retry.error)
+		}
+
+		console.error(`[sendOllamaChatWithFallback] \u{274C} Both attempts failed: `, fallback.error)
+		params.onError({ message: `Model produced a result A - Coder couldn't apply`, fullError: fallback.error })
 	} else {
 		// No tools needed, use standard OpenAI-compatible chat
 		voidDevLog(`[sendOllamaChatWithFallback] 💬 No tools needed, using standard chat`)
-		await _sendOpenAICompatibleChat(params)
+		await runAttempt(params)
 	}
 }
 
@@ -1514,7 +1565,7 @@ const sendGeminiChat = async ({
 				fullTextSoFar += newText
 
 			// reasoning and thought signature
-			const candidates = (chunk as any).candidates
+			const candidates = (chunk as unknown as GeminiStreamChunkExtras).candidates
 			if (candidates?.[0]?.finishReason) {
 				lastGeminiFinishReason = candidates[0].finishReason
 			}
@@ -1536,7 +1587,7 @@ const sendGeminiChat = async ({
 								name: functionCall.name ?? '',
 								id: functionCall.id ?? '',
 								paramsStr: JSON.stringify(functionCall.args ?? {}),
-								thoughtSignature: (functionCall as any).thought_signature
+								thoughtSignature: (functionCall as unknown as GeminiFunctionCallExtras).thought_signature
 							})
 						} else {
 							// Update existing call (though Gemini usually sends full calls)

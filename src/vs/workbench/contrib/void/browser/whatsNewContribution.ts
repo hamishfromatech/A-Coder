@@ -11,6 +11,7 @@ import { WHATS_NEW_LAST_VERSION_KEY } from '../common/storageKeys.js';
 import { IOpenerService } from '../../../../platform/opener/common/opener.js';
 import { URI } from '../../../../base/common/uri.js';
 import { timeout } from '../../../../base/common/async.js';
+import { voidDevLog, voidDevWarn } from '../common/devLog.js';
 
 // Contribution that checks version and opens release notes on update
 export class WhatsNewCheckContribution extends Disposable implements IWorkbenchContribution {
@@ -47,15 +48,7 @@ export class WhatsNewCheckContribution extends Disposable implements IWorkbenchC
 
 		// If this is the first run or version has changed
 		if (lastSeenVersion !== fullVersion) {
-			console.log(`[A-Coder What's New] Version changed from "${lastSeenVersion}" to "${fullVersion}". Opening release notes...`);
-
-			// Store the current version as seen immediately
-			this.storageService.store(
-				WHATS_NEW_LAST_VERSION_KEY,
-				fullVersion,
-				StorageScope.APPLICATION,
-				StorageTarget.MACHINE
-			);
+			voidDevLog(`[A-Coder What's New] Version changed from "${lastSeenVersion}" to "${fullVersion}". Opening release notes...`);
 
 			// Wait a bit for the workbench to be ready
 			// MEMORY FIX: Use a cancellable timeout that respects this component's lifecycle
@@ -70,13 +63,32 @@ export class WhatsNewCheckContribution extends Disposable implements IWorkbenchC
 
 			// Open the release notes for this version (falls back to the
 			// general releases list if the version-specific tag URL fails).
+			// Only mark this version "seen" once an open actually succeeded —
+			// otherwise a failed open would silently suppress the prompt on
+			// every future launch.
+			let opened = false
 			try {
 				const releaseUrl = `https://github.com/hamishfromatech/A-Coder/releases/tag/v${currentVersion}`;
 				await this.openerService.open(URI.parse(releaseUrl));
+				opened = true
 			} catch (error) {
-				console.error('[A-Coder What\'s New] Failed to open release notes:', error);
+				voidDevWarn('[A-Coder What\'s New] Failed to open release notes:', error);
 				// Fallback to general releases page
-				this.openerService.open(URI.parse('https://github.com/hamishfromatech/A-Coder/releases'));
+				try {
+					await this.openerService.open(URI.parse('https://github.com/hamishfromatech/A-Coder/releases'));
+					opened = true
+				} catch (fallbackError) {
+					voidDevWarn('[A-Coder What\'s New] Failed to open releases fallback:', fallbackError);
+				}
+			}
+
+			if (opened) {
+				this.storageService.store(
+					WHATS_NEW_LAST_VERSION_KEY,
+					fullVersion,
+					StorageScope.APPLICATION,
+					StorageTarget.MACHINE
+				);
 			}
 		}
 	}

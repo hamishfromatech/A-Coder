@@ -64,7 +64,7 @@ import './tooltipService.js'
 import './voidOnboardingService.js'
 
 // register misc service
-import './miscWokrbenchContrib.js'
+import './miscWorkbenchContrib.js'
 
 // register file service (for explorer context menu)
 import './fileService.js'
@@ -91,6 +91,10 @@ import './apiServiceBridge.js'
 
 // voice service (STT + TTS)
 import './voiceService.js'
+
+// sound service (notification sounds) — eager import so the ISoundService
+// singleton is registered at activation time, not only when a webview loads.
+import './soundService.js'
 
 // ---------- common (unclear if these actually need to be imported, because they're already imported wherever they're used) ----------
 

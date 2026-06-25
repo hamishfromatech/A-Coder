@@ -752,18 +752,30 @@ export const useAllWorkspaces = () => {
 	const remoteControl = accessor.get(IWorkspaceRemoteControlService)
 	const [workspaces, setWorkspaces] = useState<WorkspaceConnection[]>(allWorkspacesState)
 	const [loadError, setLoadError] = useState<string | null>(null)
+	const [reloadTick, setReloadTick] = useState(0)
 
 	useEffect(() => {
 		// Defensive: in a stale build the service may not be registered yet.
 		// Degrade to an empty list rather than crashing the whole panel.
 		if (!remoteControl) return
 		let disposed = false
-		remoteControl.getWorkspaces().then(ws => { if (!disposed) { setWorkspaces(ws); updateAllWorkspacesState(ws); setLoadError(null) } }).catch((e: unknown) => { if (!disposed) { setLoadError(`Couldn't load projects from other windows. Please try again. (${e instanceof Error ? e.message : String(e)})`) } })
+		remoteControl.getWorkspaces().then(ws => { if (!disposed) { setWorkspaces(ws); updateAllWorkspacesState(ws); setLoadError(null) } }).catch((e: unknown) => {
+			if (!disposed) {
+				// Clear stale workspaces so the UI doesn't render a partial/old list
+				// alongside the error, and surface a retryable error message.
+				setWorkspaces([])
+				updateAllWorkspacesState([])
+				setLoadError(`Couldn't load projects from other windows. Please try again. (${e instanceof Error ? e.message : String(e)})`)
+			}
+		})
 		const sub = remoteControl.onDidReceiveWorkspaces(ws => { if (!disposed) { setWorkspaces(ws); updateAllWorkspacesState(ws); setLoadError(null) } })
 		return () => { disposed = true; sub.dispose() }
-	}, [remoteControl])
+	}, [remoteControl, reloadTick])
 
-	return { workspaces, loadError }
+	// Re-run the load effect on demand (used by error-banner retry buttons).
+	const retry = useCallback(() => setReloadTick(t => t + 1), [])
+
+	return { workspaces, loadError, retry }
 }
 
 /**

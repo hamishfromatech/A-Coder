@@ -401,11 +401,11 @@ export const VoidInputBox2 = forwardRef<HTMLTextAreaElement, InputBox2Props>(fun
 		const textBeforeCursor = textarea.value.substring(0, startPos - 1);
 		const textAfterCursor = textarea.value.substring(endPos);
 
-		// Replace the text including the @ symbol with the selected option
-		textarea.value = textBeforeCursor + textAfterCursor;
+		// Replace the @ (and any partial match typed after it) with the selected option text
+		textarea.value = textBeforeCursor + text + textAfterCursor;
 
 		// Set cursor position after the inserted text
-		const newCursorPos = textBeforeCursor.length;
+		const newCursorPos = textBeforeCursor.length + text.length;
 		textarea.setSelectionRange(newCursorPos, newCursorPos);
 
 		// React's onChange relies on a SyntheticEvent system
@@ -2096,6 +2096,16 @@ const SingleDiffEditor = ({ block, lang }: { block: ExtractedSearchReplaceBlock,
 			editorRef.current = null;
 		};
 	}, [instantiationService]); // Stable instantiationService
+
+	// Rebind models to the existing editor when `lang` changes. The editor-creation
+	// effect above is stable (runs once), but the model-creation effect recreates
+	// models on `lang` change — without this, the editor would keep pointing at the
+	// disposed previous models. Refs are read live, so [lang] is the real trigger.
+	useEffect(() => {
+		if (!editorRef.current || !modelsRef.current) return;
+		const { original, modified } = modelsRef.current;
+		editorRef.current.setModel({ original, modified });
+	}, [lang]);
 
 	return (
 		<div className="w-full bg-void-bg-3 @@bg-editor-style-override overflow-hidden" ref={divRef} />

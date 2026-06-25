@@ -340,9 +340,12 @@ export class TokenCountingService extends Disposable implements ITokenCountingSe
 	public async countMessagesTokensAsync(messages: LLMChatMessage[], modelName: string): Promise<number> {
 		if (messages.length === 0) return 0;
 
-		// Generate cache key based on content hashes
+		// Generate cache key based on content hashes. NOTE: the modelName prefix
+		// is added once inside _getCachedWithTTLByKey / _setCachedWithTTLByKey, so
+		// the key here must NOT already include it (a previous version doubled the
+		// prefix, so reads never matched writes).
 		const contentHash = this._hashMessages(messages);
-		const cacheKey = `${modelName}:${messages.length}:${contentHash}`;
+		const cacheKey = `${messages.length}:${contentHash}`;
 
 		// Check cache with TTL
 		const cached = this._getCachedWithTTLByKey(cacheKey, modelName);
@@ -361,6 +364,8 @@ export class TokenCountingService extends Disposable implements ITokenCountingSe
 
 		try {
 			const result = await countPromise;
+			// Persist under the same key the read uses (modelName:length:hash).
+			this._setCachedWithTTLByKey(cacheKey, modelName, result);
 			return result;
 		} finally {
 			this._pendingAsyncCounts.delete(pendingKey);
@@ -444,6 +449,23 @@ export class TokenCountingService extends Disposable implements ITokenCountingSe
 		}
 
 		return this._countCache.get(fullKey);
+	}
+
+	/**
+	 * Store a count in the TTL cache using the same pre-computed cacheKey the
+	 * read path uses (modelName prefix added once here).
+	 */
+	private _setCachedWithTTLByKey(cacheKey: string, modelName: string, count: number): void {
+		const fullKey = `${modelName}:${cacheKey}`;
+		if (this._countCache.size >= this.MAX_CACHE_SIZE) {
+			const firstKey = this._countCache.keys().next().value;
+			if (firstKey) {
+				this._countCache.delete(firstKey);
+				this._cacheTimestamps.delete(firstKey);
+			}
+		}
+		this._countCache.set(fullKey, count);
+		this._cacheTimestamps.set(fullKey, Date.now());
 	}
 
 

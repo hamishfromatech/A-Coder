@@ -5,9 +5,16 @@
 
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
+import { IProductService } from '../../../../platform/product/common/productService.js';
 import { ApiServiceManager } from './apiServiceManager.js';
 import { IMainProcessSettingsService } from './mainProcessSettingsService.js';
 import { IMainProcessApiAuthService } from './mainProcessApiAuthService.js';
+
+/** product.json fields A-Coder adds beyond the VS Code IProductConfiguration. */
+interface ACoderProduct {
+	voidVersion?: string;
+	voidRelease?: string;
+}
 
 export const IMainProcessApiIntegration = createDecorator<IMainProcessApiIntegration>('mainProcessApiIntegration');
 
@@ -29,6 +36,7 @@ export class MainProcessApiIntegration extends Disposable implements IMainProces
 	constructor(
 		@IMainProcessSettingsService private readonly settingsService: IMainProcessSettingsService,
 		@IMainProcessApiAuthService private readonly apiAuthService: IMainProcessApiAuthService,
+		@IProductService private readonly productService: IProductService,
 	) {
 		super();
 
@@ -49,7 +57,11 @@ export class MainProcessApiIntegration extends Disposable implements IMainProces
 		// Create API service manager with dynamic settings function
 		this.apiServiceManager = new ApiServiceManager(
 			() => this.settingsService.getApiSettings(),
-			(token: string) => this.apiAuthService.validateToken(token)
+			(token: string) => this.apiAuthService.validateToken(token),
+			() => {
+				const acoder = this.productService as unknown as ACoderProduct;
+				return { version: acoder.voidVersion ?? this.productService.version, release: acoder.voidRelease };
+			},
 		);
 
 		// Start if enabled

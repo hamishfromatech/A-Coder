@@ -5,6 +5,9 @@
 
 import { ApiRouter } from './apiRouter.js';
 
+/** Returns the running A-Coder version (and optional release suffix) for the health endpoint. */
+export type ApiVersionProvider = () => { version: string; release?: string };
+
 /**
  * API Routes Handler
  * Implements all REST API endpoints
@@ -12,7 +15,8 @@ import { ApiRouter } from './apiRouter.js';
 export class ApiRoutes {
 	constructor(
 		private readonly router: ApiRouter,
-		private readonly callRenderer: (method: string, params: any) => Promise<any>
+		private readonly callRenderer: (method: string, params: any) => Promise<any>,
+		private readonly getVersion: ApiVersionProvider,
 	) {
 		this.registerRoutes();
 	}
@@ -160,8 +164,8 @@ export class ApiRoutes {
 			}
 		});
 
-		// GET /api/v1/workspace/folder/:path - Get folder contents
-		this.router.register('GET', '/api/v1/workspace/folder/:path', async (req, res, params) => {
+		// GET /api/v1/workspace/folder/* - Get folder contents (supports nested paths)
+		this.router.register('GET', '/api/v1/workspace/folder/*', async (req, res, params) => {
 			try {
 				const folderPath = params['*'] || ''; // Capture everything after /folder/
 				const contents = await this.callRenderer('getFolderContents', { path: folderPath });
@@ -205,9 +209,48 @@ export class ApiRoutes {
 		this.router.register('GET', '/api/v1/workspace/files/:path/outline', async (req, res, params) => {
 			try {
 				const outline = await this.callRenderer('getFileOutline', { path: params.path });
+				if (outline && outline.notImplemented) {
+					this.router.sendError(res, 501, 'Not Implemented', outline.message);
+					return;
+				}
 				this.router.sendJson(res, 200, { outline });
 			} catch (err) {
 				this.router.sendError(res, 500, 'Failed to get outline', err instanceof Error ? err.message : String(err));
+			}
+		});
+
+		// GET /api/v1/workspace/files/* - Read file supporting nested paths, with an
+		// optional /raw or /outline suffix. Registered AFTER the single-segment
+		// /files/:path, /files/:path/raw, /files/:path/outline routes so those still
+		// match first; this greedy route only catches multi-segment (nested) paths.
+		this.router.register('GET', '/api/v1/workspace/files/*', async (req, res, params) => {
+			try {
+				const fullPath = params['*'] || '';
+				if (fullPath.endsWith('/raw')) {
+					const filePath = fullPath.slice(0, -'/raw'.length);
+					const result = await this.callRenderer('readFileBinary', { path: filePath });
+					if (!result || !result.data) {
+						this.router.sendError(res, 404, 'File not found');
+						return;
+					}
+					const buffer = Buffer.from(result.data, 'base64');
+					const contentType = result.contentType || 'application/octet-stream';
+					const filename = result.filename || filePath.split('/').pop();
+					this.router.sendBinaryWithRange(req, res, buffer, contentType, filename);
+				} else if (fullPath.endsWith('/outline')) {
+					const filePath = fullPath.slice(0, -'/outline'.length);
+					const outline = await this.callRenderer('getFileOutline', { path: filePath });
+					if (outline && outline.notImplemented) {
+						this.router.sendError(res, 501, 'Not Implemented', outline.message);
+						return;
+					}
+					this.router.sendJson(res, 200, { outline });
+				} else {
+					const content = await this.callRenderer('readFile', { path: fullPath });
+					this.router.sendJson(res, 200, { content });
+				}
+			} catch (err) {
+				this.router.sendError(res, 500, 'Failed to read file', err instanceof Error ? err.message : String(err));
 			}
 		});
 
@@ -398,9 +441,11 @@ export class ApiRoutes {
 
 		// GET /api/v1/health - Health check
 		this.router.register('GET', '/api/v1/health', async (req, res, params) => {
+			const { version, release } = this.getVersion();
 			this.router.sendJson(res, 200, {
 				status: 'ok',
-				version: '1.0.0',
+				version,
+				release,
 				timestamp: new Date().toISOString()
 			});
 		});

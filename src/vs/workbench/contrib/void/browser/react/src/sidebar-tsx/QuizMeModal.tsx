@@ -109,44 +109,46 @@ export const QuizMeModal: React.FC<QuizMeModalProps> = ({ threadId, onClose, onQ
 		const loadConcepts = async () => {
 			setLoading(true);
 			try {
-				if (learningProgressService?.getProgress) {
-					const progress = await learningProgressService.getProgress(threadId);
+				if (learningProgressService?.getThreadProgress) {
+					// getThreadProgress is synchronous and returns the real
+					// ThreadLearningProgress shape (lessons/exercises/quizzes), not the
+					// old teachingTools/quizResults-with-concept shape the code assumed.
+					const progress = learningProgressService.getThreadProgress(threadId);
 
-					// Extract concept practice data from progress
+					// Derive reviewable concepts from completed lessons and their quizzes.
 					const conceptPractices: ConceptPractice[] = [];
 
-					// Look for teaching tool results
-					Object.entries(progress).forEach(([key, data]: [string, any]) => {
-						// Extract concepts from teaching tools
-						if (data?.teachingTools) {
-							data.teachingTools.forEach((tool: any) => {
-								if (tool.concept && !conceptPractices.find(c => c.concept === tool.concept)) {
-									conceptPractices.push({
-										concept: tool.concept,
-										timesPracticed: tool.timesPracticed || 1,
-										lastPracticed: tool.lastPracticed || data.lastAccessed || Date.now(),
-										timeSpent: tool.timeSpent || 0,
-										successRate: tool.successRate || 0.8,
-									});
-								}
-							});
-						}
+					if (progress) {
+						Object.values(progress.lessons ?? {}).forEach((lesson) => {
+							const quizzes = lesson.quizResults ?? []
+							const avgPct = quizzes.length > 0
+								? quizzes.reduce((sum, q) => sum + (q.percentage ?? 0), 0) / quizzes.length
+								: (lesson.completed ? 100 : 0)
+							const timesPracticed = quizzes.length + Object.keys(lesson.exercisesAttempted ?? {}).length
+							if (lesson.title && timesPracticed > 0) {
+								conceptPractices.push({
+									concept: lesson.title,
+									timesPracticed: Math.max(timesPracticed, 1),
+									lastPracticed: lesson.lastAccessed || Date.now(),
+									timeSpent: lesson.timeSpent ? lesson.timeSpent * 1000 : 0,
+									successRate: avgPct / 100,
+								})
+							}
+						})
 
-						// Extract from recent quiz results
-						if (data?.quizResults) {
-							data.quizResults.forEach((quiz: any) => {
-								if (quiz.concept && !conceptPractices.find(c => c.concept === quiz.concept)) {
-									conceptPractices.push({
-										concept: quiz.concept,
-										timesPracticed: 1,
-										lastPracticed: quiz.completedAt,
-										timeSpent: 60000, // Assume 1 minute per quiz
-										successRate: quiz.percentage / 100,
-									});
-								}
-							});
-						}
-					});
+						// Also surface standalone quiz results recorded at the thread level.
+						(progress.quizzes ?? []).forEach((quiz) => {
+							if (!conceptPractices.find(c => c.concept === quiz.title)) {
+								conceptPractices.push({
+									concept: quiz.title || 'Quiz',
+									timesPracticed: 1,
+									lastPracticed: quiz.timestamp || Date.now(),
+									timeSpent: 60000, // Assume 1 minute per quiz
+									successRate: (quiz.percentage ?? 0) / 100,
+								})
+							}
+						})
+					}
 
 					// Calculate review scores
 					const reviewItems: ReviewItem[] = conceptPractices.map((practice) => {

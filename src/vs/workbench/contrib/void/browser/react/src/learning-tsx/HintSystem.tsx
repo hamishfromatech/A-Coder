@@ -81,9 +81,12 @@ const HintItem: React.FC<HintItemProps> = ({
 				backgroundColor: isExpanded ? `${theme.colors.primary}10` : 'transparent',
 			}}
 		>
-			<button
+			<div
+				role="button"
+				tabIndex={0}
 				onClick={onToggle}
-				className="w-full px-3 py-2 flex items-center justify-between hover:bg-void-bg-3 transition-colors"
+				onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
+				className="w-full px-3 py-2 flex items-center justify-between hover:bg-void-bg-3 transition-colors cursor-pointer"
 			>
 				<div className="flex items-center gap-2">
 					<div className="p-1 rounded" style={{ backgroundColor: `${theme.colors.accent}20` }}>
@@ -112,7 +115,7 @@ const HintItem: React.FC<HintItemProps> = ({
 						<ChevronDown size={14} style={{ color: getColor('text-muted') }} />
 					)}
 				</div>
-			</button>
+			</div>
 
 			{isExpanded && (
 				<div

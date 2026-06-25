@@ -21,10 +21,12 @@ import { VOID_TOGGLE_SETTINGS_ACTION_ID } from './actionIDs.js';
 import { VOID_CTRL_L_ACTION_ID } from './actionIDs.js';
 import { VOID_OPEN_AGENT_MANAGER_ACTION_ID } from './actionIDs.js';
 import { localize2 } from '../../../../nls.js';
-import { IChatThreadService } from './chatThreadService.js';
+import { IChatThreadService, ThreadType } from './chatThreadService.js';
 import { IViewsService } from '../../../services/views/common/viewsService.js';
 import { IAgentManagerService } from './agentManager.contribution.js';
 import { IMCPModalService } from './mcpModalService.js';
+import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js';
+import { INotificationService } from '../../../../platform/notification/common/notification.js';
 
 // ---------- Register commands and keybindings ----------
 
@@ -230,18 +232,48 @@ registerAction2(class extends Action2 {
 	}
 	async run(accessor: ServicesAccessor): Promise<void> {
 
-		// Guard against clearing user selections when no messages exist (history is empty)
-		const thread = accessor.get(IChatThreadService).getCurrentThread()
-		if (thread.messages.length === 0) {
-			return;
-		}
-
+		const chatThreadsService = accessor.get(IChatThreadService)
 		const metricsService = accessor.get(IMetricsService)
-
-		const commandService = accessor.get(ICommandService)
+		const quickInputService = accessor.get(IQuickInputService)
+		const notificationService = accessor.get(INotificationService)
 
 		metricsService.capture('Chat Navigation', { type: 'History' })
-		commandService.executeCommand(VOID_CMD_SHIFT_L_ACTION_ID)
+
+		// Show a quick-pick of past threads instead of starting a new chat.
+		const allThreads = chatThreadsService.state.allThreads
+		const currentThreadId = chatThreadsService.state.currentThreadId
+		const threadEntries = Object.values(allThreads ?? {})
+			.filter((t): t is ThreadType => !!t)
+			.sort((a, b) => (a.lastModified < b.lastModified ? 1 : -1))
+
+		if (threadEntries.length === 0) {
+			notificationService.info('No past chats yet. Start a new chat to begin.')
+			return
+		}
+
+		const labelFor = (thread: ThreadType): string => {
+			if (thread.name) return thread.name
+			const firstUser = thread.messages.find(m => m.role === 'user')
+			const text = firstUser?.content?.trim()
+			if (text) return text.length > 60 ? text.slice(0, 60) + '…' : text
+			return 'New Chat'
+		}
+
+		const picks = threadEntries.map(thread => ({
+			id: thread.id,
+			label: labelFor(thread),
+			description: thread.id === currentThreadId ? 'current' : undefined,
+			detail: new Date(thread.lastModified).toLocaleString(),
+			picked: thread.id === currentThreadId,
+		}))
+
+		const selected = await quickInputService.pick(picks, {
+			placeHolder: threadEntries.length === 1 ? 'Open your chat' : 'Select a past chat to open',
+		})
+		if (!selected || !selected.id || selected.id === currentThreadId) return
+
+		chatThreadsService.switchToThread(selected.id)
+		await chatThreadsService.focusCurrentChat()
 
 	}
 })

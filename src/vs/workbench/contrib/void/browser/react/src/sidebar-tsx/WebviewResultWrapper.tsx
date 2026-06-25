@@ -111,7 +111,7 @@ export const WebviewResultWrapper: ResultWrapper<WebviewToolName> = ({ toolMessa
 						)}
 						<BottomChildren title="HTML Info">
 							<div className="text-xs text-void-fg-3">
-								<div>Length: {result.html.length.toLocaleString()} characters</div>
+								<div>Length: {(result.html?.length ?? 0).toLocaleString()} characters</div>
 							</div>
 						</BottomChildren>
 					</ToolChildrenWrapper>
@@ -123,7 +123,7 @@ export const WebviewResultWrapper: ResultWrapper<WebviewToolName> = ({ toolMessa
 				componentParams.children = (
 					<ToolChildrenWrapper>
 						<div className="py-2">
-							<CodeChildren>{result.text.substring(0, 10000)}{result.text.length > 10000 ? '\n\n... (truncated)' : ''}</CodeChildren>
+							<CodeChildren>{(result.text ?? '').substring(0, 10000)}{(result.text ?? '').length > 10000 ? '\n\n... (truncated)' : ''}</CodeChildren>
 						</div>
 					</ToolChildrenWrapper>
 				);

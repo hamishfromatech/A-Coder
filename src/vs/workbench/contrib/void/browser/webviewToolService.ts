@@ -248,7 +248,32 @@ export class WebviewToolService extends Disposable implements IWebviewToolServic
 		// Use iframe for display (VS Code webview doesn't support Electron's <webview> tag)
 		// Interaction happens via hidden BrowserWindow in main process
 		const safeUrl = url.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-		return '<!DOCTYPE html>\n<html>\n<head>\n\t<meta http-equiv="Content-type" content="text/html;charset=UTF-8">\n\t<meta name="viewport" content="width=device-width, initial-scale=1.0">\n\t<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; frame-src * \'self\' http: https: data: blob: ws: wss:; img-src * data: blob:; script-src \'unsafe-inline\';">\n\t<style>\n\t\t* { box-sizing: border-box; }\n\t\thtml, body, iframe { height: 100%; width: 100%; margin: 0; padding: 0; border: none; overflow: hidden; }\n\t\tbody { background-color: #1e1e1e; }\n\t</style>\n</head>\n<body>\n\t<iframe id="browser-frame" src="' + safeUrl + '" sandbox="allow-scripts allow-forms allow-same-origin allow-downloads allow-popups allow-modals allow-popups-to-escape-sandbox" style="width:100%;height:100%;border:none;"></iframe>\n</body>\n</html>';
+		// Inline script: listen for executeJavaScript commands posted by the
+		// extension and eval them in the iframe's window, posting a
+		// executeJavaScriptResponse back so callers resolve instead of timing
+		// out. This mirrors the internal BrowserWindow path's contract. Eval runs
+		// in frame.contentWindow so it affects the loaded page (same-origin only;
+		// cross-origin frames throw a SecurityError, which we surface as an error
+		// response rather than hanging 10s for a timeout).
+		const bridgeScript = '<script>\n' +
+			'(function(){\n' +
+			'\tvar vscode = acquireVsCodeApi();\n' +
+			'\tvar frame = document.getElementById("browser-frame");\n' +
+			'\twindow.addEventListener("message", function(e){\n' +
+			'\t\tvar d = e.data;\n' +
+			'\t\tif (!d || d.command !== "executeJavaScript") return;\n' +
+			'\t\ttry {\n' +
+			'\t\t\tvar target = (frame && frame.contentWindow) ? frame.contentWindow : window;\n' +
+			'\t\t\tvar result = target.eval(d.javascript);\n' +
+			'\t\t\tvscode.postMessage({ command: "executeJavaScriptResponse", messageId: d.messageId, result: result });\n' +
+			'\t\t} catch (err) {\n' +
+			'\t\t\tvar msg = (err && err.message) ? err.message : String(err);\n' +
+			'\t\t\tvscode.postMessage({ command: "executeJavaScriptResponse", messageId: d.messageId, error: msg });\n' +
+			'\t\t}\n' +
+			'\t});\n' +
+			'})();\n' +
+			'</script>';
+		return '<!DOCTYPE html>\n<html>\n<head>\n\t<meta http-equiv="Content-type" content="text/html;charset=UTF-8">\n\t<meta name="viewport" content="width=device-width, initial-scale=1.0">\n\t<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; frame-src * \'self\' http: https: data: blob: ws: wss:; img-src * data: blob:; script-src \'unsafe-inline\';">\n\t<style>\n\t\t* { box-sizing: border-box; }\n\t\thtml, body, iframe { height: 100%; width: 100%; margin: 0; padding: 0; border: none; overflow: hidden; }\n\t\tbody { background-color: #1e1e1e; }\n\t</style>\n</head>\n<body>\n\t<iframe id="browser-frame" src="' + safeUrl + '" sandbox="allow-scripts allow-forms allow-same-origin allow-downloads allow-popups allow-modals allow-popups-to-escape-sandbox" style="width:100%;height:100%;border:none;"></iframe>\n\t' + bridgeScript + '\n</body>\n</html>';
 	}
 }
 

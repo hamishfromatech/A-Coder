@@ -18,6 +18,9 @@ export interface ICommandAnalyticsService {
 export class CommandAnalyticsService extends Disposable implements ICommandAnalyticsService {
 	_serviceBrand: undefined;
 
+	// Saved so dispose() can restore the original (un-wrapped) executeCommand.
+	private _originalExecuteCommand: ((commandId: string, ...args: any[]) => Promise<unknown>) | undefined;
+
 	constructor(
 		@ICommandService private readonly _commandService: ICommandService,
 		@IMetricsService private readonly _metricsService: IMetricsService,
@@ -28,12 +31,24 @@ export class CommandAnalyticsService extends Disposable implements ICommandAnaly
 
 	private _wrapCommandService(): void {
 		const originalExecuteCommand = this._commandService.executeCommand.bind(this._commandService);
+		this._originalExecuteCommand = originalExecuteCommand as any;
 
 		(this._commandService as any).executeCommand = async (commandId: string, ...args: any[]) => {
 			this._trackCommandExecution(commandId);
 
 			return (originalExecuteCommand as any)(commandId, ...args);
 		};
+	}
+
+	override dispose(): void {
+		// Restore the original executeCommand so we don't leave a stale wrapper
+		// pointing at a disposed service (and so the patch doesn't outlive this
+		// service instance).
+		if (this._originalExecuteCommand) {
+			(this._commandService as any).executeCommand = this._originalExecuteCommand;
+			this._originalExecuteCommand = undefined;
+		}
+		super.dispose();
 	}
 
 	private _trackCommandExecution(commandId: string): void {

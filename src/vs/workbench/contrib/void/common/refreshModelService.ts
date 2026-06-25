@@ -134,11 +134,23 @@ export class RefreshModelService extends Disposable implements IRefreshModelServ
 			}
 		}
 
-		// on mount (when get init settings state), and if a relevant feature flag changes, start refreshing models
+		// on mount (when get init settings state), and if autoRefreshModels changes,
+		// (re)initialize auto-polling. The settings emitter fires arg-less, so we
+		// can't filter by a changed-key payload — instead we track the previous
+		// value of autoRefreshModels and re-initialize only when it actually flips,
+		// to avoid churning the polling setup on every unrelated state change.
+		let prevAutoRefresh: boolean | undefined = undefined
 		voidSettingsService.waitForInitState.then(() => {
 			initializeAutoPollingAndOnChange()
+			prevAutoRefresh = voidSettingsService.state.globalSettings.autoRefreshModels
 			this._register(
-				voidSettingsService.onDidChangeState((type) => { if (typeof type === 'object' && type[1] === 'autoRefreshModels') initializeAutoPollingAndOnChange() })
+				voidSettingsService.onDidChangeState(() => {
+					const cur = voidSettingsService.state.globalSettings.autoRefreshModels
+					if (cur !== prevAutoRefresh) {
+						prevAutoRefresh = cur
+						initializeAutoPollingAndOnChange()
+					}
+				})
 			)
 		})
 

@@ -320,19 +320,30 @@ export const QuizResultWrapper: ResultWrapper<'create_quiz'> = ({ toolMessage, t
 
 	// Safety check for params
 	if (!params || !params.questions || !Array.isArray(params.questions)) {
+		// Spinner only while the tool is still running or awaiting approval; once
+		// settled with no valid params, show an explicit error state instead of an
+		// indefinite spinner.
+		const stillRunning = toolMessage.type === 'running_now' || toolMessage.type === 'tool_request'
 		const componentParams: ToolHeaderParams = {
 			title,
 			desc1,
-			isError: false,
+			isError: !stillRunning,
 			icon: <Brain size={12} strokeWidth={2.5} />,
 			isRejected,
 			isOpen: true,
 			children: (
 				<ToolChildrenWrapper>
-					<div className="flex items-center gap-2 py-2 mb-3">
-						<div className="w-3 h-3 border-2 border-void-accent border-t-transparent rounded-full animate-spin" />
-						<span className="text-xs italic text-void-fg-3">Loading quiz...</span>
-					</div>
+					{stillRunning ? (
+						<div className="flex items-center gap-2 py-2 mb-3">
+							<div className="w-3 h-3 border-2 border-void-accent border-t-transparent rounded-full animate-spin" />
+							<span className="text-xs italic text-void-fg-3">Loading quiz...</span>
+						</div>
+					) : (
+						<div className="flex items-center gap-2 py-2 mb-3 text-void-error">
+							<AlertTriangle size={14} />
+							<span className="text-xs">Quiz data missing or invalid.</span>
+						</div>
+					)}
 				</ToolChildrenWrapper>
 			)
 		};
@@ -372,7 +383,7 @@ export const QuizResultWrapper: ResultWrapper<'create_quiz'> = ({ toolMessage, t
 						score: results.score,
 						totalPoints: results.totalPoints,
 						percentage: results.totalPoints > 0 ? Math.round((results.score / results.totalPoints) * 100) : 0,
-						questionsCorrect: results.correctCount || 0,
+						questionsCorrect: results.results.filter(r => r.isCorrect).length,
 						totalQuestions: params.questions.length,
 						timestamp: Date.now()
 					});

@@ -264,8 +264,14 @@ const QuickToggleCard = ({
 	)
 }
 
+// Sound assets (.wav files) are not bundled in this build. The setting is still
+// persisted so it takes effect once assets are added; flip this to true when the
+// .wav files ship under browser/media/.
+const SOUND_ASSETS_AVAILABLE = false
+
 const TestSoundButton = () => {
 	const settingsState = useSettingsState()
+	const accessor = useAccessor()
 	const [isPlaying, setIsPlaying] = useState(false)
 
 	const handlePlaySound = useCallback(async () => {
@@ -274,24 +280,17 @@ const TestSoundButton = () => {
 
 		try {
 			setIsPlaying(true)
-			const accessor = useAccessor()
 			const soundService = accessor.get('ISoundService')
-			const dataUrl = await soundService.playSound(soundName)
-			console.log('[TestSoundButton] Received dataUrl:', dataUrl ? 'yes' : 'no')
-			if (dataUrl) {
-				const audio = new Audio(dataUrl)
-				audio.volume = 0.5
-				await audio.play()
-				console.log('[TestSoundButton] Audio playing...')
-			}
+			// playSound plays the asset internally and resolves with void.
+			await soundService.playSound(soundName)
 		} catch (e) {
 			console.warn('[A-Coder] Failed to preview sound:', e)
 		} finally {
 			setIsPlaying(false)
 		}
-	}, [settingsState.globalSettings.notificationSound])
+	}, [accessor, settingsState.globalSettings.notificationSound])
 
-	const disabled = settingsState.globalSettings.notificationSound === 'none' || !settingsState.globalSettings.notificationSound
+	const disabled = settingsState.globalSettings.notificationSound === 'none' || !settingsState.globalSettings.notificationSound || !SOUND_ASSETS_AVAILABLE
 
 	return (
 		<div className="flex items-center gap-3">
@@ -300,15 +299,17 @@ const TestSoundButton = () => {
 				disabled={disabled || isPlaying}
 				className={`
 					flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors
-					${disabled 
-						? 'bg-void-bg-3 text-void-fg-3 cursor-not-allowed' 
+					${disabled
+						? 'bg-void-bg-3 text-void-fg-3 cursor-not-allowed'
 						: 'bg-void-accent/10 hover:bg-void-accent/20 text-void-accent cursor-pointer'}
 				`}
 			>
 				{isPlaying ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
 				<span className="text-sm font-medium">{isPlaying ? 'Playing...' : 'Test Sound'}</span>
 			</button>
-			{disabled ? (
+			{!SOUND_ASSETS_AVAILABLE ? (
+				<span className="text-xs text-void-fg-3">Sound assets aren't bundled yet — selection is saved for when they ship.</span>
+			) : disabled ? (
 				<span className="text-xs text-void-fg-3">Select a sound to preview</span>
 			) : (
 				<span className="text-xs text-void-fg-3">Preview "{settingsState.globalSettings.notificationSound}.wav"</span>
@@ -1037,6 +1038,7 @@ const ComposioSettingsSection = ({
 	const composioState = useComposioServiceState()
 	const accessor = useAccessor()
 	const composioService = accessor.get('IComposioService')
+	const clipboardService = useClipboardService()
 
 	const [isLoadingToolkits, setIsLoadingToolkits] = useState(false)
 	const [apiKey, setApiKey] = useState(settingsState.globalSettings.composioApiKey || '')
@@ -3041,12 +3043,16 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 		if (t === 'Chats') {
 			// Export chat threads
 			dataStr = JSON.stringify(chatThreadsService.state, null, 2)
-			downloadName = 'void-chats.json'
+			// Note: was `void-chats.json` (Void Editor legacy). Renamed for A-Coder
+			// branding; import still accepts any filename via shape validation.
+			downloadName = 'a-coder-chats.json'
 		}
 		else if (t === 'Settings') {
 			// Export user settings
 			dataStr = JSON.stringify(voidSettingsService.state, null, 2)
-			downloadName = 'void-settings.json'
+			// Note: was `void-settings.json` (Void Editor legacy). Renamed for A-Coder
+			// branding; import still accepts any filename via shape validation.
+			downloadName = 'a-coder-settings.json'
 		}
 		else {
 			dataStr = ''
@@ -3081,9 +3087,19 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 				const json = JSON.parse(reader.result as string);
 
 				if (t === 'Chats') {
+					// ThreadsState must have an `allThreads` object. Reject anything
+					// else rather than blindly casting and corrupting chat history.
+					if (!json || typeof json !== 'object' || typeof json.allThreads !== 'object' || json.allThreads === null) {
+						throw new Error('Invalid chats file: expected an object with an "allThreads" property.')
+					}
 					chatThreadsService.dangerousSetState(json as any)
 				}
 				else if (t === 'Settings') {
+					// VoidSettingsState must have a `globalSettings` object. Reject
+					// unknown top-level shapes rather than overwriting settings.
+					if (!json || typeof json !== 'object' || typeof json.globalSettings !== 'object' || json.globalSettings === null) {
+						throw new Error('Invalid settings file: expected an object with a "globalSettings" property.')
+					}
 					voidSettingsService.dangerousSetState(json as any)
 				}
 

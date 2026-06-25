@@ -601,7 +601,7 @@ export const defaultGlobalSettings: GlobalSettings = {
 	morphModel: 'auto',
 	enableToolResultTOON: false,
 	maxAgentIterations: 50,
-	enableMediaGeneration: true, // Media generation enabled by default
+	enableMediaGeneration: false, // Off by default — don't enable a keyed feature with an empty API key
 	imageGenerationApiKey: '', // No API key by default
 	imageGenerationBaseUrl: 'http://localhost:11434/v1', // Default to Ollama
 	imageGenerationModel: 'x/flux2-klein:4b', // Default model for image generation

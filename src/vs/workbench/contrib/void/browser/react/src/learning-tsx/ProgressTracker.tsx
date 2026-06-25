@@ -77,56 +77,58 @@ export const ProgressTracker: React.FC<ProgressTrackerProps> = ({
 	const [badges, setBadges] = useState<Badge[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
 
-	// In a real implementation, this would fetch from the LearningProgressService
+	// Fetch real progress from the LearningProgressService (no mock data).
 	useEffect(() => {
-		// Simulate loading progress data
-		setTimeout(() => {
-			setStats({
-				totalSections: 5,
-				completedSections: 2,
-				readSections: ['section-0', 'section-1', 'section-2'],
-				exercisesAttempted: 3,
-				exercisesSolved: 2,
-				totalScore: 85,
-				timeSpent: 180, // 3 minutes
-				lastAccessed: Date.now(),
-			});
+		const learningProgressService = accessor.get('ILearningProgressService')
+		const progress = threadId && learningProgressService?.getThreadProgress
+			? learningProgressService.getThreadProgress(threadId)
+			: null
 
-			setQuizStats({
-				totalQuizzes: 2,
-				quizzesCompleted: 1,
-				averageScore: 75,
-				highestScore: 85,
-			});
+		if (!progress) {
+			// No recorded progress yet — leave stats null so the UI shows an empty state.
+			setStats(null)
+			setQuizStats(null)
+			setStreakInfo(null)
+			setBadges([])
+			setIsLoading(false)
+			return
+		}
 
-			setStreakInfo({
-				currentStreak: 3,
-				longestStreak: 7,
-				lastLearningDate: Date.now(),
-			});
+		const lessons = Object.values(progress.lessons ?? {})
+		const exercises = Object.values(progress.exercises ?? {})
+		const quizzes = progress.quizzes ?? []
 
-			setBadges([
-				{
-					id: 'first-lesson',
-					name: 'First Steps',
-					description: 'Complete your first lesson',
-					icon: '\u{1F3AF}',
-					unlockedAt: Date.now() - 86400000,
-					category: 'lessons',
-				},
-				{
-					id: 'streak-3',
-					name: 'On Fire!',
-					description: '3 day learning streak',
-					icon: '🔥',
-					unlockedAt: Date.now(),
-					category: 'streaks',
-				},
-			]);
+		const lessonForId = progress.lessons?.[lessonId]
+		const readSections = lessonForId?.sectionsRead ?? []
+		const completedSections = lessons.filter(l => l.completed).length
 
-			setIsLoading(false);
-		}, 500);
-	}, [lessonId, threadId]);
+		setStats({
+			totalSections: Math.max(readSections.length, completedSections, 1),
+			completedSections,
+			readSections,
+			exercisesAttempted: exercises.length,
+			exercisesSolved: exercises.filter(e => e.solved).length,
+			totalScore: lessons.reduce((sum, l) => sum + (l.totalScore ?? 0), 0),
+			timeSpent: progress.totalTimeSpent ?? lessons.reduce((sum, l) => sum + (l.timeSpent ?? 0), 0),
+			lastAccessed: Math.max(progress.lastUpdated ?? 0, ...lessons.map(l => l.lastAccessed ?? 0), 0),
+		})
+
+		setQuizStats({
+			totalQuizzes: quizzes.length,
+			quizzesCompleted: quizzes.length,
+			averageScore: quizzes.length > 0 ? Math.round(quizzes.reduce((sum, q) => sum + (q.percentage ?? 0), 0) / quizzes.length) : 0,
+			highestScore: quizzes.reduce((max, q) => Math.max(max, q.percentage ?? 0), 0),
+		})
+
+		setStreakInfo({
+			currentStreak: progress.streakCount ?? 0,
+			longestStreak: progress.streakCount ?? 0,
+			lastLearningDate: progress.lastUpdated ?? Date.now(),
+		})
+
+		setBadges(progress.badges ?? [])
+		setIsLoading(false)
+	}, [lessonId, threadId, accessor])
 
 	const sectionsProgress = stats ? (stats.completedSections / stats.totalSections) * 100 : 0;
 	const exercisesProgress = stats ? (stats.exercisesSolved / stats.exercisesAttempted) * 100 : 0;

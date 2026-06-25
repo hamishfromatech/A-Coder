@@ -418,11 +418,14 @@ export class BrowserChannel implements IServerChannel {
 			// Wait for DOM to be ready
 			await new Promise(resolve => setTimeout(resolve, 1000));
 
-			// Click the element using executeJavaScript
+			// Click the element using executeJavaScript.
+			// The selector is passed as a JSON.stringify'd IIFE argument rather than
+			// interpolated into the JS source — interpolation (even single-quote-escaped)
+			// lets a crafted selector break out of the string literal and inject code.
 			const result = await browserWindow.webContents.executeJavaScript(`
-				(() => {
+				((sel) => {
 					try {
-						const element = document.querySelector('${selector.replace(/'/g, "\\'")}');
+						const element = document.querySelector(sel);
 						if (!element) {
 							return { success: false, error: 'Element not found' };
 						}
@@ -439,7 +442,7 @@ export class BrowserChannel implements IServerChannel {
 					} catch (e) {
 						return { success: false, error: e.toString() };
 					}
-				})();
+				})(${JSON.stringify(selector)})
 			`);
 
 			// Clean up
@@ -523,14 +526,13 @@ export class BrowserChannel implements IServerChannel {
 			// Wait for DOM to be ready
 			await new Promise(resolve => setTimeout(resolve, 1000));
 
-			// Escape text for JavaScript string
-			const escapedText = text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n');
-
-			// Type into the element using executeJavaScript
+			// Type into the element using executeJavaScript.
+			// Selector and text are passed as JSON.stringify'd IIFE arguments (see
+			// handleClickElement) to avoid source-string injection.
 			const result = await browserWindow.webContents.executeJavaScript(`
-				(() => {
+				((sel, txt) => {
 					try {
-						const element = document.querySelector('${selector.replace(/'/g, "\\'")}');
+						const element = document.querySelector(sel);
 						if (!element) {
 							return { success: false, error: 'Element not found' };
 						}
@@ -547,12 +549,12 @@ export class BrowserChannel implements IServerChannel {
 
 						// Type the text
 						if (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') {
-							element.value = '${escapedText}';
+							element.value = txt;
 							// Trigger input event for React/forms
 							element.dispatchEvent(new Event('input', { bubbles: true }));
 							element.dispatchEvent(new Event('change', { bubbles: true }));
 						} else if (element.isContentEditable) {
-							element.textContent = '${escapedText}';
+							element.textContent = txt;
 							// Trigger input event
 							element.dispatchEvent(new Event('input', { bubbles: true }));
 						} else {
@@ -563,7 +565,7 @@ export class BrowserChannel implements IServerChannel {
 					} catch (e) {
 						return { success: false, error: e.toString() };
 					}
-				})();
+				})(${JSON.stringify(selector)}, ${JSON.stringify(text)})
 			`);
 
 			// Clean up

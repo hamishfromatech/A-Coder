@@ -286,9 +286,11 @@ class MCPService extends Disposable implements IMCPService {
 		const addedServerNames = newConfigFileNames.filter(serverName => !oldConfigFileNames.includes(serverName)); // in new and not in old
 		const removedServerNames = oldConfigFileNames.filter(serverName => !newConfigFileNames.includes(serverName)); // in old and not in new
 
-		// set isOn to any new servers in the config
+		// set isOn to any new servers in the config. New servers default to OFF
+		// so first launch (and the bundled sample servers) don't `npx -y` download
+		// / spawn a process without explicit consent — the user toggles them on.
 		const addedUserStateOfName: MCPUserStateOfName = {}
-		for (const name of addedServerNames) { addedUserStateOfName[name] = { isOn: true } }
+		for (const name of addedServerNames) { addedUserStateOfName[name] = { isOn: false } }
 		await this.voidSettingsService.addMCPUserStateOfNames(addedUserStateOfName);
 
 		// delete isOn for any servers that no longer show up in the config

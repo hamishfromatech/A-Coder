@@ -141,7 +141,7 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 	}
 
 	const planInfo = getPlanInfo()
-	const isSuccess = result && !planResult.error
+	const isSuccess = planResult && !planResult.error
 
 	const getToolIcon = () => {
 		switch (toolMessage.name) {

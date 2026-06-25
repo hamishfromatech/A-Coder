@@ -287,6 +287,7 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 	const fileService = accessor.get('IFileService');
 	const workspaceContextService = accessor.get('IWorkspaceContextService');
 	const notificationService = accessor.get('INotificationService');
+	const learningProgressService = accessor.get('ILearningProgressService');
 
 	const [lessonState, setLessonState] = useState<LessonState>({
 		sections: {},
@@ -347,6 +348,22 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 		});
 	}, [parsedSections]);
 
+	const { trigger: triggerCelebration } = useCelebration();
+
+	// Real learning stats from the progress service (falls back to zeros when
+	// there's no thread or no recorded progress yet) instead of hardcoded values.
+	const learningStats = useMemo(() => {
+		if (!threadId || !learningProgressService?.getThreadProgress) {
+			return { streak: 0, lessonsCompleted: 0, exercisesSolved: 0 }
+		}
+		const tp = learningProgressService.getThreadProgress(threadId)
+		return {
+			streak: tp?.streakCount ?? 0,
+			lessonsCompleted: tp?.totalLessonsCompleted ?? 0,
+			exercisesSolved: tp?.totalExercisesSolved ?? 0,
+		}
+	}, [threadId, learningProgressService])
+
 	const handleExportMarkdown = async () => {
 		setExporting(true);
 		try {
@@ -367,7 +384,7 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 				const state = lessonState.sections[section.id];
 				md += `## ${section.title} ${state?.completed ? '✅' : ''}\n\n`;
 				md += `${section.content}\n\n`;
-				
+
 				if (state?.note) {
 					md += `### My Notes\n> ${state.note}\n\n`;
 				}
@@ -388,10 +405,10 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 
 			// Create directory if it doesn't exist
 			try { await fileService.createFolder(lessonDir); } catch (e) { notificationService.error(`Couldn't create lesson folder: ${e instanceof Error ? e.message : String(e)}`) }
-			
+
 			// Write file
 			await fileService.writeFile(fileUri, VSBuffer.fromString(md));
-			
+
 			// Show success notification or celebration
 			triggerCelebration('burst', 1000);
 		} catch (err) {
@@ -401,8 +418,6 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 			setExporting(false);
 		}
 	};
-
-	const { trigger: triggerCelebration } = useCelebration();
 
 	// Handlers
 	const handleSectionToggle = useCallback((sectionId: string, isExpanded: boolean) => {
@@ -472,7 +487,7 @@ export const LearningPreview: React.FC<LearningPreviewProps> = ({
 			{showDashboard && (
 				<LearningDashboard
 					progress={lessonState}
-					stats={{ streak: 3, lessonsCompleted: 2, exercisesSolved: 5 }}
+					stats={learningStats}
 					onClose={() => setShowDashboard(false)}
 				/>
 			)}

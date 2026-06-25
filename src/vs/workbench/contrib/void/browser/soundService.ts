@@ -6,6 +6,7 @@
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { registerSingleton, InstantiationType } from '../../../../platform/instantiation/common/extensions.js';
 import { FileAccess } from '../../../../base/common/network.js';
+import { voidDevLog, voidDevWarn } from '../common/devLog.js';
 
 export interface ISoundService {
 	readonly _serviceBrand: undefined;
@@ -36,7 +37,7 @@ export class SoundService implements ISoundService {
 			const fileName = `${soundName}.wav`;
 			const url = FileAccess.asBrowserUri(`vs/workbench/contrib/void/browser/media/${fileName}`).toString(true);
 
-			console.log('[SoundService] Playing sound:', soundName, 'from URL:', url);
+			voidDevLog('[SoundService] Playing sound:', soundName, 'from URL:', url);
 
 			let audio = this.sounds.get(url);
 			if (audio) {
@@ -47,7 +48,9 @@ export class SoundService implements ISoundService {
 				this.sounds.set(url, audio);
 			}
 		} catch (e) {
-			console.error('[SoundService] Error playing sound:', e);
+			// Most commonly the .wav asset isn't present in this build. Fail quietly
+			// with a dev-only warning instead of spamming the user-facing console.
+			voidDevWarn('[SoundService] Could not play sound (asset may be missing):', soundName, e);
 		} finally {
 			this.playingSounds.delete(soundName);
 		}
@@ -62,21 +65,21 @@ export class SoundService implements ISoundService {
 			audio.volume = 1.0;
 
 			audio.addEventListener('ended', () => {
-				console.log('[SoundService] Sound ended:', url);
+				voidDevLog('[SoundService] Sound ended:', url);
 				resolve(audio);
 			});
 
 			audio.addEventListener('error', (e) => {
-				console.error('[SoundService] Audio error event:', e.error, 'url:', url);
+				voidDevWarn('[SoundService] Audio error event:', e.error, 'url:', url);
 				reject(e.error || new Error('Audio error'));
 			});
 
 			audio.addEventListener('canplaythrough', () => {
-				console.log('[SoundService] Audio can play through:', url);
+				voidDevLog('[SoundService] Audio can play through:', url);
 			});
 
 			audio.play().catch(e => {
-				console.error('[SoundService] Audio play() rejected:', e, 'url:', url);
+				voidDevWarn('[SoundService] Audio play() rejected:', e, 'url:', url);
 				reject(e);
 			});
 		});

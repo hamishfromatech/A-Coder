@@ -6,7 +6,7 @@
 import { IServerChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { ApiServer } from './apiServer.js';
 import { ApiRouter } from './api/apiRouter.js';
-import { ApiRoutes } from './api/apiRoutes.js';
+import { ApiRoutes, ApiVersionProvider } from './api/apiRoutes.js';
 import { ApiChannel } from './apiChannel.js';
 
 /**
@@ -20,7 +20,8 @@ export class ApiServiceManager {
 
 	constructor(
 		private readonly getSettings: () => { enabled: boolean, port: number, tokens: string[], tunnelUrl?: string },
-		private readonly validateToken: (token: string) => boolean
+		private readonly validateToken: (token: string) => boolean,
+		private readonly getVersion: ApiVersionProvider,
 	) {
 		this.apiChannel = new ApiChannel();
 	}
@@ -59,7 +60,7 @@ export class ApiServiceManager {
 						.then(resolve)
 						.catch(reject);
 				});
-			});
+			}, this.getVersion);
 
 			// Connect router to server
 			this.apiServer.onRequest((event) => {

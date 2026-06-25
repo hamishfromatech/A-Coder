@@ -6,9 +6,10 @@
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { IEnvironmentMainService } from '../../../../platform/environment/electron-main/environmentMainService.js';
 import { IProductService } from '../../../../platform/product/common/productService.js';
-import { IUpdateService, StateType } from '../../../../platform/update/common/update.js';
+import { IUpdateService, State, StateType } from '../../../../platform/update/common/update.js';
 import { IVoidUpdateService } from '../common/voidUpdateService.js';
 import { VoidCheckUpdateRespose } from '../common/voidUpdateServiceTypes.js';
+import { voidDevLog } from '../common/devLog.js';
 
 
 
@@ -38,55 +39,93 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 		// 		return { message: null } as const
 		// }
 
-		this._updateService.checkForUpdates(false) // implicity check, then handle result ourselves
+		await this._updateService.checkForUpdates(false) // implicity check, then handle result ourselves
 
-		console.log('updateState', this._updateService.state)
+		// checkForUpdates() resolves as soon as the check is *kicked off* — the
+		// async state machine (Idle -> CheckingForUpdates -> Idle|AvailableForDownload|…)
+		// continues via onStateChange. Reading `state` synchronously here would
+		// return stale state (often CheckingForUpdates), so wait for it to settle
+		// before reporting. Bounded by a timeout so we never hang.
+		let state = this._updateService.state
+		if (state.type === StateType.CheckingForUpdates) {
+			state = await this._waitForStateSettle(30 * 1000)
+		}
 
-		if (this._updateService.state.type === StateType.Uninitialized) {
+		voidDevLog('updateState', state)
+
+		if (state.type === StateType.Uninitialized) {
 			// The update service hasn't been initialized yet
 			return { message: explicit ? 'Checking for updates soon...' : null, action: explicit ? 'reinstall' : undefined } as const
 		}
 
-		if (this._updateService.state.type === StateType.Idle) {
+		if (state.type === StateType.Idle) {
 			// No updates currently available
 			return { message: explicit ? 'No updates found!' : null, action: explicit ? 'reinstall' : undefined } as const
 		}
 
-		if (this._updateService.state.type === StateType.CheckingForUpdates) {
-			// Currently checking for updates
+		if (state.type === StateType.CheckingForUpdates) {
+			// Still checking after the settle timeout — report in-progress
 			return { message: explicit ? 'Checking for updates...' : null } as const
 		}
 
-		if (this._updateService.state.type === StateType.AvailableForDownload) {
+		if (state.type === StateType.AvailableForDownload) {
 			// Update available but requires manual download (mainly for Linux)
 			return { message: 'A new update is available!', action: 'download', } as const
 		}
 
-		if (this._updateService.state.type === StateType.Downloading) {
+		if (state.type === StateType.Downloading) {
 			// Update is currently being downloaded
 			return { message: explicit ? 'Currently downloading update...' : null } as const
 		}
 
-		if (this._updateService.state.type === StateType.Downloaded) {
+		if (state.type === StateType.Downloaded) {
 			// Update has been downloaded but not yet ready
 			return { message: explicit ? 'An update is ready to be applied!' : null, action: 'apply' } as const
 		}
 
-		if (this._updateService.state.type === StateType.Updating) {
+		if (state.type === StateType.Updating) {
 			// Update is being applied
 			return { message: explicit ? 'Applying update...' : null } as const
 		}
 
-		if (this._updateService.state.type === StateType.Ready) {
+		if (state.type === StateType.Ready) {
 			// Update is ready
-			const version = this._updateService.state.update?.version
+			const version = state.update?.version
 			return { message: 'Restart A-Coder to update!', action: 'restart', version } as const
 		}
 
-		if (this._updateService.state.type === StateType.Disabled) {
+		if (state.type === StateType.Disabled) {
 			return await this._manualCheckGHTagIfDisabled(explicit)
 		}
 		return null
+	}
+
+	/**
+	 * Wait for the update service to leave the `CheckingForUpdates` state
+	 * (resolving with the new state), or fall back to the current state after
+	 * `timeoutMs`. `checkForUpdates` resolves before the check completes, so the
+	 * caller must wait on `onStateChange` to observe the real outcome.
+	 */
+	private _waitForStateSettle(timeoutMs: number): Promise<State> {
+		return new Promise<State>((resolve) => {
+			let done = false
+			let timer: ReturnType<typeof setTimeout> | undefined
+			const sub = this._updateService.onStateChange(s => {
+				if (s.type !== StateType.CheckingForUpdates && !done) {
+					done = true
+					sub.dispose()
+					if (timer) clearTimeout(timer)
+					resolve(s)
+				}
+			})
+			timer = setTimeout(() => {
+				if (!done) {
+					done = true
+					sub.dispose()
+					resolve(this._updateService.state)
+				}
+			}, timeoutMs)
+		})
 	}
 
 
