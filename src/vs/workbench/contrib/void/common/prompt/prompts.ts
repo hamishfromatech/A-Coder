@@ -123,11 +123,23 @@ ${tripleTick[1]}`
 
 
 
+export type ToolParamInfo = {
+	description: string
+	// Optional JSON-Schema fields, populated for MCP/ACP tools whose inputSchema declares
+	// them. Builtin A-Coder tools only carry `description` (all params are strings), so these
+	// stay unset for builtins. When present, the OpenAI-compatible tool builder emits the
+	// real type/enum/items instead of flattening everything to `type: 'string'` (which is
+	// lossy for llama.cpp and other schema-aware OpenAI-compatible servers).
+	type?: string
+	enum?: unknown[]
+	items?: unknown
+}
+
 export type InternalToolInfo = {
 	name: string,
 	description: string,
 	params: {
-		[paramName: string]: { description: string }
+		[paramName: string]: ToolParamInfo
 	},
 	// Only if the tool is from an MCP server
 	mcpServerName?: string,
@@ -171,7 +183,7 @@ export const builtinTools: {
 		name: string;
 		description: string;
 		// more params can be generated than exist here, but these params must be a subset of them
-		params: Partial<{ [paramName in keyof SnakeCaseKeys<BuiltinToolCallParams[T]>]: { description: string } }>
+		params: Partial<{ [paramName in keyof SnakeCaseKeys<BuiltinToolCallParams[T]>]: ToolParamInfo }>
 	}
 } = {
 	// --- context-gathering (read/search/list) ---
@@ -1477,6 +1489,44 @@ Example: [
 		}
 	},
 
+	run_subagent: {
+		name: 'run_subagent',
+		description: `Spawns a focused sub-agent with its OWN isolated context and a RESTRICTED tool set to work on a well-scoped subtask, then returns its result. Use this to parallelize/delegate work, keep your own context small, and let a specialist do a thorough job. The subagent runs its own full read→edit→run loop autonomously and reports back a summary.
+
+**When to use:**
+- A focused, self-contained subtask you want fully completed before you continue (e.g. "implement the validation helper in utils.ts", "fix the failing test in auth.test.ts").
+- A read-only investigation you want done thoroughly without cluttering your context (e.g. "find every place we hardcode the version", "map the dependencies of the auth module").
+- A code review or architecture analysis of a file/module/diff.
+
+**Subagent types** (pass as subagent_type):
+- \`general\` (default): can read, edit, and run commands autonomously. Use for focused implementation/fix subtasks.
+- \`code-reviewer\`: read-only. Security/quality/maintainability review of a file, module, or diff.
+- \`architect\`: read-only. Analyze or design structure; explain how code works or propose a design.
+- \`researcher\`: read-only. Answer factual questions about the codebase with file:line citations.
+- \`test-runner\`: read + run commands. Run a test/build/lint suite and report failures + root causes.
+
+**Foreground vs background:**
+- Leave background=false (default) for subtasks you need the result of NOW. The tool returns the subagent's summary when it finishes; you then continue.
+- Set background=true for long-running work you want to kick off and continue without waiting (e.g. "run the full test suite and tell me what fails"). The tool returns immediately with a subagent id; the result is delivered as a notification and is visible in the Subagents panel.
+
+**Guidance:**
+- Give the subagent a single, well-scoped task in \`description\`. Don't delegate vague multi-part requests.
+- Use \`prompt\` to add specific constraints/context the subagent should follow.
+- Prefer the specialized read-only types (code-reviewer/researcher/architect) when the subtask is investigative — they keep your context clean and can't accidentally edit files.
+- Subagents cannot spawn further subagents.
+- After a foreground subagent returns, verify its work (e.g. read the files it claims to have changed) before relying on its summary.
+
+**External tools (MCP/Composio/ACP):** by default subagents only get builtin tools. Set \`allow_external_tools=true\` to also let the subagent use the user's connected MCP/Composio/ACP tools (e.g. a GitHub MCP server, a Composio integration). External tool calls are still gated by the user's "MCP tools" auto-approve setting — if that is off, the subagent will report the tool as unavailable rather than run it autonomously. Use this when the subtask genuinely needs an external service.`,
+		params: {
+			description: { description: 'Required. The single, well-scoped task for the subagent to complete. Be specific: which files, what change or what question.' },
+			subagent_type: { description: 'Optional. One of: general, code-reviewer, architect, researcher, test-runner. Defaults to general.' },
+			prompt: { description: 'Optional. Extra instructions/constraints appended to the subagent role prompt.' },
+			tools: { description: 'Optional. Comma-separated list of builtin tool names to override the subagent type default allowlist (e.g. "read_file,search_in_file,edit_file").' },
+			background: { description: 'Optional. true to run detached (return immediately, result delivered via notification); false (default) to wait for the result.' },
+			allow_external_tools: { description: 'Optional. true to also give the subagent access to connected MCP/Composio/ACP tools (gated by the user\'s "MCP tools" auto-approve setting). Default false.' },
+		}
+	},
+
 } satisfies { [T in keyof BuiltinToolResultType]: InternalToolInfo }
 
 
@@ -1553,6 +1603,9 @@ const agentModeTools: BuiltinToolName[] = [
 	'generate_image',
 	// Generative UI - interactive forms for user input
 	'render_form',
+	// Subagent delegation — let the agent hand focused subtasks to a
+	// specialist with its own context + restricted tools (like Task/subagents).
+	'run_subagent',
 ]
 
 const studentModeTools: BuiltinToolName[] = [
@@ -1585,7 +1638,7 @@ const studentModeTools: BuiltinToolName[] = [
 	'edit_file',
 ]
 
-export const availableTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined, composioTools: InternalToolInfo[] | undefined, acpTools?: InternalToolInfo[] | undefined, options?: { enableMorphFastContext?: boolean; enableMediaGeneration?: boolean }) => {
+export const availableTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined, composioTools: InternalToolInfo[] | undefined, acpTools?: InternalToolInfo[] | undefined, options?: { enableMorphFastContext?: boolean; enableMediaGeneration?: boolean; allowedTools?: string[]; allowExternalTools?: boolean }) => {
 
 	// Select tools based on mode
 	// - chat (Chat): No tools - pure conversation
@@ -1624,7 +1677,25 @@ export const availableTools = (chatMode: ChatMode | null, mcpTools: InternalTool
 			...effectiveACPTools ?? [],
 		]
 
-	return tools
+	// Optional allowlist filter (used by SubagentService to restrict a subagent's
+	// tool set). When provided, keep only tools whose name is in the list. This is
+	// the single chokepoint that restricts BOTH the native tool defs built by the
+	// per-provider impl (openai/anthropic/gemini) AND the text tool descriptions
+	// emitted into the system prompt for XML/marker-style models — so a restricted
+	// subagent sees the same tool set regardless of provider or tool-calling style.
+	//
+	// `allowExternalTools` (subagents): when true, connected external tools
+	// (MCP/Composio/ACP — identified by having an mcpServerName or acpServerName)
+	// are kept regardless of the name allowlist, so a subagent can opt into the
+	// user's external tools without the caller having to enumerate them. Builtin
+	// tools are still subject to the name allowlist. Undefined/true for the main
+	// agent means no filtering at all.
+	const allowExternal = !!options?.allowExternalTools
+	const finalTools = options?.allowedTools && options.allowedTools.length > 0
+		? tools?.filter(t => (allowExternal && (t.mcpServerName || t.acpServerName)) || options.allowedTools!.includes(t.name))
+		: tools
+
+	return finalTools
 }
 
 // ======================================================== XML Tool Calling ========================================================
@@ -1769,7 +1840,7 @@ function newFunction() {
 // ======================================================== chat (normal, gather, agent) ========================================================
 
 
-export const chat_systemMessage = ({ workspaceFolders, openedURIs, activeURI, persistentTerminalIDs, directoryStr, chatMode: mode, mcpTools, composioTools, acpTools, specialToolFormat, studentLevel, enableMorphFastContext, enableMediaGeneration }: { workspaceFolders: string[], directoryStr: string, openedURIs: string[], activeURI: string | undefined, persistentTerminalIDs: string[], chatMode: ChatMode, mcpTools: InternalToolInfo[] | undefined, composioTools: InternalToolInfo[] | undefined, acpTools?: InternalToolInfo[] | undefined, specialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' | 'marker-style' | undefined, studentLevel?: 'beginner' | 'intermediate' | 'advanced', enableMorphFastContext?: boolean, enableMediaGeneration?: boolean }) => {
+export const chat_systemMessage = ({ workspaceFolders, openedURIs, activeURI, persistentTerminalIDs, directoryStr, chatMode: mode, mcpTools, composioTools, acpTools, specialToolFormat, studentLevel, enableMorphFastContext, enableMediaGeneration, allowedTools, allowExternalTools }: { workspaceFolders: string[], directoryStr: string, openedURIs: string[], activeURI: string | undefined, persistentTerminalIDs: string[], chatMode: ChatMode, mcpTools: InternalToolInfo[] | undefined, composioTools: InternalToolInfo[] | undefined, acpTools?: InternalToolInfo[] | undefined, specialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' | 'marker-style' | undefined, studentLevel?: 'beginner' | 'intermediate' | 'advanced', enableMorphFastContext?: boolean, enableMediaGeneration?: boolean, allowedTools?: string[], allowExternalTools?: boolean }) => {
 
 	// ============ IDENTITY ============
 	const identityRole = mode === 'code' ? 'agent' : mode === 'learn' ? 'tutor' : 'assistant'
@@ -1830,7 +1901,7 @@ ${persistentTerminalIDs.join(', ')}` : ''}
 </communication>`
 
 	// ============ TOOL CALLING ============
-	const allTools = availableTools(mode, mcpTools, composioTools, acpTools, { enableMorphFastContext, enableMediaGeneration })
+	const allTools = availableTools(mode, mcpTools, composioTools, acpTools, { enableMorphFastContext, enableMediaGeneration, allowedTools, allowExternalTools })
 	let toolCalling = ''
 
 	if (allTools && allTools.length > 0 && (mode === 'code' || mode === 'plan' || mode === 'learn')) {

@@ -696,6 +696,17 @@ export class TokenCountingService extends Disposable implements ITokenCountingSe
 			return 8192;
 		}
 
+		// llama.cpp servers run with whatever -c/--ctx-size the user launched them with, which
+		// we can't infer from the model name. Default conservatively so rolling-window
+		// compression engages and prevents the server from silently context-shift-truncating
+		// long threads (a 131985 assumption would never trigger compression and let the server
+		// drop tokens mid-conversation with no warning). Users running a larger context should
+		// set it in Model Management (override), which is respected at the top of this function.
+		if (providerName === 'llamaCpp') {
+			console.warn(`[TokenCountingService] Unknown llama.cpp model ${modelName}, defaulting context window to 8192. Set the real -c/--ctx-size in Model Management if your server uses a larger context.`);
+			return 8192;
+		}
+
 		// Default to 131985 for unknown models (matches common modern model contexts)
 		console.warn(`[TokenCountingService] Unknown context window for ${modelName}, defaulting to 131985`);
 		return 131985;

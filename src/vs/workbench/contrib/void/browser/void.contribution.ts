@@ -40,6 +40,8 @@ import './convertToLLMMessageWorkbenchContrib.js'
 import './toolsService.js'
 import './terminalToolService.js'
 import './webviewToolService.js'
+// subagents / background tasks (delegates to ToolsService + LLMMessageService)
+import './subagentService.js'
 
 // register Thread History
 import './chatThreadService.js'

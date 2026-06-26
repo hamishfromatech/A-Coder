@@ -881,6 +881,29 @@ const ollamaIncludeInPayloadReasoning = (reasoningInfo: SendableReasoningInfo) =
 	return { think: true }
 }
 
+// llama.cpp server uses its own reasoning controls, NOT OpenAI's `reasoning_effort`.
+// https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md
+//   - `reasoning_format`: how the server parses think tags. 'deepseek' splits them into
+//     the `reasoning_content` delta field (matching our output config), 'none' leaves
+//     them inline in `content`.
+//   - `chat_template_kwargs.enable_thinking`: per-completion on/off toggle honored by
+//     Jinja chat templates (e.g. Qwen3). The server stringifies+dumps this value, so a
+//     JSON boolean is correct.
+// We always set `reasoning_format` so reasoning (if emitted) lands in `reasoning_content`
+// rather than leaking as raw `...`/`...` tags into the displayed text.
+const llamaCppIncludeInPayloadReasoning = (reasoningInfo: SendableReasoningInfo) => {
+	// Unrecognized model: let the template decide whether to think, but still parse any
+	// think tags into reasoning_content so we capture reasoning if the model emits it.
+	if (!reasoningInfo) return { reasoning_format: 'deepseek' }
+	if (!reasoningInfo.isReasoningEnabled) {
+		// Reasoning explicitly off: tell the template not to think and emit raw text.
+		return { reasoning_format: 'none', chat_template_kwargs: { enable_thinking: false } }
+	}
+	// Reasoning on: enable thinking and split output into reasoning_content (deepseek-style,
+	// matching the configured nameOfFieldInDelta: 'reasoning_content').
+	return { reasoning_format: 'deepseek', chat_template_kwargs: { enable_thinking: true } }
+}
+
 const openAISettings: VoidStaticProviderInfo = {
 	modelOptions: openAIModelOptions,
 	modelOptionsFallback: (modelName) => {
@@ -2056,8 +2079,10 @@ const llamaCppSettings: VoidStaticProviderInfo = {
 		return res
 	},
 	providerReasoningIOSettings: {
-		// llama.cpp supports OpenAI-style reasoning
-		input: { includeInPayload: openAICompatIncludeInPayloadReasoning },
+		// llama.cpp exposes reasoning via `reasoning_content` (deepseek-style), controlled by
+		// `reasoning_format` + `chat_template_kwargs.enable_thinking` — NOT OpenAI's
+		// `reasoning_effort`. See llamaCppIncludeInPayloadReasoning above.
+		input: { includeInPayload: llamaCppIncludeInPayloadReasoning },
 		output: { nameOfFieldInDelta: 'reasoning_content' },
 	},
 }

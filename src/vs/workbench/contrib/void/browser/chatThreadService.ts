@@ -135,7 +135,7 @@ const SEQUENTIAL_ONLY_TOOLS: ReadonlySet<string> = new Set([
  * @param toolCalls - Array of tool calls to analyze
  * @returns Object with parallelSafe and sequential arrays
  */
-function analyzeParallelToolSafety(
+export function analyzeParallelToolSafety(
 	toolCalls: RawToolCallObj[]
 ): { parallelSafe: RawToolCallObj[]; sequential: RawToolCallObj[] } {
 	const parallelSafe: RawToolCallObj[] = []
@@ -590,6 +590,7 @@ export type ThreadStreamState = {
 		interrupt: 'not_needed' | Promise<() => void>; // calling this should have no effect on state - would be too confusing. it just cancels the tool
 		tokenUsage?: { used: number, total: number, percentage: number };
 		stopReason?: string; // The LLM stop_reason/finish_reason from the last response
+		cachedTokens?: number; // Prompt tokens served from the server's cache (e.g. llama.cpp cache_n / OpenAI cached_tokens), surfaced post-completion
 	}
 }
 
@@ -1927,7 +1928,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 				nAttempts += 1
 
 				type ResTypes =
-					| { type: 'llmDone', toolCalls?: RawToolCallObj[], info: { fullText: string, fullReasoning: string, anthropicReasoning: AnthropicReasoning[] | null }, usage?: { promptTokens: number; completionTokens: number; }, stopReason?: string }
+					| { type: 'llmDone', toolCalls?: RawToolCallObj[], info: { fullText: string, fullReasoning: string, anthropicReasoning: AnthropicReasoning[] | null }, usage?: { promptTokens: number; completionTokens: number; cachedTokens?: number; }, stopReason?: string }
 					| { type: 'llmError', error?: { message: string; fullError: Error | null; } }
 					| { type: 'llmAborted' }
 
@@ -2219,7 +2220,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 				}
 
 				// llm res success
-				const { toolCalls, info, stopReason } = llmRes
+				const { toolCalls, info, stopReason, usage: llmUsage } = llmRes
 
 									const responseLog = JSON.stringify({
 										hasToolCalls: !!toolCalls && toolCalls.length > 0,
@@ -2297,7 +2298,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 					this._addMessageToThread(threadId, { role: 'assistant', displayContent: info.fullText, reasoning: info.fullReasoning, anthropicReasoning: info.anthropicReasoning })
 				}
 
-				this._setStreamState(threadId, { isRunning: 'idle', interrupt: 'not_needed', stopReason }) // just decorative for clarity
+				this._setStreamState(threadId, { isRunning: 'idle', interrupt: 'not_needed', stopReason, cachedTokens: llmUsage?.cachedTokens }) // just decorative for clarity
 
 				// call tool(s) if there are any
 				if (toolCalls && toolCalls.length > 0) {
@@ -2413,7 +2414,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 						shouldSendAnotherMessage = true;
 					}
 
-					this._setStreamState(threadId, { isRunning: 'idle', interrupt: 'not_needed' }) // just decorative, for clarity
+					this._setStreamState(threadId, { isRunning: 'idle', interrupt: 'not_needed', cachedTokens: llmUsage?.cachedTokens }) // just decorative, for clarity
 				}
 				// Handle text-only responses (no tool call)
 				// Following Claude Code / Continue pattern: If no tool call, task is complete.

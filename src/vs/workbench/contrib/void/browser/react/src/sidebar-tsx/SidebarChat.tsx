@@ -6,7 +6,8 @@
 import React, { ButtonHTMLAttributes, FormEvent, FormHTMLAttributes, Fragment, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 
-import { useAccessor, useChatThreadsState, useChatThreadsStreamState, useSettingsState, useActiveURI, useCommandBarState, useFullChatThreadsStreamState, useIsDark } from '../util/services.js';
+import { useAccessor, useChatThreadsState, useChatThreadsStreamState, useSettingsState, useActiveURI, useCommandBarState, useFullChatThreadsStreamState, useIsDark, useSubagents } from '../util/services.js';
+import { SubagentRun, SubagentStatus } from '../../../subagentService.js';
 import { ScrollType } from '../../../../../../../editor/common/editorCommon.js';
 
 import { ChatMarkdownRender, ChatMessageLocation, getApplyBoxId } from '../markdown/ChatMarkdownRender.js';
@@ -22,7 +23,7 @@ import { ChatMode, displayInfoOfProviderName, FeatureName, isFeatureNameDisabled
 import { ICommandService } from '../../../../../../../platform/commands/common/commands.js';
 import { WarningBox } from '../void-settings-tsx/WarningBox.js';
 import { getModelCapabilities, getIsReasoningEnabledState } from '../../../../common/modelCapabilities.js';
-import { AlertTriangle, ChevronRight, ChevronDown, X, Copy as CopyIcon, CircleEllipsis, Play, Settings, ArrowUp, ArrowDown, Trash2, Send, Circle, Loader2, Brain, Check, Pencil, CirclePlus, File as FileIcon, Folder as FolderIcon, Text as TextIcon, SkipForward, MessageCircle, RotateCw, FileText, FileCode, FileJson, Target, CheckCircle, Lightbulb, Trophy, Mic } from 'lucide-react';
+import { AlertTriangle, ChevronRight, ChevronDown, X, Copy as CopyIcon, CircleEllipsis, Play, Settings, ArrowUp, ArrowDown, Trash2, Send, Circle, Loader2, Brain, Check, Pencil, CirclePlus, File as FileIcon, Folder as FolderIcon, Text as TextIcon, SkipForward, MessageCircle, RotateCw, FileText, FileCode, FileJson, Target, CheckCircle, Lightbulb, Trophy, Mic, Clock, Ban, Cpu } from 'lucide-react';
 import { ChatMessage, CheckpointEntry, StagingSelectionItem, ToolMessage, ImageAttachment, isToolMessage, hasParallelBatchId } from '../../../../common/chatThreadServiceTypes.js';
 import { BuiltinToolName, ToolName, IsRunningType, approvalTypeOfBuiltinToolName, LintErrorItem } from '../../../../common/toolsServiceTypes.js';
 import { CopyButton, EditToolAcceptRejectButtonsHTML, IconShell1, StatusIndicator, useEditToolStreamState } from '../markdown/ApplyBlockHoverButtons.js';
@@ -30,6 +31,7 @@ import { AUTO_CONTINUE_CHAR_THRESHOLD } from '../../../chatThreadService.js';
 import { builtinToolNames, isABuiltinToolName, MAX_FILE_CHARS_PAGE } from '../../../../common/prompt/prompts.js';
 import { RawToolCallObj } from '../../../../common/sendLLMMessageTypes.js';
 import ErrorBoundary from './ErrorBoundary.js';
+import { SubagentRow } from '../agent-manager-tsx/SubagentsView.js';
 
 import { persistentTerminalNameOfId } from '../../../terminalToolService.js';
 import { TypingIndicator, ToolLoadingIndicator, ReActPhaseIndicator, SmoothHeight } from './ChatAnimations.js';
@@ -463,8 +465,122 @@ const TaskPlanView = ({
 	);
 };
 
+// Subagent status helpers (shared with SubagentsView)
+const subagentStatusMeta: Record<SubagentStatus, { label: string, icon: React.ElementType, color: string, pulse: boolean }> = {
+	queued: { label: 'Queued', icon: Clock, color: 'text-void-fg-3', pulse: false },
+	running: { label: 'Running', icon: Loader2, color: 'text-void-info', pulse: true },
+	completed: { label: 'Done', icon: Check, color: 'text-void-success', pulse: false },
+	failed: { label: 'Failed', icon: X, color: 'text-void-error', pulse: false },
+	cancelled: { label: 'Cancelled', icon: Ban, color: 'text-void-warning', pulse: false },
+}
+
+const InlineSubagentCard = ({ run }: { run: SubagentRun }) => {
+	const [expanded, setExpanded] = useState(false)
+	const meta = subagentStatusMeta[run.status]
+	const Icon = meta.icon
+	const isActive = run.status === 'running' || run.status === 'queued'
+	const previewText = (run.status === 'running' ? run.streamingText : run.fullText) || run.error || ''
+	const fallbackText = run.currentToolActivity || (isActive ? 'Working…' : undefined)
+
+	return (
+		<div className="rounded-lg border border-void-border-2 bg-void-bg-3 overflow-hidden my-2">
+			<button
+				onClick={() => setExpanded(!expanded)}
+				className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-void-bg-4 transition-colors"
+			>
+				<Icon className={`w-3.5 h-3.5 flex-shrink-0 ${meta.color} ${meta.pulse ? 'animate-spin' : ''}`} />
+				<div className="flex-1 min-w-0">
+					<div className="flex items-center gap-2 min-w-0">
+						<span className="text-xs font-medium text-void-fg-1 truncate">{run.title || 'Untitled subagent'}</span>
+						{run.isBackground && (
+							<span className="text-[9px] px-1 py-0.5 rounded bg-void-bg-2 text-void-fg-4 border border-void-border-2">BG</span>
+						)}
+					</div>
+					<div className="flex items-center gap-2 text-[10px] text-void-fg-4">
+						<span className={meta.color}>{meta.label}</span>
+						{isActive && (
+							<span>{run.iterationCount}/{run.maxIterations} turns · {run.toolCallCount} tools</span>
+						)}
+					</div>
+					{run.currentToolActivity && (
+						<div className="flex items-center gap-1 text-[10px] text-void-fg-3 mt-0.5">
+							<Loader2 className="w-2.5 h-2.5 animate-spin" />
+							<span className="truncate">{run.currentToolActivity}</span>
+						</div>
+					)}
+				</div>
+				<ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 text-void-fg-4 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+			</button>
+			{isActive && (
+				<div className="h-0.5 bg-void-bg-2">
+					<div
+						className="h-full bg-void-info transition-all duration-300"
+						style={{ width: `${Math.max(4, run.maxIterations > 0 ? Math.min(100, Math.round((run.iterationCount / run.maxIterations) * 100)) : 0)}%` }}
+					/>
+				</div>
+			)}
+			{expanded && (previewText || fallbackText) && (
+				<div className="px-3 py-2 border-t border-void-border-2 bg-void-bg-2">
+					<pre className="text-xs text-void-fg-3 whitespace-pre-wrap break-words max-h-48 overflow-y-auto font-mono leading-relaxed">
+						{previewText || fallbackText}
+					</pre>
+				</div>
+			)}
+		</div>
+	)
+}
+
+const RunSubagentResultWrapper = ({ toolMessage }: WrapperProps<'run_subagent'>) => {
+	const runs = useSubagents()
+	const subagentId = (toolMessage.result as { subagentId?: string }).subagentId
+	const run = useMemo(() => runs.find(r => r.id === subagentId), [runs, subagentId])
+
+	if (!run) {
+		return (
+			<div className="rounded-lg border border-void-border-2 bg-void-bg-3 px-3 py-2 text-xs text-void-fg-3">
+				Subagent result not found (id: {subagentId || 'unknown'})
+			</div>
+		)
+	}
+	return <InlineSubagentCard run={run} />
+}
+
+const SubagentPanel = ({ runs, threadId }: { runs: SubagentRun[], threadId: string }) => {
+	const [isExpanded, setIsExpanded] = useState(true)
+	const activeCount = runs.filter(r => r.status === 'running' || r.status === 'queued').length
+	const bgCount = runs.filter(r => r.isBackground).length
+
+	if (runs.length === 0) return null
+
+	return (
+		<div className="mb-3 card-premium">
+			<div
+				className="flex items-center justify-between p-3 cursor-pointer hover:bg-void-bg-2-hover transition-all duration-200"
+				onClick={() => setIsExpanded(v => !v)}
+				role="button"
+				tabIndex={0}
+				aria-expanded={isExpanded}
+				onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsExpanded(v => !v) } }}
+			>
+				<div className="flex items-center gap-2">
+					<Cpu className="w-4 h-4 text-void-fg-3" />
+					<span className="text-sm font-semibold text-void-fg-1">Subagents</span>
+					<span className="pill pill-neutral">{activeCount}/{runs.length}</span>
+					{bgCount > 0 && <span className="pill pill-neutral">{bgCount} BG</span>}
+				</div>
+				<ChevronRight className={`w-4 h-4 text-void-fg-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+			</div>
+			{isExpanded && (
+				<div className="border-t border-void-border-2 p-3 space-y-2 max-h-80 overflow-y-auto">
+					{runs.map(run => <SubagentRow key={`${threadId}-${run.id}`} run={run} />)}
+				</div>
+			)}
+		</div>
+	)
+}
+
 // Token Counter Component
-const TokenCounter = ({ tokenUsage }: { tokenUsage?: { used: number, total: number, percentage: number } }) => {
+const TokenCounter = ({ tokenUsage, cachedTokens }: { tokenUsage?: { used: number, total: number, percentage: number }, cachedTokens?: number }) => {
 	// Show default state if no token usage data
 	if (!tokenUsage || tokenUsage.total === 0) {
 		return (
@@ -485,6 +601,17 @@ const TokenCounter = ({ tokenUsage }: { tokenUsage?: { used: number, total: numb
 			<span className='font-medium'>
 				({percentage.toFixed(1)}%)
 			</span>
+			{/* Prompt tokens served from the server's cache (e.g. llama.cpp cache_n). */}
+			{typeof cachedTokens === 'number' && cachedTokens > 0 && (
+				<span
+					className='font-mono tabular-nums text-void-fg-3'
+					data-tooltip-id='void-tooltip'
+					data-tooltip-content={`${cachedTokens.toLocaleString()} prompt tokens served from the server cache`}
+					data-tooltip-place='top'
+				>
+					⚡{cachedTokens.toLocaleString()}
+				</span>
+			)}
 		</div>
 	);
 };
@@ -935,6 +1062,7 @@ interface VoidChatAreaProps {
 	loadingIcon?: React.ReactNode;
 
 	tokenUsage?: { used: number, total: number, percentage: number };
+	cachedTokens?: number;
 
 	selections?: StagingSelectionItem[]
 	setSelections?: (s: StagingSelectionItem[]) => void
@@ -966,6 +1094,7 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 	selections,
 	setSelections,
 	tokenUsage,
+	cachedTokens,
 	featureName,
 	loadingIcon,
 	extraActions,
@@ -1025,7 +1154,7 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 							<div className='relative z-[200]'>
 								<ModelDropdown featureName={featureName} className='text-xs text-void-fg-3 bg-void-bg-2 hover:bg-void-bg-2-hover border border-void-border-2 rounded-lg px-2 py-1 shadow-sm' />
 							</div>
-							<TokenCounter tokenUsage={tokenUsage} />
+							<TokenCounter tokenUsage={tokenUsage} cachedTokens={cachedTokens} />
 						</div>
 					</div>
 				)}
@@ -2278,6 +2407,7 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 	'generate_video': { resultWrapper: MediaResultWrapper as ResultWrapper<'generate_video'> },
 	'render_form': { resultWrapper: FormResultWrapper as ResultWrapper<'render_form'> },
 	'create_quiz': { resultWrapper: QuizResultWrapper as ResultWrapper<'create_quiz'> },
+	'run_subagent': { resultWrapper: RunSubagentResultWrapper as ResultWrapper<'run_subagent'> },
 };
 
 
@@ -3029,6 +3159,7 @@ export const SidebarChat = () => {
 	const isRunning = currThreadStreamState?.isRunning
 	const latestError = currThreadStreamState?.error
 	const stopReason = isRunning === 'idle' ? currThreadStreamState?.stopReason : undefined
+	const cachedTokens = isRunning === 'idle' ? currThreadStreamState?.cachedTokens : undefined
 	const { displayContentSoFar, toolCallsSoFar, reasoningSoFar, _rawTextBeforeStripping, reactPhase } = currThreadStreamState?.llmInfo ?? {}
 
 	// Use displayContentSoFar directly for streaming
@@ -3087,6 +3218,10 @@ export const SidebarChat = () => {
 	// Task Plan state
 	const [tasks, setTasks] = useState<TaskPlan[]>([])
 	const threadId = chatThreadsState.currentThreadId
+
+	// Thread-scoped subagent runs (visible inline + in the pinned panel)
+	const allSubagentRuns = useSubagents()
+	const threadSubagentRuns = useMemo(() => allSubagentRuns.filter(r => r.parentThreadId === threadId), [allSubagentRuns, threadId])
 
 	// Load tasks when the thread changes OR when the current thread's task plan
 	// changes. createTask/updateTaskStatus/deleteTask fire onDidChangeCurrentThread,
@@ -4033,6 +4168,7 @@ export const SidebarChat = () => {
 			selections={selections}
 			setSelections={setSelections}
 			tokenUsage={currThreadStreamState?.tokenUsage}
+			cachedTokens={cachedTokens}
 			onClickAnywhere={() => { textAreaRef.current?.focus() }}
 			extraActions={
 				<button
@@ -4146,6 +4282,13 @@ export const SidebarChat = () => {
 				</button>
 			</div>
 		)}
+		{/* Thread-scoped subagent panel — pinned above the input */}
+		{threadSubagentRuns.length > 0 && (
+			<div className='px-4'>
+				<SubagentPanel runs={threadSubagentRuns} threadId={threadId} />
+			</div>
+		)}
+
 		<div className='px-0 pb-4'>
 			{inputChatArea}
 		</div>

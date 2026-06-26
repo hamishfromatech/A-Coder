@@ -96,7 +96,7 @@ export type RawToolCallObj = {
 export type AnthropicReasoning = ({ type: 'thinking'; thinking: any; signature: string; } | { type: 'redacted_thinking', data: any })
 
 export type OnText = (p: { fullText: string; fullReasoning: string; textDelta?: string; reasoningDelta?: string; toolCalls?: RawToolCallObj[]; _rawTextBeforeStripping?: string }) => void
-export type OnFinalMessage = (p: { fullText: string; fullReasoning: string; toolCalls?: RawToolCallObj[]; anthropicReasoning: AnthropicReasoning[] | null; usage?: { promptTokens: number; completionTokens: number; }; stopReason?: string }) => void // id is tool_use_id
+export type OnFinalMessage = (p: { fullText: string; fullReasoning: string; toolCalls?: RawToolCallObj[]; anthropicReasoning: AnthropicReasoning[] | null; usage?: { promptTokens: number; completionTokens: number; cachedTokens?: number; }; stopReason?: string }) => void // id is tool_use_id
 export type OnError = (p: { message: string; fullError: Error | null }) => void
 export type OnAbort = () => void
 export type AbortRef = { current: (() => void) | null }
@@ -123,6 +123,15 @@ export type ServiceSendLLMMessageParams = {
 	modelSelectionOptions: ModelSelectionOptions | undefined;
 	overridesOfModel: OverridesOfModel | undefined;
 	onAbort: OnAbort;
+	// Optional allowlist restricting which tool names the model is offered this
+	// turn. When set, the per-provider impl filters native tool defs and
+	// chat_systemMessage filters text tool descriptions to only these names.
+	// Undefined = no restriction (full chatMode tool set). Used by SubagentService.
+	allowedTools?: string[];
+	// If true, connected external tools (MCP/Composio/ACP) are offered in
+	// addition to the allowedTools builtin allowlist (they bypass the name
+	// filter). Used by SubagentService when a subagent opts into external tools.
+	allowExternalTools?: boolean;
 } & SendLLMType;
 
 // params to the true sendLLMMessage function
@@ -141,6 +150,10 @@ export type SendLLMMessageParams = {
 	globalSettings: GlobalSettings;
 	mcpTools: InternalToolInfo[] | undefined;
 	composioTools: InternalToolInfo[] | undefined;
+	// Optional allowlist — see ServiceSendLLMMessageParams.allowedTools.
+	allowedTools?: string[];
+	// External-tool opt-in — see ServiceSendLLMMessageParams.allowExternalTools.
+	allowExternalTools?: boolean;
 } & SendLLMType
 
 

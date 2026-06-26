@@ -16,7 +16,7 @@ import { IChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
 import { MCPServerOfName, MCPConfigFileJSON, MCPServer, MCPToolCallParams, RawMCPToolCall, MCPServerEventResponse } from './mcpServiceTypes.js';
 import { Event, Emitter } from '../../../../base/common/event.js';
-import { InternalToolInfo } from './prompt/prompts.js';
+import { InternalToolInfo, ToolParamInfo } from './prompt/prompts.js';
 import { IVoidSettingsService } from './voidSettingsService.js';
 import { MCPUserStateOfName } from './voidSettingsTypes.js';
 import { ToonService } from './toonService.js';
@@ -212,12 +212,12 @@ class MCPService extends Disposable implements IMCPService {
 		return allTools
 	}
 
-	private _transformInputSchemaToParams(inputSchema?: Record<string, any>): { [paramName: string]: { description: string } } {
+	private _transformInputSchemaToParams(inputSchema?: Record<string, any>): { [paramName: string]: ToolParamInfo } {
 
 		// Check if inputSchema is valid
 		if (!inputSchema || !inputSchema.properties) return {};
 
-		const params: { [paramName: string]: { description: string } } = {};
+		const params: { [paramName: string]: ToolParamInfo } = {};
 		Object.keys(inputSchema.properties).forEach(paramName => {
 			const propertyValues = inputSchema.properties[paramName];
 
@@ -227,9 +227,15 @@ class MCPService extends Disposable implements IMCPService {
 				return; // in forEach the return is equivalent to continue
 			}
 
-			// Add the parameter to the params object
+			// Preserve the JSON-Schema shape so schema-aware OpenAI-compatible servers
+			// (llama.cpp, vLLM, etc.) receive accurate tool parameter types instead of every
+			// param being flattened to `type: 'string'`. `description` keeps its existing
+			// stringified form to avoid changing what other providers already see.
 			params[paramName] = {
 				description: JSON.stringify(propertyValues.description || '', null, 2) || '',
+				...(propertyValues.type ? { type: propertyValues.type } : {}),
+				...(propertyValues.enum ? { enum: propertyValues.enum } : {}),
+				...(propertyValues.items ? { items: propertyValues.items } : {}),
 			}
 		});
 		return params;

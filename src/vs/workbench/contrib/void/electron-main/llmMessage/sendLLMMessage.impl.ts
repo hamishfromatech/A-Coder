@@ -131,6 +131,8 @@ type SendChatParams_Internal = InternalCommonMessageParams & {
 	mcpTools: InternalToolInfo[] | undefined;
 	acpTools?: InternalToolInfo[] | undefined;
 	composioTools: InternalToolInfo[] | undefined;
+	allowedTools?: string[];
+	allowExternalTools?: boolean;
 }
 type SendFIMParams_Internal = InternalCommonMessageParams & { messages: LLMFIMMessage; separateSystemMessage: string | undefined; }
 export type ListParams_Internal<ModelResponse> = ModelListParams<ModelResponse>
@@ -334,7 +336,55 @@ const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName, includ
 }
 
 
+// llama.cpp exposes a dedicated /infill endpoint for fill-in-the-middle that applies the
+// model's FIM special tokens (FIM_PRE/FIM_SUF/FIM_MID). The OpenAI-compatible /v1/completions
+// path with a `suffix` doesn't tokenize FIM correctly, so route llama.cpp FIM here.
+// https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md#postinfill
+// Non-streaming (matches the OpenAI-compat FIM behavior): the response `content` holds the
+// full infill. `/infill` accepts the same options as `/completion` (n_predict, stop, ...).
+const _sendLlamaCppInfillFIM = async ({ prefix, suffix, stopTokens, onFinalMessage, onError, settingsOfProvider, _setAborter }: { prefix: string, suffix: string, stopTokens?: string[], onFinalMessage: OnFinalMessage, onError: OnError, settingsOfProvider: SettingsOfProvider, _setAborter: (aborter: () => void) => void }) => {
+	const endpoint = (settingsOfProvider.llamaCpp.endpoint || '').replace(/\/+$/, '')
+	if (!endpoint) {
+		onError({ message: `llama.cpp endpoint was empty (set it in A-Coder settings).`, fullError: null })
+		return
+	}
+	const controller = new AbortController()
+	_setAborter(() => controller.abort())
+	try {
+		const res = await fetch(`${endpoint}/infill`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			signal: controller.signal,
+			body: JSON.stringify({
+				input_prefix: prefix,
+				input_suffix: suffix,
+				stream: false,
+				n_predict: 300,
+				...(stopTokens && stopTokens.length > 0 ? { stop: stopTokens } : {}),
+			}),
+		})
+		if (!res.ok) {
+			const text = await res.text().catch(() => '')
+			onError({ message: `llama.cpp /infill failed (${res.status} ${res.statusText})${text ? `: ${text}` : ''}`, fullError: null })
+			return
+		}
+		const data: { content?: string } = await res.json()
+		onFinalMessage({ fullText: typeof data.content === 'string' ? data.content : '', fullReasoning: '', anthropicReasoning: null })
+	} catch (error) {
+		if (error instanceof Error && error.name === 'AbortError') return
+		onError({ message: error + '', fullError: error as Error })
+	}
+}
+
+
 const _sendOpenAICompatibleFIM = async ({ messages: { prefix, suffix, stopTokens }, onFinalMessage, onError, settingsOfProvider, globalSettings, modelName: modelName_, _setAborter, providerName, overridesOfModel }: SendFIMParams_Internal) => {
+
+	// llama.cpp: use the native /infill endpoint instead of the OpenAI /v1/completions path.
+	// Routed before the supportsFIM gate because autodetected llama.cpp models have unknown FIM
+	// support client-side; /infill will apply FIM tokens if the loaded model defines them.
+	if (providerName === 'llamaCpp') {
+		return _sendLlamaCppInfillFIM({ prefix, suffix, stopTokens, onFinalMessage, onError, settingsOfProvider, _setAborter })
+	}
 
 	const {
 		modelName,
@@ -371,8 +421,13 @@ const _sendOpenAICompatibleFIM = async ({ messages: { prefix, suffix, stopTokens
 const toOpenAICompatibleTool = (toolInfo: InternalToolInfo) => {
 	const { name, description, params } = toolInfo
 
-	const paramsWithType: { [s: string]: { description: string; type: 'string' } } = {}
-	for (const key in params) { paramsWithType[key] = { ...params[key], type: 'string' } }
+	// Emit the real JSON-Schema type/enum/items when the tool carries them (MCP/ACP tools
+	// whose inputSchema declares them), falling back to `type: 'string'` for builtin A-Coder
+	// tools (whose params are all strings). Forcing every param to `type: 'string'` was lossy
+	// for schema-aware servers like llama.cpp, which support full tool schemas. `enum`/`items`
+	// pass through via the spread.
+	const paramsWithType: { [s: string]: { description: string; type: string; enum?: unknown[]; items?: unknown } } = {}
+	for (const key in params) { paramsWithType[key] = { ...params[key], type: params[key].type ?? 'string' } }
 
 	return {
 		type: 'function',
@@ -390,7 +445,7 @@ const toOpenAICompatibleTool = (toolInfo: InternalToolInfo) => {
 	} satisfies OpenAI.Chat.Completions.ChatCompletionTool
 }
 
-const openAITools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined, acpTools: InternalToolInfo[] | undefined, composioTools: InternalToolInfo[] | undefined, options?: { enableMorphFastContext?: boolean; enableMediaGeneration?: boolean }) => {
+const openAITools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined, acpTools: InternalToolInfo[] | undefined, composioTools: InternalToolInfo[] | undefined, options?: { enableMorphFastContext?: boolean; enableMediaGeneration?: boolean; allowedTools?: string[]; allowExternalTools?: boolean }) => {
 	const allowedTools = availableTools(chatMode, mcpTools, composioTools, acpTools, options)
 	if (!allowedTools || Object.keys(allowedTools).length === 0) return null
 
@@ -536,7 +591,7 @@ const sanitizeOpenAIMessages = (messages: any[]): any[] => {
 // ------------ OPENAI-COMPATIBLE ------------
 
 
-const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onError, settingsOfProvider, globalSettings, modelSelectionOptions, modelName: modelName_, _setAborter, providerName, chatMode, separateSystemMessage, overridesOfModel, mcpTools, acpTools, composioTools }: SendChatParams_Internal) => {
+const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onError, settingsOfProvider, globalSettings, modelSelectionOptions, modelName: modelName_, _setAborter, providerName, chatMode, separateSystemMessage, overridesOfModel, mcpTools, acpTools, composioTools, allowedTools, allowExternalTools }: SendChatParams_Internal) => {
 	const {
 		modelName,
 		reasoningCapabilities,
@@ -548,6 +603,12 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 
 	// reasoning
 	const reasoningInfo = getSendableReasoningInfo('Chat', providerName, modelName_, modelSelectionOptions, overridesOfModel) // user's modelName_ here
+
+	// Output token cap. Sent for llama.cpp (whose server defaults to n_predict=-1 / infinite)
+	// so a long generation — especially with reasoning enabled — doesn't run to n_ctx
+	// exhaustion and get silently truncated by the server's context shift. Only sent when we
+	// actually know the model's reserved output space; autodetected/unknown models have none.
+	const maxTokens = getReservedOutputTokenSpace(providerName, modelName_, { isReasoningEnabled: !!reasoningInfo?.isReasoningEnabled, overridesOfModel })
 
 	const includeInPayload = {
 		...providerReasoningIOSettings?.input?.includeInPayload?.(reasoningInfo),
@@ -566,6 +627,8 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 	const potentialTools = openAITools(chatMode, mcpTools, acpTools, composioTools, {
 		enableMorphFastContext: (modelSelectionOptions?.morphFastContext ?? globalSettings.enableMorphFastContext) && !!globalSettings.morphApiKey,
 		enableMediaGeneration: globalSettings.enableMediaGeneration,
+		allowedTools,
+		allowExternalTools,
 	})
 	const nativeToolsObj = potentialTools && specialToolFormat === 'openai-style' ?
 		{ tools: potentialTools } as const
@@ -589,7 +652,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 	}
 	const options: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
 		model: modelName,
-		messages: providerName === 'mistral' || providerName === 'openRouter' ? sanitizeOpenAIMessages(messages) : messages as any,
+		messages: providerName === 'mistral' || providerName === 'openRouter' || providerName === 'llamaCpp' ? sanitizeOpenAIMessages(messages) : messages as any,
 		stream: true,
 		...nativeToolsObj,
 		// Enable parallel tool calls for models that support native tool calling.
@@ -597,6 +660,12 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		// OpenAI default is true, but being explicit ensures Ollama and other
 		// OpenAI-compatible providers also receive the signal.
 		...(specialToolFormat === 'openai-style' && potentialTools && potentialTools.length > 0 ? { parallel_tool_calls: true } : {}),
+		// llama.cpp: explicitly ask the server to parse generated tool calls into structured
+		// `tool_calls` deltas instead of leaving them as text in `content` (which we'd then
+		// only catch via the XML-tool fallback).
+		...(providerName === 'llamaCpp' && specialToolFormat === 'openai-style' && potentialTools && potentialTools.length > 0 ? { parse_tool_calls: true } : {}),
+		// llama.cpp: cap output so generation can't run to n_ctx exhaustion (see maxTokens above).
+		...(providerName === 'llamaCpp' && typeof maxTokens === 'number' ? { max_tokens: maxTokens } : {}),
 		...includeInPayload,
 		...additionalOpenAIPayload
 		// max_completion_tokens: maxTokens,
@@ -637,7 +706,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 	}
 
 	let toolCalls: { name: string, id: string, paramsStr: string, thoughtSignature?: string }[] = []
-	let finalUsage: { promptTokens: number; completionTokens: number } | undefined = undefined
+	let finalUsage: { promptTokens: number; completionTokens: number; cachedTokens?: number } | undefined = undefined
 
 	const applyToolCall = (toolCall: any, { isFinal }: { isFinal: boolean }) => {
 		if (!toolCall) return
@@ -759,9 +828,14 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 
 				// Capture usage statistics if available
 				if (chunk.usage) {
+					// prompt_tokens_details.cached_tokens is populated by OpenAI-compatible
+					// servers with prompt caching (e.g. llama.cpp's cache_n). Surfaced for the
+					// UI / token calibration rather than discarded.
+					const cachedTokens = chunk.usage.prompt_tokens_details?.cached_tokens
 					finalUsage = {
 						promptTokens: chunk.usage.prompt_tokens,
-						completionTokens: chunk.usage.completion_tokens
+						completionTokens: chunk.usage.completion_tokens,
+						...(typeof cachedTokens === 'number' ? { cachedTokens } : {}),
 					};
 					voidDevLog(`[sendLLMMessage] Usage stats received:`, finalUsage);
 				}
@@ -1056,8 +1130,12 @@ const _openaiCompatibleList = async ({ onSuccess: onSuccess_, onError: onError_,
 // ------------ ANTHROPIC (HELPERS) ------------
 const toAnthropicTool = (toolInfo: InternalToolInfo) => {
 	const { name, description, params } = toolInfo
+	// Anthropic path: keep the historical all-string schema. Take only `description` +
+	// `type: 'string'` explicitly (no spread) so MCP tools' richer JSON-Schema fields
+	// (enum/items) don't leak in alongside a forced string type now that InternalToolInfo
+	// carries them. The OpenAI-compatible path emits the real schema; see toOpenAICompatibleTool.
 	const paramsWithType: { [s: string]: { description: string; type: 'string' } } = {}
-	for (const key in params) { paramsWithType[key] = { ...params[key], type: 'string' } }
+	for (const key in params) { paramsWithType[key] = { description: params[key].description, type: 'string' } }
 	return {
 		name: name,
 		description: description,
@@ -1069,7 +1147,7 @@ const toAnthropicTool = (toolInfo: InternalToolInfo) => {
 	} satisfies Anthropic.Messages.Tool
 }
 
-const anthropicTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined, acpTools: InternalToolInfo[] | undefined, composioTools: InternalToolInfo[] | undefined, options?: { enableMorphFastContext?: boolean; enableMediaGeneration?: boolean }) => {
+const anthropicTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined, acpTools: InternalToolInfo[] | undefined, composioTools: InternalToolInfo[] | undefined, options?: { enableMorphFastContext?: boolean; enableMediaGeneration?: boolean; allowedTools?: string[]; allowExternalTools?: boolean }) => {
 	const allowedTools = availableTools(chatMode, mcpTools, composioTools, acpTools, options)
 	if (!allowedTools || Object.keys(allowedTools).length === 0) return null
 
@@ -1083,7 +1161,7 @@ const anthropicTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] 
 
 
 // ------------ ANTHROPIC ------------
-const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessage, onError, settingsOfProvider, globalSettings, modelSelectionOptions, overridesOfModel, modelName: modelName_, _setAborter, separateSystemMessage, chatMode, mcpTools, acpTools, composioTools }: SendChatParams_Internal) => {
+const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessage, onError, settingsOfProvider, globalSettings, modelSelectionOptions, overridesOfModel, modelName: modelName_, _setAborter, separateSystemMessage, chatMode, mcpTools, acpTools, composioTools, allowedTools, allowExternalTools }: SendChatParams_Internal) => {
 	const {
 		modelName,
 		specialToolFormat,
@@ -1103,6 +1181,8 @@ const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessag
 	const potentialTools = anthropicTools(chatMode, mcpTools, acpTools, composioTools, {
 		enableMorphFastContext: (modelSelectionOptions?.morphFastContext ?? globalSettings.enableMorphFastContext) && !!globalSettings.morphApiKey,
 		enableMediaGeneration: globalSettings.enableMediaGeneration,
+		allowedTools,
+		allowExternalTools,
 	})
 	const nativeToolsObj = potentialTools && specialToolFormat === 'anthropic-style' ?
 		{ tools: potentialTools, tool_choice: { type: 'auto' } } as const
@@ -1370,7 +1450,7 @@ const toGeminiFunctionDecl = (toolInfo: InternalToolInfo) => {
 	} satisfies FunctionDeclaration
 }
 
-const geminiTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined, acpTools: InternalToolInfo[] | undefined, composioTools: InternalToolInfo[] | undefined, options?: { enableMorphFastContext?: boolean; enableMediaGeneration?: boolean }): GeminiTool[] | null => {
+const geminiTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined, acpTools: InternalToolInfo[] | undefined, composioTools: InternalToolInfo[] | undefined, options?: { enableMorphFastContext?: boolean; enableMediaGeneration?: boolean; allowedTools?: string[]; allowExternalTools?: boolean }): GeminiTool[] | null => {
 	const allowedTools = availableTools(chatMode, mcpTools, composioTools, acpTools, options)
 	if (!allowedTools || Object.keys(allowedTools).length === 0) return null
 	const functionDecls: FunctionDeclaration[] = []
@@ -1385,7 +1465,7 @@ const geminiTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | u
 
 // Enhanced Ollama chat with fallback for better tool calling reliability
 const _sendOllamaChatWithFallback = async (params: SendChatParams_Internal) => {
-	const { chatMode, mcpTools, acpTools, composioTools, modelName, globalSettings, modelSelectionOptions } = params
+	const { chatMode, mcpTools, acpTools, composioTools, modelName, globalSettings, modelSelectionOptions, allowedTools, allowExternalTools } = params
 
 	// Check if model supports native tool calling
 	const { specialToolFormat } = getModelCapabilities('ollama', modelName, params.overridesOfModel)
@@ -1393,6 +1473,8 @@ const _sendOllamaChatWithFallback = async (params: SendChatParams_Internal) => {
 	const potentialTools = openAITools(chatMode, mcpTools, acpTools, composioTools, {
 		enableMorphFastContext: (modelSelectionOptions?.morphFastContext ?? globalSettings.enableMorphFastContext) && !!globalSettings.morphApiKey,
 		enableMediaGeneration: globalSettings.enableMediaGeneration,
+		allowedTools,
+		allowExternalTools,
 	})
 	const hasTools = potentialTools && potentialTools.length > 0
 
@@ -1498,6 +1580,8 @@ const sendGeminiChat = async ({
 	mcpTools,
 	acpTools,
 	composioTools,
+	allowedTools,
+	allowExternalTools,
 }: SendChatParams_Internal) => {
 
 	if (providerName !== 'gemini') throw new Error(`Sending Gemini chat, but provider was ${providerName}`)
@@ -1529,6 +1613,8 @@ const sendGeminiChat = async ({
 	const potentialTools = geminiTools(chatMode, mcpTools, acpTools, composioTools, {
 		enableMorphFastContext: (modelSelectionOptions?.morphFastContext ?? globalSettings.enableMorphFastContext) && !!globalSettings.morphApiKey,
 		enableMediaGeneration: globalSettings.enableMediaGeneration,
+		allowedTools,
+		allowExternalTools,
 	})
 	const toolConfig = potentialTools && specialToolFormat === 'gemini-style' ?
 		potentialTools

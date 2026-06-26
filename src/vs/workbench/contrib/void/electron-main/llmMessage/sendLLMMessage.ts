@@ -28,6 +28,8 @@ export const sendLLMMessage = async ({
 	separateSystemMessage,
 	mcpTools,
 	composioTools,
+	allowedTools,
+	allowExternalTools,
 }: SendLLMMessageParams,
 
 	metricsService: IMetricsService
@@ -171,7 +173,7 @@ export const sendLLMMessage = async ({
 		}
 		const { sendFIM, sendChat } = implementation
 		if (messagesType === 'chatMessages') {
-			await sendChat({ messages: messages_, onText, onFinalMessage, onError, settingsOfProvider, globalSettings, modelSelectionOptions, overridesOfModel, modelName, _setAborter, providerName, separateSystemMessage, chatMode, mcpTools, composioTools })
+			await sendChat({ messages: messages_, onText, onFinalMessage, onError, settingsOfProvider, globalSettings, modelSelectionOptions, overridesOfModel, modelName, _setAborter, providerName, separateSystemMessage, chatMode, mcpTools, composioTools, allowedTools, allowExternalTools })
 			return
 		}
 		if (messagesType === 'FIMMessage') {

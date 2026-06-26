@@ -2,6 +2,7 @@ import { URI } from '../../../../base/common/uri.js'
 import { RawMCPToolCall } from './mcpServiceTypes.js';
 import type { builtinTools } from './prompt/prompts.js';
 import { RawToolParamsObj } from './sendLLMMessageTypes.js';
+import { SubagentTypeName } from './subagentTypes.js';
 
 
 
@@ -230,6 +231,15 @@ export type BuiltinToolCallParams = {
 		total_points?: number; // Total points for the quiz
 		time_limit_seconds?: number; // Optional time limit
 	},
+	// --- Subagents (delegation to focused sub-agents with isolated context + restricted tools)
+	'run_subagent': {
+		description: string // The task for the subagent to complete
+		subagentType: SubagentTypeName | null // Which subagent specialist to use
+		prompt: string | null // Extra instructions appended to the subagent's role prompt
+		tools: string[] | null // Optional allowlist override (builtin tool names)
+		background: boolean // If true, run detached and return immediately
+		allowExternalTools: boolean // If true, also allow connected MCP/Composio/ACP tools
+	},
 }
 
 // RESULT OF TOOL CALL
@@ -383,6 +393,8 @@ export type BuiltinToolResultType = {
 	'render_form': { template: string },
 	// --- Learn Mode (Quizzes)
 	'create_quiz': { quiz_id: string, template: string },
+	// --- Subagents
+	'run_subagent': { subagentId: string, status: string, summary: string, background: boolean },
 }
 
 

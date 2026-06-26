@@ -26,7 +26,7 @@ export const EMPTY_MESSAGE = '(empty message)'
 
 
 
-type SimpleLLMMessage = {
+export type SimpleLLMMessage = {
 	role: 'tool';
 	content: string;
 	id: string;
@@ -606,6 +606,13 @@ export interface IConvertToLLMMessageService {
 	prepareLLMChatMessages: (opts: { chatMessages: ChatMessage[], chatMode: ChatMode, modelSelection: ModelSelection | null, loadedSkills?: { [name: string]: string }, orchestrationResult?: { suggestions: Array<{ toolName: string; toolParams?: Record<string, unknown>; reasoning: string; confidence: 'high' | 'medium' | 'low'; }>; reasoning: string; summary: string; } }) => Promise<{ messages: LLMChatMessage[], separateSystemMessage: string | undefined, tokenUsage: { used: number, total: number, percentage: number }, compressionStats?: { originalMessageCount: number, finalMessageCount: number, originalTokens: number, finalTokens: number, compressionRatio: number, messagesRemoved: number, messagesSummarized: number } }>
 	prepareFIMMessage(opts: { messages: LLMFIMMessage, }): { prefix: string, suffix: string, stopTokens: string[] }
 	updateTokenRatio(modelName: string, estimatedTokens: number, actualTokens: number): void
+	// Builds the system message for a subagent run: the subagent's role prompt
+	// prepended to the full chat system message (workspace context + tool
+	// descriptions), with the tool set restricted to `allowedTools`. The tool
+	// restriction applies to text tool descriptions (xml/marker models); native
+	// tool defs are restricted separately by the LLM transport via the
+	// `allowedTools` param on sendLLMMessage.
+	buildSubagentSystemMessage(opts: { rolePrompt: string, modelSelection: ModelSelection | null, allowedTools: string[] | undefined, allowExternalTools?: boolean }): Promise<string>
 }
 
 export const IConvertToLLMMessageService = createDecorator<IConvertToLLMMessageService>('ConvertToLLMMessageService');
@@ -668,7 +675,7 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 
 
 	// system message
-	private _generateChatMessagesSystemMessage = async (chatMode: ChatMode, specialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' | 'marker-style' | undefined, modelSelection: ModelSelection | null) => {
+	private _generateChatMessagesSystemMessage = async (chatMode: ChatMode, specialToolFormat: 'openai-style' | 'anthropic-style' | 'gemini-style' | 'marker-style' | undefined, modelSelection: ModelSelection | null, allowedTools?: string[], allowExternalTools?: boolean) => {
 		const workspaceFolders = this.workspaceContextService.getWorkspace().folders.map(f => f.uri.fsPath)
 
 		const openedURIs = this.modelService.getModels().filter(m => m.isAttachedToEditor()).map(m => m.uri.fsPath) || [];
@@ -711,7 +718,7 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		// Get media generation setting
 		const enableMediaGeneration = this.voidSettingsService.state.globalSettings.enableMediaGeneration
 
-		const systemMessage = chat_systemMessage({ workspaceFolders, openedURIs, directoryStr, activeURI, persistentTerminalIDs, chatMode, mcpTools, composioTools, acpTools, specialToolFormat: specialToolFormat as any, studentLevel, enableMorphFastContext, enableMediaGeneration })
+		const systemMessage = chat_systemMessage({ workspaceFolders, openedURIs, directoryStr, activeURI, persistentTerminalIDs, chatMode, mcpTools, composioTools, acpTools, specialToolFormat: specialToolFormat as any, studentLevel, enableMorphFastContext, enableMediaGeneration, allowedTools, allowExternalTools })
 		return systemMessage
 	}
 
@@ -844,6 +851,17 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 			providerName,
 		})
 		return { messages, separateSystemMessage };
+	}
+	buildSubagentSystemMessage: IConvertToLLMMessageService['buildSubagentSystemMessage'] = async ({ rolePrompt, modelSelection, allowedTools, allowExternalTools }) => {
+		// Derive the model's tool-calling style so chat_systemMessage emits the right
+		// tool-description block (XML/marker text vs native-tool rules). The caller
+		// guards against a null modelSelection before running a subagent; the
+		// fallbacks here are purely defensive.
+		const providerName = modelSelection?.providerName ?? 'anthropic'
+		const modelName = modelSelection?.modelName ?? ''
+		const { specialToolFormat } = getModelCapabilities(providerName, modelName, this.voidSettingsService.state.overridesOfModel)
+		const base = await this._generateChatMessagesSystemMessage('code', specialToolFormat, modelSelection, allowedTools, allowExternalTools)
+		return `${rolePrompt}\n\n${base}`
 	}
 	prepareLLMChatMessages: IConvertToLLMMessageService['prepareLLMChatMessages'] = async ({ chatMessages, chatMode, modelSelection, loadedSkills, orchestrationResult }) => {
 		if (modelSelection === null) return { messages: [], separateSystemMessage: undefined, tokenUsage: { used: 0, total: 0, percentage: 0 }, compressionStats: undefined }

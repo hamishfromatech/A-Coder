@@ -15,7 +15,7 @@ import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js';
 import {
 	Settings, X, Maximize2, Search, ExternalLink, Code, Plus, Zap,
 	MessageSquare, Folder, Activity, Globe, ChevronRight, Layers, Trash2, Edit3,
-	Sparkles, LayoutGrid
+	Sparkles, LayoutGrid, Cpu,
 } from 'lucide-react';
 import { URI } from '../../../../../../../base/common/uri.js';
 import { StorageScope, StorageTarget } from '../../../../../../../platform/storage/common/storage.js';
@@ -26,6 +26,7 @@ import { ContentPreview } from './ContentPreview.js';
 import { WorkspacesView } from './WorkspacesView.js';
 import { DashboardView } from './DashboardView.js';
 import { MultiView } from './MultiView.js';
+import { SubagentsView } from './SubagentsView.js';
 import { SimpleHome } from './SimpleHome.js';
 import { useWindowSize } from './useWindowSize.js';
 import { StandaloneSession } from '../../../../common/chatThreadServiceTypes.js';
@@ -255,7 +256,7 @@ export const AgentManager = ({ className }: { className: string }) => {
 		setMode(m);
 		storageService.store(AGENT_MANAGER_MODE_KEY, m, StorageScope.APPLICATION, StorageTarget.MACHINE);
 	}, [storageService]);
-	const [tab, setTab] = useState<'chats' | 'workspaces' | 'dashboard' | 'multi'>('chats');
+	const [tab, setTab] = useState<'chats' | 'workspaces' | 'dashboard' | 'multi' | 'subagents'>('chats');
 	const [preview, setPreview] = useState(true);
 	const [sidebar, setSidebar] = useState(true);
 	const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -402,6 +403,7 @@ export const AgentManager = ({ className }: { className: string }) => {
 								<NavItem active={tab === 'workspaces'} onClick={() => setTab('workspaces')} label="Files" icon={Folder} />
 								<NavItem active={tab === 'dashboard'} onClick={() => setTab('dashboard')} label="Overview" icon={Activity} />
 								<NavItem active={tab === 'multi'} onClick={() => setTab('multi')} label="Projects" icon={Globe} />
+								<NavItem active={tab === 'subagents'} onClick={() => setTab('subagents')} label="Subagents" icon={Cpu} />
 							</nav>
 						)}
 					</div>
@@ -460,6 +462,8 @@ export const AgentManager = ({ className }: { className: string }) => {
 									<MultiView onNewThread={handleNewThread} onOpenSettings={handleOpenSettings} />
 								) : tab === 'workspaces' ? (
 									<WorkspacesView />
+								) : tab === 'subagents' ? (
+									<SubagentsView />
 								) : (
 									<div className="h-full flex flex-col">
 										{activeSession?.workspaceId && (

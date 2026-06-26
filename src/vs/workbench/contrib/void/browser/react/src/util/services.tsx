@@ -48,6 +48,7 @@ import { IVoidCommandBarService } from '../../../voidCommandBarService.js'
 import { INativeHostService } from '../../../../../../../platform/native/common/native.js';
 import { IEditCodeService } from '../../../editCodeServiceInterface.js'
 import { IToolsService } from '../../../toolsService.js'
+import { ISubagentService, SubagentRun } from '../../../subagentService.js'
 import { IConvertToLLMMessageService } from '../../../convertToLLMMessageService.js'
 import { ITerminalService } from '../../../../../terminal/browser/terminal.js'
 import { ISearchService } from '../../../../../../services/search/common/search.js'
@@ -394,6 +395,7 @@ const getReactAccessor = (accessor: ServicesAccessor) => {
 		IVoidCommandBarService: accessor.get(IVoidCommandBarService),
 		INativeHostService: accessor.get(INativeHostService),
 		IToolsService: accessor.get(IToolsService),
+		ISubagentService: accessor.get(ISubagentService),
 		IConvertToLLMMessageService: accessor.get(IConvertToLLMMessageService),
 		ITerminalService: accessor.get(ITerminalService),
 		IExtensionManagementService: accessor.get(IExtensionManagementService),
@@ -654,6 +656,46 @@ export const useOnAgentManagerOpenContent = (callback: (data: { title: string, c
 		})
 		return () => { disposable.dispose() }
 	}, [agentManagerService, callback])
+}
+
+// Subagent / background-task state. Mirrors the chat-threads pattern: a
+// module-level snapshot kept up to date by service listeners, plus a version
+// counter so components re-render on change without holding the whole list.
+let subagentsState: SubagentRun[] = []
+const subagentsListeners: Set<(runs: SubagentRun[]) => void> = new Set()
+
+const refreshSubagentsState = (service: ISubagentService) => {
+	subagentsState = service.getSubagents()
+	subagentsListeners.forEach(l => l(subagentsState))
+}
+
+/**
+ * Hook returning all subagent runs (foreground + background), live-updated.
+ * Sorts newest-first so background tasks bubble to the top of the panel.
+ */
+export const useSubagents = () => {
+	const accessor = useAccessor()
+	const subagentService = accessor.get('ISubagentService')
+	const [runs, setRuns] = useState<SubagentRun[]>(() => subagentService.getSubagents())
+
+	useEffect(() => {
+		// Sync initial state (the module-level var may lag behind the service
+		// if this is the first component to mount).
+		setRuns(subagentService.getSubagents())
+		const onChange = () => refreshSubagentsState(subagentService)
+		onChange() // ensure module-level var is fresh for late mounters
+		const d1 = subagentService.onDidChangeSubagent(() => {
+			setRuns(subagentService.getSubagents())
+		})
+		const d2 = subagentService.onDidCompleteSubagent(() => {
+			setRuns(subagentService.getSubagents())
+		})
+		return () => { d1.dispose(); d2.dispose() }
+	}, [subagentService])
+
+	return useMemo(() => {
+		return [...runs].sort((a, b) => b.startedAt - a.startedAt)
+	}, [runs])
 }
 
 export const useWorkspaceFolders = () => {

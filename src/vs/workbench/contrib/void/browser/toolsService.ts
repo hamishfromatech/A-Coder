@@ -26,6 +26,8 @@ import { ToonService } from '../common/toonService.js'
 import { PlanningService, TaskStatus as PlanTaskStatus } from '../common/planningService.js'
 import { ImplementationPlanningService, ImplementationPlan, ImplementationStep, StepStatus as ImplStepStatus } from '../common/implementationPlanningService.js'
 import { IAgentManagerService } from './agentManager.contribution.js'
+import { ISubagentService } from './subagentService.js'
+import { SubagentTypeName, subagentTypeNames } from '../common/subagentTypes.js'
 import { IPathService } from '../../../services/path/common/pathService.js'
 import { parseSkillFile, detectScriptLanguage, detectAssetType } from '../common/skillParser.js'
 import { generateLessonHtml, LessonData, LessonSection } from '../common/lessonHtmlGenerator.js'
@@ -1062,6 +1064,30 @@ export class ToolsService implements IToolsService {
 					questions: validatedQuestions.length > 0 ? validatedQuestions : [{ id: 'q1', question: 'What is 2 + 2?', type: 'single_choice' as const, options: ['3', '4', '5', '6'], correct_answer: '4', points: 10 }],
 					total_points: typeof total_points === 'number' ? total_points : validatedQuestions.reduce((sum, q) => sum + (q.points || 10), 0),
 					time_limit_seconds: typeof time_limit_seconds === 'number' ? time_limit_seconds : undefined,
+				};
+			},
+			run_subagent: (params: RawToolParamsObj) => {
+				const { description, subagent_type, prompt, tools, background, allow_external_tools } = params;
+				// `tools` may arrive as an array or a comma-separated string.
+				let toolsList: string[] | null = null;
+				if (Array.isArray(tools)) {
+					toolsList = (tools as unknown[])
+						.filter((t) => typeof t === 'string')
+						.map((t) => (t as string).trim())
+						.filter((t) => t.length > 0);
+					if (toolsList.length === 0) toolsList = null;
+				} else if (typeof tools === 'string' && tools.trim().length > 0) {
+					toolsList = tools.split(',').map((t) => t.trim()).filter((t) => t.length > 0);
+					if (toolsList.length === 0) toolsList = null;
+				}
+				const subagentTypeRaw = typeof subagent_type === 'string' ? subagent_type.trim() : null;
+				return {
+					description: validateStr('description', description),
+					subagentType: (subagentTypeRaw && subagentTypeNames.includes(subagentTypeRaw as SubagentTypeName)) ? subagentTypeRaw as SubagentTypeName : null,
+					prompt: validateOptionalStr('prompt', prompt),
+					tools: toolsList,
+					background: validateBoolean(background, { default: false }),
+					allowExternalTools: validateBoolean(allow_external_tools, { default: false }),
 				};
 			},
 		}
@@ -2984,6 +3010,61 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 
 				return { result: { quiz_id: quizId, template } };
 			},
+
+			run_subagent: async ({ description, subagentType, prompt, tools, background, allowExternalTools }, opts) => {
+				// Resolve ISubagentService lazily to avoid the construction cycle
+				// (SubagentService injects IToolsService). At call time both
+				// singletons already exist, so invokeFunction is safe.
+				const subagentService = this._instantiationService.invokeFunction((accessor) => accessor.get(ISubagentService));
+				const parentThreadId = opts?.threadId ?? null;
+
+				if (background) {
+					// Fire-and-forget: return immediately with the subagent id. The
+					// result is delivered via a notification + the Subagents panel.
+					const subagentId = subagentService.runSubagent({
+						parentThreadId,
+						description,
+						subagentType: subagentType ?? undefined,
+						prompt: prompt ?? undefined,
+						tools: tools ?? undefined,
+						background: true,
+						allowExternalTools,
+						title: description,
+					});
+					return {
+						result: {
+							subagentId,
+							status: 'running',
+							summary: `Subagent "${description.slice(0, 80)}" started in the background. Its result will appear in the Subagents panel and as a notification when it finishes.`,
+							background: true,
+						},
+					};
+				}
+
+				// Foreground: await the full result (like the Task tool).
+				opts?.onData?.(`Running subagent: ${description.slice(0, 80)}`);
+				const res = await subagentService.runSubagentSync({
+					parentThreadId,
+					description,
+					subagentType: subagentType ?? undefined,
+					prompt: prompt ?? undefined,
+					tools: tools ?? undefined,
+					background: false,
+					allowExternalTools,
+					title: description,
+				});
+				const summary = res.error
+					? `Subagent failed: ${res.error}`
+					: (res.fullText.trim().length > 0 ? res.fullText.trim() : `Subagent completed with status: ${res.status}.`);
+				return {
+					result: {
+						subagentId: res.subagentId,
+						status: res.status,
+						summary,
+						background: false,
+					},
+				};
+			},
 		}
 
 		// given to the LLM after the call for successful tool calls
@@ -3538,6 +3619,13 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 
 			create_quiz: (params, result) => {
 				return result.template || 'Quiz created successfully. The student can now answer the questions.';
+			},
+
+			run_subagent: (params, result) => {
+				if (result.background) {
+					return `Subagent started in the background (id: ${result.subagentId}, status: ${result.status}). ${result.summary}\n\nYou can continue working; the result will be delivered when the subagent finishes.`;
+				}
+				return `Subagent "${params.description.slice(0, 80)}" finished (status: ${result.status}).\n\n${result.summary}`;
 			},
 		}
 	}
