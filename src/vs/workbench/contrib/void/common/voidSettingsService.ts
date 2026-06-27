@@ -13,7 +13,6 @@ import { IStorageService, StorageScope, StorageTarget } from '../../../../platfo
 import { IMetricsService } from './metricsService.js';
 import { defaultProviderSettings, getModelCapabilities, ModelOverrides } from './modelCapabilities.js';
 import { VOID_SETTINGS_STORAGE_KEY } from './storageKeys.js';
-import { IHookService } from './hookService.js';
 import { voidDevWarn } from './devLog.js';
 import { defaultSettingsOfProvider, FeatureName, ProviderName, ModelSelectionOfFeature, SettingsOfProvider, SettingName, providerNames, ModelSelection, modelSelectionsEqual, featureNames, VoidStatefulModelInfo, GlobalSettings, GlobalSettingName, defaultGlobalSettings, ModelSelectionOptions, OptionsOfModelSelection, ChatMode, OverridesOfModel, defaultOverridesOfModel, MCPUserStateOfName as MCPUserStateOfName, MCPUserState } from './voidSettingsTypes.js';
 
@@ -532,14 +531,21 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 
 	setGlobalSetting: SetGlobalSettingFn = async (settingName, newVal) => {
 		// ModeSwitch hook: when the chat mode is changing, give hooks a chance to
-		// block the switch or rewrite the target mode. Resolved lazily to avoid the
-		// construction cycle (see constructor). `from` is captured before the state
-		// reassignment below; `to` is the incoming value (possibly rewritten by the
-		// hook's `updatedInput.to`). On block, return without changing the mode.
+		// block the switch or rewrite the target mode. `IHookService` is imported
+		// dynamically here (not at module top level) to break the init cycle:
+		// voidSettingsService → hookService → pluginService → voidSettingsService.
+		// A static import forces hookService/pluginService to load before this module
+		// has defined its `IVoidSettingsService` export, hitting a TDZ at
+		// pluginService's `@IVoidSettingsService` decorator. The dynamic import only
+		// loads hookService when a mode switch actually fires — long after startup.
+		// `from` is captured before the state reassignment below; `to` is the
+		// incoming value (possibly rewritten by the hook's `updatedInput.to`).
+		// On block, return without changing the mode.
 		if (settingName === 'chatMode') {
 			const from = this.state.globalSettings.chatMode
 			let to = newVal as ChatMode
 			try {
+				const { IHookService } = await import('./hookService.js')
 				const hookService = this._instantiationService.invokeFunction(accessor => accessor.get(IHookService))
 				const res = await hookService.fireModeSwitch(from, to)
 				if (res.decision === 'block') return
