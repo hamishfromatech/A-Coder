@@ -14,7 +14,7 @@ import { Tool as GeminiTool, FunctionDeclaration, GoogleGenAI, ThinkingConfig, S
 import { GoogleAuth } from 'google-auth-library'
 /* eslint-enable */
 
-import { AnthropicLLMChatMessage, AnthropicReasoning, GeminiLLMChatMessage, LLMChatMessage, LLMFIMMessage, ModelListParams, OllamaModelResponse, OnError, OnFinalMessage, OnText, RawToolCallObj, RawToolParamsObj } from '../../common/sendLLMMessageTypes.js';
+import { AnthropicLLMChatMessage, AnthropicReasoning, GeminiLLMChatMessage, LLMChatMessage, LLMFIMMessage, ModelListParams, OllamaModelResponse, OnError, OnFinalMessage, OnText, OpenAILLMChatMessage, RawToolCallObj, RawToolParamsObj } from '../../common/sendLLMMessageTypes.js';
 import { ChatMode, displayInfoOfProviderName, GlobalSettings, ModelSelectionOptions, OverridesOfModel, ProviderName, SettingsOfProvider } from '../../common/voidSettingsTypes.js';
 import { getSendableReasoningInfo, getModelCapabilities, getProviderCapabilities, defaultProviderSettings, getReservedOutputTokenSpace } from '../../common/modelCapabilities.js';
 import { availableTools, InternalToolInfo } from '../../common/prompt/prompts.js';
@@ -650,9 +650,29 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		// Required to select the model
 		(openai as AzureOpenAI).deploymentName = modelName;
 	}
+	// llama.cpp (Qwen templates): ensure the final message is a plain user message
+	// when the conversation ends with tool results. Qwen3/3.5 templates scan backward
+	// for a genuine user query and raise if every user message is only a
+	// <tool_response>...</tool_response> wrapper. A trailing user message satisfies that
+	// check without changing the model's behavior, since all tool context is still present.
+	let llamaCppMessages: OpenAILLMChatMessage[] | undefined
+	if (providerName === 'llamaCpp') {
+		llamaCppMessages = sanitizeOpenAIMessages(messages) as OpenAILLMChatMessage[]
+		const lastNonToolIdx = llamaCppMessages.length - 1 - [...llamaCppMessages].reverse().findIndex(m => m.role !== 'tool')
+		const hasPlainUserAfterTools = lastNonToolIdx >= 0
+			&& llamaCppMessages[lastNonToolIdx].role === 'user'
+			&& typeof llamaCppMessages[lastNonToolIdx].content === 'string'
+			&& (llamaCppMessages[lastNonToolIdx].content as string).length > 0
+			&& lastNonToolIdx === llamaCppMessages.length - 1
+		if (!hasPlainUserAfterTools) {
+			voidDevLog(`[sendLLMMessage] llama.cpp: appending trailing user message because conversation ends with tool results`)
+			llamaCppMessages.push({ role: 'user', content: 'Continue.' })
+		}
+	}
+
 	const options: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
 		model: modelName,
-		messages: providerName === 'mistral' || providerName === 'openRouter' || providerName === 'llamaCpp' ? sanitizeOpenAIMessages(messages) : messages as any,
+		messages: providerName === 'mistral' || providerName === 'openRouter' ? sanitizeOpenAIMessages(messages) : providerName === 'llamaCpp' ? llamaCppMessages! : messages as any,
 		stream: true,
 		...nativeToolsObj,
 		// Enable parallel tool calls for models that support native tool calling.
@@ -1096,6 +1116,8 @@ type OpenAIModel = {
 	created: number;
 	object: 'model';
 	owned_by: string;
+	// llama.cpp includes the server's loaded context size in model metadata.
+	meta?: { n_ctx?: number };
 }
 const _openaiCompatibleList = async ({ onSuccess: onSuccess_, onError: onError_, settingsOfProvider, providerName }: ListParams_Internal<OpenAIModel>) => {
 	const onSuccess = ({ models }: { models: OpenAIModel[] }) => {
@@ -1113,11 +1135,121 @@ const _openaiCompatibleList = async ({ onSuccess: onSuccess_, onError: onError_,
 				while (response.hasNextPage()) {
 					models.push(...(await response.getNextPage()).data)
 				}
+				// LM Studio's /v1/models response omits context length, but its native
+				// /api/v0/models endpoint exposes max_context_length. Fetch it in parallel
+				// and merge the result into the model objects we return.
+				if (providerName === 'lmStudio') {
+					try {
+						const endpoint = (settingsOfProvider.lmStudio.endpoint || '').replace(/\/+$/, '')
+						if (endpoint) {
+							const lmStudioRes = await fetch(`${endpoint}/api/v0/models`)
+							if (lmStudioRes.ok) {
+								const lmStudioData: { data?: LMStudioModel[] } = await lmStudioRes.json()
+								const contextById = new Map(
+									(lmStudioData.data ?? [])
+										.map(m => [m.id, m.max_context_length] as const)
+										.filter((entry): entry is readonly [string, number] => typeof entry[1] === 'number' && entry[1] > 0)
+								)
+								for (const model of models) {
+									const ctx = contextById.get(model.id)
+									if (ctx !== undefined) {
+										model.meta = { ...(model.meta ?? {}), n_ctx: ctx }
+									}
+								}
+							}
+						}
+					} catch {
+						// Don't let the secondary context fetch break model listing.
+					}
+				}
 				onSuccess({ models })
 			})
 			.catch((error) => {
 				onError({ error: error + '' })
 			})
+	}
+	catch (error) {
+		onError({ error: error + '' })
+	}
+}
+
+type LMStudioModel = {
+	id: string;
+	max_context_length?: number;
+}
+
+// Ollama Cloud exposes model tags via the Ollama /api/tags endpoint and context length
+// via /api/show (model_info.<arch>.context_length). We use these to autodetect context.
+type OllamaCloudTagModel = {
+	name: string;
+	model: string;
+	modified_at: string;
+	size: number;
+	digest: string;
+	details: {
+		parent_model: string;
+		format: string;
+		family: string;
+		families: string[] | null;
+		parameter_size: string;
+		quantization_level: string;
+	};
+	capabilities?: string[];
+}
+type OllamaCloudShowResponse = {
+	model_info?: Record<string, number>;
+}
+
+const _fetchOllamaCloudContext = async (endpoint: string, modelName: string): Promise<number | undefined> => {
+	const res = await fetch(`${endpoint}/api/show`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ name: modelName }),
+	})
+	if (!res.ok) return undefined
+	const data: OllamaCloudShowResponse = await res.json()
+	if (!data.model_info) return undefined
+	for (const key in data.model_info) {
+		if (key.endsWith('.context_length')) {
+			const val = data.model_info[key]
+			if (typeof val === 'number' && val > 0) return val
+		}
+	}
+	return undefined
+}
+
+const _ollamaCloudList = async ({ onSuccess: onSuccess_, onError: onError_, settingsOfProvider }: ListParams_Internal<OpenAIModel>) => {
+	const onSuccess = ({ models }: { models: OpenAIModel[] }) => {
+		onSuccess_({ models })
+	}
+	const onError = ({ error }: { error: string }) => {
+		onError_({ error })
+	}
+	try {
+		const endpoint = (settingsOfProvider.ollamaCloud.endpoint || '').replace(/\/+$/, '')
+		if (!endpoint) {
+			onError({ error: 'Ollama Cloud endpoint was empty.' })
+			return
+		}
+		const res = await fetch(`${endpoint}/api/tags`)
+		if (!res.ok) {
+			onError({ error: `Ollama Cloud /api/tags failed (${res.status} ${res.statusText})` })
+			return
+		}
+		const data: { models?: OllamaCloudTagModel[] } = await res.json()
+		const tagModels = data.models ?? []
+		const models: OpenAIModel[] = []
+		for (const tagModel of tagModels) {
+			const n_ctx = await _fetchOllamaCloudContext(endpoint, tagModel.name)
+			models.push({
+				id: tagModel.name,
+				created: Math.floor(new Date(tagModel.modified_at).getTime() / 1000),
+				object: 'model',
+				owned_by: 'ollama',
+				...(n_ctx !== undefined ? { meta: { n_ctx } } : {}),
+			})
+		}
+		onSuccess({ models })
 	}
 	catch (error) {
 		onError({ error: error + '' })
@@ -1769,7 +1901,7 @@ export const sendLLMMessageToProviderImplementation = {
 	ollamaCloud: {
 		sendChat: (params) => _sendOpenAICompatibleChat(params),
 		sendFIM: null,
-		list: (params) => _openaiCompatibleList(params),
+		list: (params) => _ollamaCloudList(params),
 	},
 	openAICompatible: {
 		sendChat: (params) => _sendOpenAICompatibleChat(params), // using openai's SDK is not ideal (your implementation might not do tools, reasoning, FIM etc correctly), talk to us for a custom integration
@@ -1835,7 +1967,7 @@ export const sendLLMMessageToProviderImplementation = {
 	},
 	llamaCpp: {
 		sendChat: (params) => _sendOpenAICompatibleChat(params),
-		sendFIM: null,
+		sendFIM: (params) => _sendOpenAICompatibleFIM(params),
 		list: (params) => _openaiCompatibleList(params),
 	},
 } satisfies CallFnOfProvider

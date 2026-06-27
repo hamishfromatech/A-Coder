@@ -391,6 +391,12 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 					...defaultGlobalSettings,
 					...(readS.globalSettings ?? {}),
 				},
+				// Deep-merge nested state maps so newly-added providers (e.g. llamaCpp) backfill
+				// with empty defaults for users upgrading from older versions.
+				overridesOfModel: {
+					...defaultOverridesOfModel,
+					...(readS.overridesOfModel ?? {}),
+				},
 				// no idea why this was here, seems like a bug
 				// ...defaultSettingsOfProvider,
 				// ...readS.settingsOfProvider,
@@ -579,14 +585,15 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 	}
 
 	setOverridesOfModel = async (providerName: ProviderName, modelName: string, overrides: Partial<ModelOverrides> | undefined) => {
+		const providerOverrides = this.state.overridesOfModel?.[providerName] ?? {};
 		const newState: VoidSettingsState = {
 			...this.state,
 			overridesOfModel: {
 				...this.state.overridesOfModel,
 				[providerName]: {
-					...this.state.overridesOfModel[providerName],
+					...providerOverrides,
 					[modelName]: overrides === undefined ? undefined : {
-						...this.state.overridesOfModel[providerName][modelName],
+						...providerOverrides[modelName],
 						...overrides
 					},
 				}

@@ -5,6 +5,7 @@
 
 import { IVoidSettingsService } from './voidSettingsService.js';
 import { ILLMMessageService } from './sendLLMMessageService.js';
+import { ITokenCountingService } from './tokenCountingService.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { Disposable, IDisposable } from '../../../../base/common/lifecycle.js';
 import { RefreshableProviderName, refreshableProviderNames, SettingsOfProvider } from './voidSettingsTypes.js';
@@ -86,6 +87,7 @@ export class RefreshModelService extends Disposable implements IRefreshModelServ
 	constructor(
 		@IVoidSettingsService private readonly voidSettingsService: IVoidSettingsService,
 		@ILLMMessageService private readonly llmMessageService: ILLMMessageService,
+		@ITokenCountingService private readonly tokenCountingService: ITokenCountingService,
 	) {
 		super()
 
@@ -202,6 +204,29 @@ export class RefreshModelService extends Disposable implements IRefreshModelServ
 					}),
 					{ enableProviderOnSuccess: options.enableProviderOnSuccess, hideRefresh: options.doNotFire }
 				)
+
+				// Cache autodetected context windows so TokenCountingService uses the real
+				// server context instead of the conservative 8192 default.
+				// - llamaCpp: /v1/models -> data[].meta.n_ctx
+				// - lmStudio: /api/v0/models -> merged into OpenAI model meta.n_ctx
+				// - ollamaCloud: /api/show -> model_info.<arch>.context_length (merged into meta.n_ctx)
+				// - ollama: /api/tags -> models[].details.context_length
+				if (providerName === 'llamaCpp' || providerName === 'lmStudio' || providerName === 'ollamaCloud') {
+					for (const model of models as OpenaiCompatibleModelResponse[]) {
+						const nCtx = model.meta?.n_ctx;
+						if (typeof nCtx === 'number' && nCtx > 0) {
+							this.tokenCountingService.setDynamicContextWindow(model.id, nCtx);
+						}
+					}
+				}
+				else if (providerName === 'ollama') {
+					for (const model of models as OllamaModelResponse[]) {
+						const ctx = model.details?.context_length;
+						if (typeof ctx === 'number' && ctx > 0) {
+							this.tokenCountingService.setDynamicContextWindow(model.name, ctx);
+						}
+					}
+				}
 
 				if (options.enableProviderOnSuccess) this.voidSettingsService.setSettingOfProvider(providerName, '_didFillInProviderSettings', true)
 

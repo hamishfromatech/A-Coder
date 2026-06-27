@@ -187,6 +187,8 @@ interface OllamaModelDetails {
 	families: string[];
 	parameter_size: string;
 	quantization_level: string;
+	// Ollama's /api/tags exposes the model's context length in details.
+	context_length?: number;
 }
 
 export type OllamaModelResponse = {
@@ -204,6 +206,8 @@ export type OpenaiCompatibleModelResponse = {
 	created: number;
 	object: 'model';
 	owned_by: string;
+	// llama.cpp exposes n_ctx in the model metadata so we can autodetect context window.
+	meta?: { n_ctx?: number };
 }
 
 
