@@ -174,6 +174,21 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 
 		setIsApproving(true)
 		try {
+			// Flip the plan's `approved` flag on the shared planning service so
+			// execute_implementation_plan's `plan.approved` gate passes. This
+			// wrapper's approval message routes the agent through the todo
+			// system, but marking the plan approved keeps the two paths
+			// consistent and lets execute_implementation_plan work too.
+			// Non-blocking: a missing plan (e.g. after restart) must not break
+			// the existing approve-and-send flow.
+			if (agentManagerService?.approveImplementationPlan && threadId) {
+				try {
+					agentManagerService.approveImplementationPlan(threadId)
+				} catch (approveError) {
+					console.warn('[ImplementationPlanPreview] approveImplementationPlan failed (non-blocking):', approveError)
+				}
+			}
+
 			// Switch to Code mode (agent) for execution
 			if (voidSettingsService?.setGlobalSetting) {
 				voidSettingsService.setGlobalSetting('chatMode', 'code')

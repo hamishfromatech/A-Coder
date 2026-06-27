@@ -14,7 +14,7 @@ import { Emitter, Event } from '../../../../base/common/event.js';
 import { ILLMMessageService } from '../common/sendLLMMessageService.js';
 import { voidDevLog, voidDevWarn } from '../common/devLog.js';
 import { chat_userMessageContent, isABuiltinToolName } from '../common/prompt/prompts.js';
-import { AnthropicReasoning, getErrorMessage, RawToolCallObj, RawToolParamsObj } from '../common/sendLLMMessageTypes.js';
+import { AnthropicReasoning, getErrorMessage, normalizeStopReason, RawToolCallObj, RawToolParamsObj } from '../common/sendLLMMessageTypes.js';
 import { generateUuid } from '../../../../base/common/uuid.js';
 import { FeatureName, ModelSelection, ModelSelectionOptions } from '../common/voidSettingsTypes.js';
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
@@ -49,12 +49,14 @@ import { RawMCPToolCall } from '../common/mcpServiceTypes.js';
 import { ACPRunAgentResponse } from '../common/acpServiceTypes.js';
 import { StreamingXMLParser, ReActPhase } from './streamingXMLParser.js';
 import { ToonService } from '../common/toonService.js';
+import { IHookService } from '../common/hookService.js';
 import { triggerCompressionNotification } from './react/src/util/compressionState.js';
 
 
 // related to retrying when LLM message has error
 const CHAT_RETRIES = 3 // Number of retries for LLM errors (including empty responses)
 const RETRY_DELAY_BASE = 1000 // Base delay between retries in milliseconds (exponential backoff: 1s, 2s, 4s)
+const MAX_STOP_HOOK_POKES = 8 // Cap on Stop-hook-forced continuation turns to avoid runaway /goal loops
 export const AUTO_CONTINUE_CHAR_THRESHOLD = 200; // Still used by UI auto-continue
 
 // MEMORY OPTIMIZATION: Maximum messages per thread to prevent unbounded memory growth
@@ -762,6 +764,12 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 	// Task planning: stores task plans per thread
 	private taskPlans: { [threadId: string]: TaskPlan[] } = {}
 
+	// SessionStart hook: fired once per app session. Source is 'resume' when the
+	// constructor loaded stored threads, else 'startup'. `_sessionStartFired`
+	// guards against re-firing across thread switches within one session.
+	private _sessionStartSource: 'startup' | 'resume' = 'startup'
+	private _sessionStartFired = false
+
 	// PERFORMANCE: Debounce timer for storage
 	private _storeThreadsDebounceTimer: any = null;
 	private readonly MAX_THREADS_IN_STORAGE = 5;
@@ -792,11 +800,15 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		@IVisionService private readonly _visionService: IVisionService,
 		@IModelService private readonly _modelService: IModelService,
 		@IToolOrchestrationService private readonly _orchestrationService: IToolOrchestrationService,
+		@IHookService private readonly _hookService: IHookService,
 	) {
 		super()
 		this.state = { allThreads: {}, currentThreadId: null as unknown as string } // default state
 
 		const readThreads = this._readAllThreads() || {}
+
+		// If stored threads were loaded, this is a resume; otherwise a fresh startup.
+		this._sessionStartSource = (Object.keys(readThreads).length > 0) ? 'resume' : 'startup'
 
 		const allThreads = this._ensureThreadStateDefaults(readThreads)
 		this.state = {
@@ -1606,12 +1618,33 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		// tool calls that honour a CancellationToken stop early instead of running
 		// to completion and landing their results in context.
 		const cancellationTokenSource = new CancellationTokenSource()
+		// Hoisted out of the try block below so the PostToolUse fire (which runs
+		// after the try/catch, once toolResultStr is finalized) can read it.
+		let preHookAdditionalContext: string | undefined
 		try {
 
 			// In parallel mode, skip stream state updates since multiple tools share the same thread state.
 			// Only set stream state for sequential tool execution.
 			if (!parallelMode) {
 				this._setStreamState(threadId, { isRunning: 'tool', interrupt: interruptorPromise, toolInfo: { toolName, toolParams, id: toolId, content: progressMessage, rawParams: opts.unvalidatedToolParams, mcpServerName } })
+			}
+
+			// Fire PreToolUse hook. A `block` decision prevents the tool call (the
+			// reason is fed back to the model as a tool error); `updatedInput` rewrites
+			// the tool params. `ask` is treated as allow for v1 (the approval flow above
+			// already handles user-consent gating). Fires after approval so it only
+			// runs on the actual execution pass, not the approval-request pass.
+			{
+				const preHook = await this._hookService.firePreToolUse(threadId, toolName, toolParams as Record<string, unknown>)
+				if (preHook.decision === 'block') {
+					const blockReason = preHook.reason || `Tool ${toolName} was blocked by a PreToolUse hook.`
+					this._updateToolMessage(threadId, { role: 'tool', type: 'tool_error', params: toolParams, result: blockReason, name: toolName, content: blockReason, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature, parallelBatchId }, !!parallelMode)
+					return {}
+				}
+				if (preHook.updatedInput && typeof preHook.updatedInput === 'object') {
+					toolParams = { ...(toolParams as object), ...preHook.updatedInput } as typeof toolParams
+				}
+				if (preHook.additionalContext) preHookAdditionalContext = preHook.additionalContext
 			}
 
 			if (isBuiltInTool) {
@@ -1785,6 +1818,18 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 			return {}
 		}
 
+		// Fire PostToolUse hook. `updatedToolOutput` replaces the result string the
+		// model sees; `additionalContext` (from pre or post hooks) is appended to it.
+		// Non-blocking: a hook error is logged and the original result is kept.
+		try {
+			const postHook = await this._hookService.firePostToolUse(threadId, toolName, toolParams as Record<string, unknown>, toolResultStr)
+			if (postHook.updatedToolOutput) toolResultStr = postHook.updatedToolOutput
+			if (postHook.additionalContext) toolResultStr = `${toolResultStr}\n\n${postHook.additionalContext}`
+		} catch (err) {
+			voidDevWarn('[hooks] PostToolUse fire threw (non-blocking):', err)
+		}
+		if (preHookAdditionalContext) toolResultStr = `${toolResultStr}\n\n${preHookAdditionalContext}`
+
 		// 5. add to history and keep going
 		this._updateToolMessage(threadId, { role: 'tool', type: 'success', params: toolParams, result: toolResult, name: toolName, content: toolResultStr, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature, parallelBatchId }, !!parallelMode)
 
@@ -1851,6 +1896,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 		let nMessagesSent = 0
 		let nPokesThisLoop = 0
+		let nStopHookPokes = 0
 		let shouldSendAnotherMessage = true
 		let isRunningWhenEnd: IsRunningType = undefined
 
@@ -1914,6 +1960,18 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 				loadedSkills,
 				orchestrationResult
 			})
+
+			// Fire PreCompact hook when a compaction actually ran on this turn, so
+			// hooks can archive the full pre-compaction transcript. Fired after the
+			// call (the compaction is internal to convertToLLMMessagesService); the
+			// `chatMessages` snapshot above is what the hook receives. Non-blocking.
+			if (compressionStats) {
+				try {
+					await this._hookService.firePreCompact(threadId, chatMessages)
+				} catch (err) {
+					voidDevWarn('[hooks] PreCompact fire threw (non-blocking):', err)
+				}
+			}
 
 			// Notify UI when compression happened
 			if (compressionStats) {
@@ -2229,6 +2287,17 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 							}
 						}
 
+						// Fire StopFailure hook (non-blocking: hooks can log/react but
+						// cannot recover the run). Errors here are swallowed.
+						try {
+							const sfHook = await this._hookService.fireStopFailure(threadId, error?.message ?? 'LLM error after all retries')
+							if (sfHook.continue === false) {
+								voidDevWarn('[hooks] StopFailure hook requested continue, but the run has errored and cannot recover.')
+							}
+						} catch (err) {
+							voidDevWarn('[hooks] StopFailure fire threw (non-blocking):', err)
+						}
+
 						this._setStreamState(threadId, { isRunning: undefined, error })
 						return
 					}
@@ -2443,6 +2512,28 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 						const hasPendingTasks = workflow && workflow.status === 'active' &&
 							workflow.tasks.some(t => t.status === 'pending' || t.status === 'in_progress');
 
+						// max_tokens truncation → continue (bounded + context-guarded)
+						const canonicalStop = normalizeStopReason(stopReason)
+						if (canonicalStop === 'max_tokens' && nPokesThisLoop < 3) {
+							// Context guard: if context is nearly full, re-poking would just truncate again.
+							// Fall through to the natural-stop path so compression can run next turn.
+							if (tokenUsage && tokenUsage.percentage > 90) {
+								voidDevWarn(`[chatThreadService] max_tokens truncation but context at ${tokenUsage.percentage}% — not poking; letting compression run.`)
+							} else {
+								voidDevLog(`[chatThreadService] Agent mode: Response truncated (max_tokens), continuing...`)
+								nPokesThisLoop += 1
+								this._addMessageToThread(threadId, {
+									role: 'user',
+									content: 'You were cut off mid-response before finishing. Continue exactly where you left off — do not repeat what you already produced, just complete the remaining output.',
+									displayContent: 'Continuing truncated response...',
+									selections: null,
+									state: defaultMessageState
+								})
+								shouldSendAnotherMessage = true
+								break
+							}
+						}
+
 						if (hasPendingTasks) {
 							voidDevLog(`[chatThreadService] Active workflow has pending tasks, continuing...`);
 							shouldSendAnotherMessage = true;
@@ -2496,8 +2587,34 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 							break;
 						}
 
-						// Only terminate if no workflow or workflow is complete
-						if (!workflow || workflow.status === 'completed') {
+						// Natural stop: fire the Stop hook whenever the model gave a text-only
+						// response and there are no pending workflow tasks — regardless of
+						// workflow status (previously this only fired when the workflow was
+						// completed/null, so planning/paused/failed states skipped /goal).
+						if (!hasPendingTasks) {
+							try {
+								const stopHook = await this._hookService.fireStop(threadId)
+								if (stopHook.continue === false) {
+									if (nStopHookPokes < MAX_STOP_HOOK_POKES) {
+										nStopHookPokes += 1
+										const pokeReason = stopHook.reason || 'A Stop hook requested the agent to keep working.'
+										voidDevLog(`[chatThreadService] Stop hook says continue=false (${nStopHookPokes}/${MAX_STOP_HOOK_POKES}): ${pokeReason}`)
+										this._addMessageToThread(threadId, {
+											role: 'user',
+											content: pokeReason,
+											displayContent: pokeReason,
+											selections: null,
+											state: defaultMessageState
+										})
+										shouldSendAnotherMessage = true
+										break
+									} else {
+										voidDevWarn(`[chatThreadService] Stop hook keep-working request hit cap (${MAX_STOP_HOOK_POKES}); stopping to avoid runaway.`)
+									}
+								}
+							} catch (err) {
+								voidDevWarn('[hooks] Stop fire threw (non-blocking):', err)
+							}
 							voidDevLog(`[chatThreadService] Agent mode: Text-only response (no tool call) - task complete`)
 							shouldSendAnotherMessage = false
 							break
@@ -3023,6 +3140,21 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		const thread = this.state.allThreads[threadId]
 		if (!thread) return // should never happen
 
+		// Fire SessionStart hook once per session (on the first user message).
+		// `additionalContext` from the hook is prepended to the user message so it
+		// reaches the model this turn. Non-blocking: hook errors are swallowed.
+		if (!this._sessionStartFired) {
+			this._sessionStartFired = true
+			try {
+				const ssHook = await this._hookService.fireSessionStart(this._sessionStartSource)
+				if (ssHook.additionalContext) {
+					userMessage = `${ssHook.additionalContext}\n\n${userMessage}`
+				}
+			} catch (err) {
+				voidDevWarn('[hooks] SessionStart fire threw (non-blocking):', err)
+			}
+		}
+
 		// interrupt existing stream
 		if (this.streamState[threadId]?.isRunning) {
 			await this.abortRunning(threadId)
@@ -3092,6 +3224,24 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 			: userMessage;
 
 		let finalContent = await chat_userMessageContent(messageContent, currSelns, { directoryStrService: this._directoryStringService, fileService: this._fileService })
+
+		// Fire UserPromptSubmit hook. A `block` decision prevents the user message
+		// from entering the thread / starting the agent (the reason is surfaced to
+		// the UI as a stream error). `additionalContext` is appended to the user
+		// message content so it reaches the model this turn.
+		try {
+			const upHook = await this._hookService.fireUserPromptSubmit(threadId, userMessage)
+			if (upHook.decision === 'block') {
+				const blockReason = upHook.reason || 'Your prompt was blocked by a UserPromptSubmit hook.'
+				this._setStreamState(threadId, { isRunning: undefined, error: { message: blockReason, fullError: null } })
+				return
+			}
+			if (upHook.additionalContext) {
+				finalContent = `${finalContent}\n\n${upHook.additionalContext}`
+			}
+		} catch (err) {
+			voidDevWarn('[hooks] UserPromptSubmit fire threw (non-blocking):', err)
+		}
 
 		// Tool Orchestration: Get tool suggestions before adding user message to thread
 		let orchestrationResult: OrchestrationResult = { suggestions: [], reasoning: '', summary: '' };

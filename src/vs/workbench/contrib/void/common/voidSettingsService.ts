@@ -8,11 +8,13 @@ import { Disposable } from '../../../../base/common/lifecycle.js';
 import { deepClone } from '../../../../base/common/objects.js';
 import { IEncryptionService } from '../../../../platform/encryption/common/encryptionService.js';
 import { registerSingleton, InstantiationType } from '../../../../platform/instantiation/common/extensions.js';
-import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
+import { createDecorator, IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { IMetricsService } from './metricsService.js';
 import { defaultProviderSettings, getModelCapabilities, ModelOverrides } from './modelCapabilities.js';
 import { VOID_SETTINGS_STORAGE_KEY } from './storageKeys.js';
+import { IHookService } from './hookService.js';
+import { voidDevWarn } from './devLog.js';
 import { defaultSettingsOfProvider, FeatureName, ProviderName, ModelSelectionOfFeature, SettingsOfProvider, SettingName, providerNames, ModelSelection, modelSelectionsEqual, featureNames, VoidStatefulModelInfo, GlobalSettings, GlobalSettingName, defaultGlobalSettings, ModelSelectionOptions, OptionsOfModelSelection, ChatMode, OverridesOfModel, defaultOverridesOfModel, MCPUserStateOfName as MCPUserStateOfName, MCPUserState } from './voidSettingsTypes.js';
 
 
@@ -259,6 +261,10 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 		@IMetricsService private readonly _metricsService: IMetricsService,
 		// could have used this, but it's clearer the way it is (+ slightly different eg StorageTarget.USER)
 		// @ISecretStorageService private readonly _secretStorageService: ISecretStorageService,
+		// Resolved lazily inside setGlobalSetting (for the ModeSwitch hook) to break
+		// the HookService ↔ VoidSettingsService construction cycle: HookService
+		// eagerly injects IVoidSettingsService, so we must not eagerly inject it back.
+		@IInstantiationService private readonly _instantiationService: IInstantiationService,
 	) {
 		super()
 
@@ -373,6 +379,12 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 		if (readS.globalSettings.ttsModel === undefined) readS.globalSettings.ttsModel = 'tts-1';
 		if (readS.globalSettings.ttsVoice === undefined) readS.globalSettings.ttsVoice = 'alloy';
 		if (readS.globalSettings.ttsApiKey === undefined) readS.globalSettings.ttsApiKey = '';
+
+		// Plugins + marketplace settings (Claude Code compatibility)
+		if (!Array.isArray(readS.globalSettings.pluginsEnabled)) readS.globalSettings.pluginsEnabled = [];
+		if (!Array.isArray(readS.globalSettings.marketplaces)) readS.globalSettings.marketplaces = [];
+		// Hooks (Claude Code compatibility): backfill user-global hooks if missing.
+		if (readS.globalSettings.userHooks === undefined || readS.globalSettings.userHooks === null) readS.globalSettings.userHooks = {};
 		}
 		catch (e) {
 			readS = defaultState()
@@ -519,6 +531,27 @@ export class VoidSettingsService extends Disposable implements IVoidSettingsServ
 	}
 
 	setGlobalSetting: SetGlobalSettingFn = async (settingName, newVal) => {
+		// ModeSwitch hook: when the chat mode is changing, give hooks a chance to
+		// block the switch or rewrite the target mode. Resolved lazily to avoid the
+		// construction cycle (see constructor). `from` is captured before the state
+		// reassignment below; `to` is the incoming value (possibly rewritten by the
+		// hook's `updatedInput.to`). On block, return without changing the mode.
+		if (settingName === 'chatMode') {
+			const from = this.state.globalSettings.chatMode
+			let to = newVal as ChatMode
+			try {
+				const hookService = this._instantiationService.invokeFunction(accessor => accessor.get(IHookService))
+				const res = await hookService.fireModeSwitch(from, to)
+				if (res.decision === 'block') return
+				if (res.updatedInput && typeof res.updatedInput.to === 'string') {
+					to = res.updatedInput.to as ChatMode
+				}
+				newVal = to as typeof newVal
+			} catch (err) {
+				voidDevWarn('[hooks] ModeSwitch fire threw (non-blocking):', err)
+			}
+		}
+
 		const newState: VoidSettingsState = {
 			...this.state,
 			globalSettings: {

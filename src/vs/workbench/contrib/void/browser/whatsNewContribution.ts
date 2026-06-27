@@ -61,25 +61,18 @@ export class WhatsNewCheckContribution extends Disposable implements IWorkbenchC
 				return;
 			}
 
-			// Open the release notes for this version (falls back to the
-			// general releases list if the version-specific tag URL fails).
-			// Only mark this version "seen" once an open actually succeeded —
-			// otherwise a failed open would silently suppress the prompt on
-			// every future launch.
+			// Open the GitHub releases page. We deliberately point at the
+			// releases list rather than a version-specific tag URL, since the
+			// tag for the current build may not exist on GitHub (dev builds,
+			// unreleased versions). Only mark this version "seen" once an open
+			// actually succeeded — otherwise a failed open would silently
+			// suppress the prompt on every future launch.
 			let opened = false
 			try {
-				const releaseUrl = `https://github.com/hamishfromatech/A-Coder/releases/tag/v${currentVersion}`;
-				await this.openerService.open(URI.parse(releaseUrl));
+				await this.openerService.open(URI.parse('https://github.com/hamishfromatech/A-Coder/releases'));
 				opened = true
 			} catch (error) {
-				voidDevWarn('[A-Coder What\'s New] Failed to open release notes:', error);
-				// Fallback to general releases page
-				try {
-					await this.openerService.open(URI.parse('https://github.com/hamishfromatech/A-Coder/releases'));
-					opened = true
-				} catch (fallbackError) {
-					voidDevWarn('[A-Coder What\'s New] Failed to open releases fallback:', fallbackError);
-				}
+				voidDevWarn('[A-Coder What\'s New] Failed to open releases page:', error);
 			}
 
 			if (opened) {

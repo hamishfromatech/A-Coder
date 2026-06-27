@@ -15,6 +15,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { MCPConfigFileJSON, MCPConfigFileEntryJSON, MCPServer, RawMCPToolCall, MCPToolErrorResponse, MCPServerEventResponse, MCPToolCallParams } from '../common/mcpServiceTypes.js';
 import { voidDevLog, voidDevWarn } from '../common/devLog.js';
+import { substituteEnvVars } from './envVarSubstitution.js';
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { MCPUserStateOfName } from '../common/voidSettingsTypes.js';
@@ -271,8 +272,18 @@ export class MCPChannel implements IServerChannel {
 				voidDevLog(`[MCP] Production mode - enhanced PATH for npx: ${enhancedPath.substring(0, 200)}...`);
 			}
 
+			// Resolve ${VAR} / ${VAR:-default} / ${VAR:=default} placeholders against
+			// process.env so plugin-contributed (and user) MCP servers can reference
+			// environment variables the same way Claude Code plugins do. Done here in
+			// the main process where process.env is available.
+			const command = substituteEnvVars(server.command)
+			const args = (server.args || []).map(a => substituteEnvVars(a))
+			const serverEnv = server.env
+				? Object.fromEntries(Object.entries(server.env).map(([k, v]) => [k, substituteEnvVars(v)]))
+				: {}
+
 			const env: Record<string, string> = {};
-			for (const [key, value] of Object.entries({ ...server.env, ...process.env })) {
+			for (const [key, value] of Object.entries({ ...serverEnv, ...process.env })) {
 				if (value !== undefined) {
 					env[key] = String(value);
 				}
@@ -280,8 +291,8 @@ export class MCPChannel implements IServerChannel {
 			env['PATH'] = enhancedPath;
 
 			transport = new StdioClientTransport({
-				command: server.command,
-				args: server.args || [],
+				command,
+				args,
 				env,
 			});
 
@@ -292,8 +303,8 @@ export class MCPChannel implements IServerChannel {
 			const toolsWithUniqueName = tools.map(({ name, ...rest }: { name: string, [key: string]: any }) => ({ name: this._addUniquePrefix(name, serverName), mcpServerName: serverName, ...rest }))
 			voidDevLog(`\u{2705} Loaded ${toolsWithUniqueName.length} tools from ${serverName} (stdio)`);
 
-			// Create a full command string for display
-			const fullCommand = `${server.command} ${server.args?.join(' ') || ''}`
+			// Create a full command string for display (resolved values)
+			const fullCommand = `${command} ${args.join(' ') || ''}`
 
 			// Format server object
 			info = {

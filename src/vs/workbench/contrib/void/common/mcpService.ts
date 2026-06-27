@@ -14,12 +14,13 @@ import { IProductService } from '../../../../platform/product/common/productServ
 import { VSBuffer } from '../../../../base/common/buffer.js';
 import { IChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
-import { MCPServerOfName, MCPConfigFileJSON, MCPServer, MCPToolCallParams, RawMCPToolCall, MCPServerEventResponse } from './mcpServiceTypes.js';
+import { MCPServerOfName, MCPConfigFileJSON, MCPConfigFileEntryJSON, MCPServer, MCPToolCallParams, RawMCPToolCall, MCPServerEventResponse } from './mcpServiceTypes.js';
 import { Event, Emitter } from '../../../../base/common/event.js';
 import { InternalToolInfo, ToolParamInfo } from './prompt/prompts.js';
 import { IVoidSettingsService } from './voidSettingsService.js';
 import { MCPUserStateOfName } from './voidSettingsTypes.js';
 import { ToonService } from './toonService.js';
+import { IPluginService } from './pluginService.js';
 
 
 type MCPServiceState = {
@@ -79,12 +80,13 @@ class MCPService extends Disposable implements IMCPService {
 		error: undefined,
 	}
 
+	/** Namespaced plugin server name → provenance label (`plugin:<pluginName>`).
+	 *  Rebuilt on every refresh; used to attach `source` to MCPServer state. */
+	private readonly _pluginServerOfName: Map<string, string> = new Map();
+
 	// Emitters for server events
 	private readonly _onDidChangeState = new Emitter<void>();
-	public readonly onDidChangeState = this._onDidChangeState.event;
-
-	// private readonly _onLoadingServersChange = new Emitter<MCPServerEventLoadingParam>();
-	// public readonly onLoadingServersChange = this._onLoadingServersChange.event;
+	public readonly onDidChangeState = this._onDidChangeState.event;;
 
 	constructor(
 		@IFileService private readonly fileService: IFileService,
@@ -93,6 +95,7 @@ class MCPService extends Disposable implements IMCPService {
 		@IEditorService private readonly editorService: IEditorService,
 		@IMainProcessService private readonly mainProcessService: IMainProcessService,
 		@IVoidSettingsService private readonly voidSettingsService: IVoidSettingsService,
+		@IPluginService private readonly pluginService: IPluginService,
 	) {
 		super();
 		this.channel = this.mainProcessService.getChannel('void-channel-mcp');
@@ -106,6 +109,9 @@ class MCPService extends Disposable implements IMCPService {
 		this._register((this.channel.listen('onAdd_server') satisfies Event<MCPServerEventResponse>)(onEvent));
 		this._register((this.channel.listen('onUpdate_server') satisfies Event<MCPServerEventResponse>)(onEvent));
 		this._register((this.channel.listen('onDelete_server') satisfies Event<MCPServerEventResponse>)(onEvent));
+
+		// Re-merge when the set of enabled plugins changes (their mcpServers come and go).
+		this._register(this.pluginService.onDidChangeState(() => { this._refreshMCPServers(); }));
 
 		this._initialize();
 	}
@@ -138,12 +144,15 @@ class MCPService extends Disposable implements IMCPService {
 				mcpServerOfName: remainingServers
 			}
 		} else {
-			// Add or update the server
+			// Add or update the server. Plugin-contributed servers (namespaced
+			// `<pluginName>__<serverName>`) get a `source` label for the UI.
+			const source = this._pluginServerOfName.get(serverName)
+			const enriched = source ? { ...newServer, source } : newServer
 			this.state = {
 				...this.state,
 				mcpServerOfName: {
 					...this.state.mcpServerOfName,
-					[serverName]: newServer
+					[serverName]: enriched
 				}
 			}
 		}
@@ -281,10 +290,21 @@ class MCPService extends Disposable implements IMCPService {
 
 		this._setHasError(undefined)
 
-		const newConfigFileJSON = await this._parseMCPConfigFile();
-		if (!newConfigFileJSON) { console.log(`Not setting state: MCP config file not found`); return }
-		if (!newConfigFileJSON?.mcpServers) { console.log(`Not setting state: MCP config file did not have an 'mcpServers' field`); return }
+		// User-declared servers from ~/.a-coder/mcp.json. On a parse error, bail entirely
+		// (preserve existing servers — never tear down working servers on a transient
+		// config-syntax error). Plugin-contributed servers load on the next successful
+		// refresh (e.g. when the user fixes mcp.json or a plugin is toggled).
+		const userConfig = await this._parseMCPConfigFile();
+		if (!userConfig) { return }
+		const userServers = userConfig.mcpServers
 
+		// Plugin-contributed servers (namespaced `<pluginName>__<serverName>` so they
+		// can never collide with user server names). Also rebuilds the provenance map.
+		const pluginServers = await this._collectPluginMcpServers();
+
+		// Merge — no key collision because plugin servers are namespaced.
+		const mergedServers: Record<string, MCPConfigFileEntryJSON> = { ...pluginServers, ...userServers };
+		const newConfigFileJSON: MCPConfigFileJSON = { mcpServers: mergedServers };
 
 		const oldConfigFileNames = Object.keys(this.state.mcpServerOfName)
 		const newConfigFileNames = Object.keys(newConfigFileJSON.mcpServers)
@@ -295,6 +315,7 @@ class MCPService extends Disposable implements IMCPService {
 		// set isOn to any new servers in the config. New servers default to OFF
 		// so first launch (and the bundled sample servers) don't `npx -y` download
 		// / spawn a process without explicit consent — the user toggles them on.
+		// This applies to plugin servers too — a plugin's MCP servers never auto-start.
 		const addedUserStateOfName: MCPUserStateOfName = {}
 		for (const name of addedServerNames) { addedUserStateOfName[name] = { isOn: false } }
 		await this.voidSettingsService.addMCPUserStateOfNames(addedUserStateOfName);
@@ -318,6 +339,68 @@ class MCPService extends Disposable implements IMCPService {
 			})
 		} catch (err) {
 			this._setHasError(String(err))
+		}
+	}
+
+	/**
+	 * Collect MCP servers contributed by every enabled plugin. Each server is
+	 * namespaced as `<pluginName>__<serverName>` and has `${CLAUDE_PLUGIN_ROOT}`
+	 * substituted with the plugin directory (so plugins can reference their own
+	 * bundled server scripts). Also rebuilds `_pluginServerOfName` so the UI can
+	 * show provenance. Env-var placeholders (`${VAR}`, `${VAR:-default}`) are left
+	 * for the main-process channel to resolve, where `process.env` is available.
+	 */
+	private async _collectPluginMcpServers(): Promise<Record<string, MCPConfigFileEntryJSON>> {
+		const out: Record<string, MCPConfigFileEntryJSON> = {}
+		this._pluginServerOfName.clear()
+
+		for (const p of this.pluginService.getEnabledPlugins()) {
+			const mcpField = p.manifest.mcpServers
+			if (!mcpField) continue
+
+			let serversObj: Record<string, MCPConfigFileEntryJSON> = {}
+			if (typeof mcpField === 'string') {
+				// Path to a .mcp.json file, resolved relative to the plugin dir.
+				// Accept both wrapped `{ mcpServers: {...} }` and bare `Record<...>` forms.
+				try {
+					const fileUri = URI.joinPath(p.dir, mcpField)
+					const content = await this.fileService.readFile(fileUri)
+					const parsed = JSON.parse(content.value.toString())
+					if (parsed && typeof parsed === 'object') {
+						serversObj = (parsed.mcpServers && typeof parsed.mcpServers === 'object')
+							? parsed.mcpServers as Record<string, MCPConfigFileEntryJSON>
+							: parsed as Record<string, MCPConfigFileEntryJSON>
+					}
+				} catch { /* invalid/missing .mcp.json — skip this plugin's MCP servers */ }
+			} else {
+				serversObj = mcpField
+			}
+
+			const pluginRoot = p.dir.fsPath
+			const sourceLabel = `plugin:${p.manifest.name}`
+			for (const [serverName, entry] of Object.entries(serversObj)) {
+				if (!entry || typeof entry !== 'object') continue
+				const namespaced = `${p.manifest.name}__${serverName}`
+				out[namespaced] = this._substitutePluginRoot(entry, pluginRoot)
+				this._pluginServerOfName.set(namespaced, sourceLabel)
+			}
+		}
+		return out
+	}
+
+	/** Replace `${CLAUDE_PLUGIN_ROOT}` with `pluginRoot` in an MCP server entry's
+	 *  command/args/env/headers string values. Returns a new entry; original untouched. */
+	private _substitutePluginRoot(entry: MCPConfigFileEntryJSON, pluginRoot: string): MCPConfigFileEntryJSON {
+		const repl = (s: string | undefined): string | undefined =>
+			s === undefined ? undefined : s.split('${CLAUDE_PLUGIN_ROOT}').join(pluginRoot)
+		const mapValues = (rec: Record<string, string> | undefined): Record<string, string> | undefined =>
+			rec ? Object.fromEntries(Object.entries(rec).map(([k, v]) => [k, repl(v) as string])) : rec
+		return {
+			...entry,
+			command: repl(entry.command),
+			args: entry.args?.map(repl) as string[] | undefined,
+			env: mapValues(entry.env),
+			headers: mapValues(entry.headers),
 		}
 	}
 

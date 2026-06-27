@@ -1179,7 +1179,9 @@ Skills can contain:
 3. Discovers available scripts, references, and assets
 4. Automatically enriches all subsequent turns with these instructions
 
-**Idempotency:** Loading the same skill multiple times has no additional effect.`,
+**Idempotency:** Loading the same skill multiple times has no additional effect.
+
+**Where skills come from:** Skills are discovered across multiple roots — your personal \`~/.a-coder/skills\` and \`~/.claude/skills\` directories, plus the \`skills/\` dir of any enabled plugin. The result reports a \`source\` field indicating which root the skill was found in. On name collisions, the precedence order is: \`~/.a-coder/skills\` > \`~/.claude/skills\` > plugin skills.`,
 		params: {
 			skill_name: { description: "The name of the skill to load (e.g., 'pdf-processing', 'code-review')." }
 		}
@@ -1197,7 +1199,9 @@ Skills can contain:
 **When to use:**
 - To discover what specialized capabilities are available
 - If you're unsure of the exact name of a skill you want to load
-- To find skills with specific components (scripts, references, assets)`,
+- To find skills with specific components (scripts, references, assets)
+
+**Where skills come from:** Skills are discovered across multiple roots — your personal \`~/.a-coder/skills\` and \`~/.claude/skills\` directories, plus the \`skills/\` dir of any enabled plugin. Each listed skill reports a \`source\` field indicating which root it was found in. On name collisions, the precedence order is: \`~/.a-coder/skills\` > \`~/.claude/skills\` > plugin skills.`,
 		params: {}
 	},
 
@@ -1600,6 +1604,10 @@ const gatherModeTools: BuiltinToolName[] = [
 	'preview_implementation_plan',
 	'update_implementation_step',
 	'get_implementation_status',
+	// Walkthrough - document findings/progress for review (the plan-mode
+	// prompt advertises creating walkthroughs; these tools make that possible)
+	'update_walkthrough',
+	'open_walkthrough_preview',
 	// Generative UI - interactive forms for user input
 	'render_form',
 ]

@@ -50,3 +50,6 @@ export const ACODER_AUTH_STORAGE_KEY = 'void.aCoderAuthStorage';
 
 // What's New modal - tracks last seen version
 export const WHATS_NEW_LAST_VERSION_KEY = 'void.whatsNew.lastVersion';
+
+// Implementation plans - persisted across restarts (per-thread plans)
+export const IMPLEMENT_PLANS_STORAGE_KEY = 'void.implementationPlansStorage';

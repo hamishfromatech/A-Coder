@@ -9,6 +9,7 @@ import React, { ButtonHTMLAttributes, FormEvent, FormHTMLAttributes, Fragment, K
 import { useAccessor, useChatThreadsState, useChatThreadsStreamState, useSettingsState, useActiveURI, useCommandBarState, useFullChatThreadsStreamState, useIsDark, useSubagents } from '../util/services.js';
 import { SubagentRun, SubagentStatus } from '../../../subagentService.js';
 import { ScrollType } from '../../../../../../../editor/common/editorCommon.js';
+import { Severity } from '../../../../../../../platform/notification/common/notification.js';
 
 import { ChatMarkdownRender, ChatMessageLocation, getApplyBoxId } from '../markdown/ChatMarkdownRender.js';
 import { URI } from '../../../../../../../base/common/uri.js';
@@ -88,19 +89,17 @@ import { useVoiceMode } from './useVoiceMode.js';
 const LazyPlanningResultWrapper = React.lazy(() => import('./PlanningResultWrapper.js'))
 const LazyImplementationPlanPreviewWrapper = React.lazy(() => import('./ImplementationPlanPreviewWrapper.js'))
 
-/** Expand a recognized slash command into the prompt text actually sent to the LLM. */
+/** Expand a recognized slash command into the prompt text actually sent to the LLM.
+ *  Built-ins use their `expand` fn (handles default-when-empty fallbacks); plugin/personal
+ *  commands substitute `$ARGUMENTS` in their markdown `prompt`. `client-clear` returns null
+ *  (handled as a client action in onSubmit, never sent to the model). */
 const expandSlashCommand = (parsed: ParsedSlashCommand): string | null => {
 	const { command, rest } = parsed;
 	if (!command) return null;
-	switch (command.action) {
-		case 'client-clear': return null;
-		case 'client-continue': return rest ? `Continue: ${rest}` : 'Please continue your previous response.';
-		case 'llm-search': return `Search the codebase for: ${rest || 'relevant symbols, files, and definitions'}. Use search tools as needed.`;
-		case 'llm-fix': return `Fix the following code issues${rest ? `: ${rest}` : ''}. Identify and correct any bugs, lint errors, or obvious problems.`;
-		case 'llm-explain': return `Explain the following code${rest ? `: ${rest}` : ''}. Break down what it does and why.`;
-		case 'llm-summarize': return `Summarize ${rest || 'the current conversation thread and any selected code'}. Provide a concise overview.`;
-		default: return null;
-	}
+	if (command.action === 'client-clear') return null;
+	if (command.expand) return command.expand(rest);
+	if (command.prompt) return command.prompt.split('$ARGUMENTS').join(rest);
+	return null;
 };
 
 // Image Preview Component
@@ -3501,6 +3500,29 @@ export const SidebarChat = () => {
 				chatThreadsService.deleteMessagesFromIndex(threadId, 0);
 				setSelections([]);
 				setAttachedImages([]);
+				textAreaFnsRef.current?.setValue('');
+				textAreaRef.current?.focus();
+				return;
+			}
+
+			if (parsedSlash.command.action === 'client-goal') {
+				// `/goal` installs a session-scoped prompt-type Stop hook that keeps the
+				// agent working until the model judges the condition met. With no arg,
+				// shows the current goal; `clear|stop|off|reset|none|cancel` removes it.
+				const hookService = accessor.get('IHookService');
+				const notificationService = accessor.get('INotificationService');
+				const args = parsedSlash.rest.trim();
+				const clearWords = new Set(['clear', 'stop', 'off', 'reset', 'none', 'cancel']);
+				if (clearWords.has(args.toLowerCase())) {
+					hookService.clearSessionGoal();
+					notificationService.notify({ severity: Severity.Info, message: 'Session goal cleared. The agent will stop normally on the next natural stop.' });
+				} else if (!args) {
+					const current = hookService.state.sessionGoal;
+					notificationService.notify({ severity: Severity.Info, message: current ? `Current goal: ${current}` : 'No session goal set. Use /goal <condition> to set one.' });
+				} else {
+					hookService.setSessionGoal(args);
+					notificationService.notify({ severity: Severity.Info, message: `Goal set: ${args}\nThe agent will keep working (across turns, in code mode) until it judges this goal met. Use /goal clear to remove.` });
+				}
 				textAreaFnsRef.current?.setValue('');
 				textAreaRef.current?.focus();
 				return;

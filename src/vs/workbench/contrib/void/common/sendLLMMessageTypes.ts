@@ -102,6 +102,30 @@ export type OnAbort = () => void
 export type AbortRef = { current: (() => void) | null }
 
 
+export type CanonicalStopReason =
+	| 'end_turn'      // OpenAI 'stop', Anthropic 'end_turn', Gemini 'STOP'
+	| 'max_tokens'    // OpenAI 'length', Anthropic 'max_tokens', Gemini 'MAX_TOKENS'
+	| 'tool_use'      // OpenAI 'tool_calls'/'function_call', Anthropic 'tool_use'
+	| 'stop_sequence'
+	| 'content_filter'// OpenAI 'content_filter', Gemini 'SAFETY'/'RECITATION', Anthropic 'refusal'
+	| 'paused'        // Anthropic 'pause_turn'
+	| 'other'         // known but unmapped
+	| 'unknown'       // undefined / empty
+
+export const normalizeStopReason = (raw: string | undefined): CanonicalStopReason => {
+	if (!raw) return 'unknown'
+	const r = raw.trim().toLowerCase()
+	if (!r) return 'unknown'
+	if (r === 'length' || r === 'max_tokens' || r === 'max output tokens' || r === 'maximum_tokens' || r === 'maxtokens') return 'max_tokens'
+	if (r === 'tool_calls' || r === 'tool_use' || r === 'tool_call' || r === 'function_call') return 'tool_use'
+	if (r === 'stop' || r === 'end_turn') return 'end_turn'
+	if (r === 'stop_sequence') return 'stop_sequence'
+	if (r === 'content_filter' || r === 'safety' || r === 'recitation' || r === 'refusal') return 'content_filter'
+	if (r === 'pause_turn' || r === 'paused') return 'paused'
+	return 'other'
+}
+
+
 // service types
 type SendLLMType = {
 	messagesType: 'chatMessages';

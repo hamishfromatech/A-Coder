@@ -4,25 +4,65 @@
  *--------------------------------------------------------------------------------------*/
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Wand2, Eraser, FileText, Lightbulb, Repeat } from 'lucide-react';
+import { Search, Wand2, Eraser, FileText, Lightbulb, Repeat, TerminalSquare, Target } from 'lucide-react';
+import { useAccessor, usePluginServiceState } from '../util/services.js';
+import { BUILTIN_SLASH_COMMANDS } from '../../../../common/slashCommands.js';
+import { SlashCommandDef } from '../../../../common/slashCommandTypes.js';
 
 export interface SlashCommand {
 	id: string;
 	label: string;
 	description: string;
 	icon: React.ReactNode;
-	/** What happens when the command is invoked. */
-	action: 'client-clear' | 'client-continue' | 'llm-search' | 'llm-fix' | 'llm-explain' | 'llm-summarize';
+	/** What happens when the command is invoked. `client-clear` clears the thread;
+	 *  `client-goal` installs/clears a session goal Stop hook (no LLM send);
+	 *  `llm-prompt` expands `prompt`/`expand` and sends the result to the LLM. */
+	action: 'client-clear' | 'client-goal' | 'llm-prompt';
+	/** Prompt template for `llm-prompt` (plugin/personal commands). `$ARGUMENTS` is substituted. */
+	prompt?: string;
+	/** Custom expander for built-in commands. Takes precedence over `prompt`. */
+	expand?: (args: string) => string;
+	/** Where this command came from. */
+	source?: string;
 }
 
-const SLASH_COMMANDS: SlashCommand[] = [
-	{ id: 'search', label: 'search', description: 'Search codebase for symbols, files, or definitions', icon: <Search size={14} />, action: 'llm-search' },
-	{ id: 'summarize', label: 'summarize', description: 'Summarize current thread or selected code', icon: <FileText size={14} />, action: 'llm-summarize' },
-	{ id: 'fix', label: 'fix', description: 'Fix lint errors or obvious bugs in selected code', icon: <Wand2 size={14} />, action: 'llm-fix' },
-	{ id: 'clear', label: 'clear', description: 'Clear the current chat thread', icon: <Eraser size={14} />, action: 'client-clear' },
-	{ id: 'continue', label: 'continue', description: 'Continue the assistant response', icon: <Repeat size={14} />, action: 'client-continue' },
-	{ id: 'explain', label: 'explain', description: 'Explain the current selection or code', icon: <Lightbulb size={14} />, action: 'llm-explain' },
-];
+// Per-label icons for the built-in commands. Plugin/personal commands fall back to TerminalSquare.
+const BUILTIN_ICONS: { [label: string]: React.ReactNode } = {
+	search: <Search size={14} />,
+	summarize: <FileText size={14} />,
+	fix: <Wand2 size={14} />,
+	clear: <Eraser size={14} />,
+	continue: <Repeat size={14} />,
+	explain: <Lightbulb size={14} />,
+	goal: <Target size={14} />,
+};
+
+/** Build the React SlashCommand list for the 6 built-ins (from common/slashCommands.ts). */
+const BUILTIN_COMMANDS: SlashCommand[] = BUILTIN_SLASH_COMMANDS.map(def => defToSlashCommand(def, 'builtin'));
+
+/** Plugin/personal commands discovered on disk, kept in sync by `useSlashCommands`. */
+let extraCommands: SlashCommand[] = [];
+
+function defToSlashCommand(def: SlashCommandDef, source: string): SlashCommand {
+	return {
+		id: def.label,
+		label: def.label,
+		description: def.description,
+		icon: BUILTIN_ICONS[def.label] ?? <TerminalSquare size={14} />,
+		action: def.clientAction === 'client-clear' ? 'client-clear' : (def.clientAction === 'client-goal' || def.clientAction === 'client-goal-clear' ? 'client-goal' : 'llm-prompt'),
+		prompt: def.prompt || '',
+		expand: def.expand,
+		source,
+	};
+}
+
+/** The full active command list: built-ins first, then plugin/personal (built-ins win on label clash). */
+function activeCommands(): SlashCommand[] {
+	const byLabel = new Map<string, SlashCommand>();
+	for (const c of BUILTIN_COMMANDS) byLabel.set(c.label, c);
+	for (const c of extraCommands) if (!byLabel.has(c.label)) byLabel.set(c.label, c);
+	return [...byLabel.values()];
+}
 
 export interface ParsedSlashCommand {
 	command: SlashCommand | null;
@@ -41,8 +81,36 @@ export const parseSlashCommand = (text: string): ParsedSlashCommand => {
 	const firstSpaceIdx = withoutPrefix.search(/\s/);
 	const commandLabel = firstSpaceIdx === -1 ? withoutPrefix : withoutPrefix.slice(0, firstSpaceIdx);
 	const rest = firstSpaceIdx === -1 ? '' : withoutPrefix.slice(firstSpaceIdx + 1).trim();
-	const command = SLASH_COMMANDS.find(cmd => cmd.label === commandLabel.toLowerCase()) || null;
+	const command = activeCommands().find(cmd => cmd.label === commandLabel.toLowerCase()) || null;
 	return { command, rest, isSlashCommand: true };
+};
+
+/**
+ * Hook returning the live slash-command list (built-ins + plugin/personal commands).
+ * Re-fetches plugin commands whenever the PluginService state changes. Call this in
+ * the component that renders the menu so it re-renders when plugins are enabled/disabled.
+ */
+export const useSlashCommands = (): SlashCommand[] => {
+	const accessor = useAccessor();
+	const pluginService = accessor.get('IPluginService');
+	const pluginState = usePluginServiceState();
+	const [cmds, setCmds] = useState<SlashCommand[]>(() => activeCommands());
+
+	useEffect(() => {
+		let cancelled = false;
+		pluginService.getCommands()
+			.then((defs: SlashCommandDef[]) => {
+				if (cancelled) return;
+				extraCommands = defs.map(d => defToSlashCommand(d, d.source));
+				setCmds(activeCommands());
+			})
+			.catch(() => { /* ignore — built-ins still available */ });
+		return () => { cancelled = true };
+		// Re-run when plugins change (enable/disable/install alters the contributed commands).
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [pluginState, pluginService]);
+
+	return cmds;
 };
 
 interface SlashCommandMenuProps {
@@ -57,7 +125,8 @@ export const SlashCommandMenu: React.FC<SlashCommandMenuProps> = ({ query, isOpe
 	const containerRef = useRef<HTMLDivElement>(null);
 	const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-	const filtered = SLASH_COMMANDS.filter(cmd =>
+	const commands = useSlashCommands();
+	const filtered = commands.filter(cmd =>
 		cmd.label.toLowerCase().startsWith(query.toLowerCase()) ||
 		cmd.description.toLowerCase().includes(query.toLowerCase())
 	);
@@ -130,7 +199,7 @@ export const SlashCommandMenu: React.FC<SlashCommandMenuProps> = ({ query, isOpe
 			<div className="overflow-y-auto py-1">
 				{filtered.map((cmd, i) => (
 					<div
-						key={cmd.id}
+						key={cmd.id + cmd.source}
 						ref={el => { itemRefs.current[i] = el; }}
 						className={`flex items-center gap-2 px-3 py-2 mx-1 rounded-lg cursor-pointer transition-colors duration-150 ${
 							i === selectedIdx

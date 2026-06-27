@@ -12,6 +12,8 @@ import { ICodeEditorService } from '../../../../editor/browser/services/codeEdit
 import { URI } from '../../../../base/common/uri.js';
 import { ThrottledDelayer } from '../../../../base/common/async.js';
 import * as dom from '../../../../base/browser/dom.js';
+import { IHookService } from '../common/hookService.js';
+import { voidDevWarn } from '../common/devLog.js';
 
 
 // make sure snippet logic works
@@ -50,7 +52,8 @@ class ContextGatheringService extends Disposable implements IContextGatheringSer
 	constructor(
 		@ILanguageFeaturesService private readonly _langFeaturesService: ILanguageFeaturesService,
 		@IModelService private readonly _modelService: IModelService,
-		@ICodeEditorService private readonly _codeEditorService: ICodeEditorService
+		@ICodeEditorService private readonly _codeEditorService: ICodeEditorService,
+		@IHookService private readonly _hookService: IHookService
 	) {
 		super();
 		this._modelService.getModels().forEach(model => this._subscribeToModel(model));
@@ -108,7 +111,30 @@ class ContextGatheringService extends Disposable implements IContextGatheringSer
 		await this._gatherParentSnippets(model, pos, this._NUM_LINES, 2, snippets, this._snippetIntervals);
 
 		// Convert to array and filter overlapping snippets
-		this._cache = Array.from(snippets);
+		let snippetArr = Array.from(snippets);
+
+		// Fire ContextGather hook: hooks can filter / rerank / augment the gathered
+		// snippets before they're cached. Latency-sensitive (autocomplete calls this
+		// on every keystroke with a 250ms deadline), so race against a short timeout
+		// and fail open (keep the original snippets) on timeout or error.
+		try {
+			const res = await Promise.race([
+				this._hookService.fireContextGather(snippetArr),
+				new Promise<undefined>(resolve => setTimeout(() => resolve(undefined), 200)),
+			])
+			if (res) {
+				const updated = res.updatedInput?.snippets
+				if (Array.isArray(updated) && updated.every(s => typeof s === 'string')) {
+					snippetArr = updated
+				} else if (res.decision === 'block') {
+					snippetArr = []
+				}
+			}
+		} catch (err) {
+			voidDevWarn('[hooks] ContextGather fire threw (non-blocking):', err)
+		}
+
+		this._cache = snippetArr;
 		console.log('Cache updated:', this._cache);
 	}
 

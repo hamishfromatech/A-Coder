@@ -326,8 +326,8 @@ export type BuiltinToolResultType = {
 	'give_hint': { hintLevel: number, template: string },
 	'create_lesson_plan': { planId: string, template: string },
 	'display_lesson': { success: boolean, filePath: string },
-	'load_skill': { skill_name: string, instructions: string, success: boolean, metadata?: { name: string, description: string, version?: string, author?: string, tags?: string[], dependencies?: string[] }, scripts?: Array<{ name: string, path: string, language: string }>, references?: Array<{ name: string, path: string }>, assets?: Array<{ name: string, path: string, type: string }> },
-	'list_skills': { skills: Array<{ name: string, description: string, version?: string, author?: string, tags?: string[], hasScripts: boolean, hasReferences: boolean, hasAssets: boolean }> },
+	'load_skill': { skill_name: string, instructions: string, success: boolean, source?: string, metadata?: { name: string, description: string, version?: string, author?: string, tags?: string[], dependencies?: string[] }, scripts?: Array<{ name: string, path: string, language: string }>, references?: Array<{ name: string, path: string }>, assets?: Array<{ name: string, path: string, type: string }> },
+	'list_skills': { skills: Array<{ name: string, description: string, version?: string, author?: string, tags?: string[], source?: string, hasScripts: boolean, hasReferences: boolean, hasAssets: boolean }> },
 	// --- Skill Execution Tools ---
 	'execute_skill_script': {
 		skill_name: string;

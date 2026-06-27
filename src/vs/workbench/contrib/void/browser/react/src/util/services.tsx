@@ -67,6 +67,13 @@ import { StandaloneSession } from '../../../../common/chatThreadServiceTypes.js'
 import { WorkspaceConnection, WorkspaceThreadSummary } from '../../../../common/workspaceRegistryTypes.js'
 import { IWorkspaceRemoteControlService } from '../../../workspaceRemoteControlService.js'
 import { IComposioService } from '../../../../common/composioService.js'
+import { IPluginService } from '../../../../common/pluginService.js'
+import { PluginServiceState } from '../../../../common/pluginServiceTypes.js'
+import { IMarketplaceService } from '../../../marketplaceService.js'
+import { MarketplaceServiceState } from '../../../../common/marketplaceServiceTypes.js'
+import { ISkillService } from '../../../../common/skillService.js'
+import { IHookService } from '../../../../common/hookService.js'
+import { HookServiceState } from '../../../../common/hookService.js'
 // import { IACoderOAuthService, ACoderAuthState, ACoderModelInfo } from '../../../../common/aCoderOAuthService.js'
 
 
@@ -106,6 +113,16 @@ const acpListeners: Set<() => void> = new Set()
 import { ComposioServiceState } from '../../../../common/composioService.js'
 let composioState: ComposioServiceState = { toolkits: [], isLoading: false, error: undefined, lastFetch: undefined }
 const composioStateListeners: Set<(s: ComposioServiceState) => void> = new Set()
+
+// Plugin / marketplace / skill service state (Claude Code compatibility)
+let pluginState: PluginServiceState = { plugins: [], error: undefined }
+const pluginListeners: Set<() => void> = new Set()
+let marketplaceState: MarketplaceServiceState = { marketplaces: [], listings: {} }
+const marketplaceListeners: Set<() => void> = new Set()
+
+// Hook service state (Claude Code compatibility + /goal)
+let hookState: HookServiceState = { hooksConfig: {}, sessionGoal: undefined, error: undefined }
+const hookListeners: Set<() => void> = new Set()
 
 // A-Coder OAuth state (disabled for now)
 // let aCoderAuthState: ACoderAuthState = { isAuthenticated: false }
@@ -314,6 +331,34 @@ export const _registerServices = (accessor: ServicesAccessor) => {
 		})
 	)
 
+	// Plugin + marketplace service state (Claude Code compatibility)
+	const pluginService = accessor.get(IPluginService)
+	pluginState = pluginService.state
+	disposables.push(
+		pluginService.onDidChangeState(() => {
+			pluginState = pluginService.state
+			pluginListeners.forEach(l => l())
+		})
+	)
+	const marketplaceService = accessor.get(IMarketplaceService)
+	marketplaceState = marketplaceService.state
+	disposables.push(
+		marketplaceService.onDidChangeState(() => {
+			marketplaceState = marketplaceService.state
+			marketplaceListeners.forEach(l => l())
+		})
+	)
+
+	// Hook service state
+	const hookService = accessor.get(IHookService)
+	hookState = hookService.state
+	disposables.push(
+		hookService.onDidChangeState(() => {
+			hookState = hookService.state
+			hookListeners.forEach(l => l())
+		})
+	)
+
 	// Standalone session state
 	standaloneSessionsState = standaloneSessionService.getSessions()
 	const activeSession = standaloneSessionService.getActiveSession()
@@ -405,6 +450,10 @@ const getReactAccessor = (accessor: ServicesAccessor) => {
 		IMCPModalService: accessor.get(IMCPModalService),
 		IAgentManagerService: accessor.get(IAgentManagerService),
 		IComposioService: accessor.get(IComposioService),
+		IPluginService: accessor.get(IPluginService),
+		IMarketplaceService: accessor.get(IMarketplaceService),
+		ISkillService: accessor.get(ISkillService),
+		IHookService: accessor.get(IHookService),
 
 		ILearningProgressService: accessor.get(ILearningProgressService),
 		IStorageService: accessor.get(IStorageService),
@@ -622,6 +671,45 @@ export const useComposioServiceState = () => {
 		composioStateListeners.add(ss)
 		return () => { composioStateListeners.delete(ss) }
 	}, [])
+	return s
+}
+
+export const usePluginServiceState = () => {
+	const accessor = useAccessor()
+	const pluginService = accessor.get('IPluginService')
+	const [s, ss] = useState(pluginState)
+	useEffect(() => {
+		const listener = () => { ss(pluginService.state) }
+		ss(pluginService.state)
+		pluginListeners.add(listener)
+		return () => { pluginListeners.delete(listener) }
+	}, [pluginService])
+	return s
+}
+
+export const useMarketplaceServiceState = () => {
+	const accessor = useAccessor()
+	const marketplaceService = accessor.get('IMarketplaceService')
+	const [s, ss] = useState(marketplaceState)
+	useEffect(() => {
+		const listener = () => { ss(marketplaceService.state) }
+		ss(marketplaceService.state)
+		marketplaceListeners.add(listener)
+		return () => { marketplaceListeners.delete(listener) }
+	}, [marketplaceService])
+	return s
+}
+
+export const useHookServiceState = () => {
+	const accessor = useAccessor()
+	const hookService = accessor.get('IHookService')
+	const [s, ss] = useState(hookState)
+	useEffect(() => {
+		const listener = () => { ss(hookService.state) }
+		ss(hookService.state)
+		hookListeners.add(listener)
+		return () => { hookListeners.delete(listener) }
+	}, [hookService])
 	return s
 }
 

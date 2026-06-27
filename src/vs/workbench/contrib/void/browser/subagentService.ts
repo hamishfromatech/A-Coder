@@ -23,6 +23,7 @@ import { IMCPService } from '../common/mcpService.js'
 import { IACPService } from '../common/acpService.js'
 import { IComposioService } from '../common/composioService.js'
 import { RawMCPToolCall } from '../common/mcpServiceTypes.js'
+import { IHookService } from '../common/hookService.js'
 
 import { IToolsService } from './toolsService.js'
 import { IConvertToLLMMessageService, SimpleLLMMessage } from './convertToLLMMessageService.js'
@@ -160,6 +161,7 @@ class SubagentService extends Disposable implements ISubagentService {
 		@IMCPService private readonly _mcpService: IMCPService,
 		@IComposioService private readonly _composioService: IComposioService,
 		@IACPService private readonly _acpService: IACPService,
+		@IHookService private readonly _hookService: IHookService,
 	) {
 		super()
 	}
@@ -252,6 +254,18 @@ class SubagentService extends Disposable implements ISubagentService {
 		try {
 			run.status = 'running'
 			this._fire(run, true)
+
+			// Fire SubagentStart hook (non-blocking; hooks can inject context or log).
+			try {
+				const ss = await this._hookService.fireSubagentStart(run.id, run.subagentType)
+				if (ss.additionalContext && run.extraPrompt) {
+					run.extraPrompt = `${run.extraPrompt}\n\n[hook context]\n${ss.additionalContext}`
+				} else if (ss.additionalContext) {
+					run.extraPrompt = `[hook context]\n${ss.additionalContext}`
+				}
+			} catch (err) {
+				voidDevWarn('[hooks] SubagentStart fire threw (non-blocking):', err)
+			}
 
 			const modelSelection = run.modelSelection
 			if (!modelSelection) {
@@ -495,6 +509,23 @@ class SubagentService extends Disposable implements ISubagentService {
 		try {
 			run.currentToolActivity = `Running ${builtinName}…`
 			this._fire(run)
+
+			// PreToolUse: block prevents the call (reason fed back as the tool result);
+			// updatedInput rewrites the params. ask is treated as allow for v1.
+			// The recursion guard in HookService prevents re-entry from this hook's
+			// own internal tool calls.
+			let preContext: string | undefined
+			{
+				const pre = await this._hookService.firePreToolUse(run.id, builtinName, validated as Record<string, unknown>)
+				if (pre.decision === 'block') {
+					return { ...baseTool, content: pre.reason || `Tool ${builtinName} was blocked by a PreToolUse hook.` }
+				}
+				if (pre.updatedInput && typeof pre.updatedInput === 'object') {
+					validated = { ...(validated as object), ...pre.updatedInput } as BuiltinToolCallParams[BuiltinToolName]
+				}
+				if (pre.additionalContext) preContext = pre.additionalContext
+			}
+
 			const { result } = await this._toolsService.callTool[builtinName](validated as any, {
 				threadId: run.id,
 				cancellationToken: token,
@@ -505,7 +536,16 @@ class SubagentService extends Disposable implements ISubagentService {
 				},
 			})
 			const resolved = await result
-			const resultStr = this._toolsService.stringOfResult[builtinName](validated as any, resolved as any)
+			let resultStr = this._toolsService.stringOfResult[builtinName](validated as any, resolved as any)
+			// PostToolUse: updatedToolOutput replaces the result string; additionalContext appended.
+			try {
+				const post = await this._hookService.firePostToolUse(run.id, builtinName, validated as Record<string, unknown>, resultStr)
+				if (post.updatedToolOutput) resultStr = post.updatedToolOutput
+				if (post.additionalContext) resultStr = `${resultStr}\n\n${post.additionalContext}`
+			} catch (err) {
+				voidDevWarn('[hooks] PostToolUse fire threw (non-blocking):', err)
+			}
+			if (preContext) resultStr = `${resultStr}\n\n${preContext}`
 			return { ...baseTool, content: resultStr }
 		} catch (e) {
 			return { ...baseTool, content: `Tool ${builtinName} failed: ${e instanceof Error ? e.message : String(e)}` }
@@ -515,12 +555,28 @@ class SubagentService extends Disposable implements ISubagentService {
 	private async _executeExternalTool(run: SubagentRun, tc: RawToolCallObj, name: string, baseTool: SimpleLLMMessage): Promise<SimpleLLMMessage> {
 		// External tools use the raw params as-is (no validateParams), mirroring
 		// chatThreadService._runToolCall's non-builtin branch.
-		const toolParams = tc.rawParams
+		let toolParams = tc.rawParams
 		const mcpServerName = this._computeMCPServerOfToolName(name)
 
 		try {
 			run.currentToolActivity = `Running ${name}…`
 			this._fire(run)
+
+			// PreToolUse: block prevents the call; updatedInput rewrites the params.
+			// ask is treated as allow for v1. Recursion guard is in HookService.
+			let preContext: string | undefined
+			{
+				const pre = await this._hookService.firePreToolUse(run.id, name, toolParams as Record<string, unknown>)
+				if (pre.decision === 'block') {
+					return { ...baseTool, content: pre.reason || `Tool ${name} was blocked by a PreToolUse hook.` }
+				}
+				if (pre.updatedInput && typeof pre.updatedInput === 'object') {
+					toolParams = { ...(toolParams as object), ...pre.updatedInput } as typeof toolParams
+				}
+				if (pre.additionalContext) preContext = pre.additionalContext
+			}
+
+			let content: string
 			if (mcpServerName === 'composio_tool_router') {
 				const sessionId = this._composioService.getSessionId()
 				if (!sessionId) {
@@ -534,10 +590,8 @@ class SubagentService extends Disposable implements ISubagentService {
 				if (!response.successful) {
 					return { ...baseTool, content: `Composio tool "${name}" failed: ${response.error || 'unknown error'}` }
 				}
-				return { ...baseTool, content: this._stringifyComposioResult(response.data) }
-			}
-
-			if (mcpServerName === 'acp_agent_router') {
+				content = this._stringifyComposioResult(response.data)
+			} else if (mcpServerName === 'acp_agent_router') {
 				const acpTool = this._acpService.getACPAgents()?.find(t => t.name === name)
 				if (!acpTool || !acpTool.acpServerName || !acpTool.acpAgentName) {
 					return { ...baseTool, content: `ACP agent "${name}" not found or is missing server/agent info.` }
@@ -548,10 +602,8 @@ class SubagentService extends Disposable implements ISubagentService {
 					agentName: acpTool.acpAgentName,
 					input,
 				})).result
-				return { ...baseTool, content: this._acpService.stringifyResult(acpResult) }
-			}
-
-			if (mcpServerName) {
+				content = this._acpService.stringifyResult(acpResult)
+			} else if (mcpServerName) {
 				const mcpTool = this._mcpService.getMCPTools()?.find(t => t.name === name)
 				if (!mcpTool || !mcpTool.mcpServerName) {
 					return { ...baseTool, content: `MCP tool "${name}" not found or has no server name.` }
@@ -561,10 +613,21 @@ class SubagentService extends Disposable implements ISubagentService {
 					toolName: name,
 					params: toolParams,
 				})).result
-				return { ...baseTool, content: this._mcpService.stringifyResult(mcpResult as RawMCPToolCall) }
+				content = this._mcpService.stringifyResult(mcpResult as RawMCPToolCall)
+			} else {
+				return { ...baseTool, content: `Tool "${name}" is not a recognized builtin or external tool.` }
 			}
 
-			return { ...baseTool, content: `Tool "${name}" is not a recognized builtin or external tool.` }
+			// PostToolUse: updatedToolOutput replaces the result string; additionalContext appended.
+			try {
+				const post = await this._hookService.firePostToolUse(run.id, name, toolParams as Record<string, unknown>, content)
+				if (post.updatedToolOutput) content = post.updatedToolOutput
+				if (post.additionalContext) content = `${content}\n\n${post.additionalContext}`
+			} catch (err) {
+				voidDevWarn('[hooks] PostToolUse fire threw (non-blocking):', err)
+			}
+			if (preContext) content = `${content}\n\n${preContext}`
+			return { ...baseTool, content }
 		} catch (e) {
 			return { ...baseTool, content: `Tool ${name} failed: ${e instanceof Error ? e.message : String(e)}` }
 		}
@@ -597,6 +660,8 @@ class SubagentService extends Disposable implements ISubagentService {
 		run.finishedAt = Date.now()
 		if (run.status === 'running') run.status = 'completed' // defensive
 		this._fire(run, true)
+		// Fire SubagentStop hook (fire-and-forget; non-blocking).
+		this._hookService.fireSubagentStop(run.id, run.subagentType, run.status).catch(err => voidDevWarn('[hooks] SubagentStop fire threw (non-blocking):', err))
 		this._onDidCompleteSubagent.fire(run.id)
 
 		// Background tasks surface a notification when they end (foreground tasks

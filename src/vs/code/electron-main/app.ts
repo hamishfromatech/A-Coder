@@ -136,6 +136,7 @@ import { MCPChannel } from '../../workbench/contrib/void/electron-main/mcpChanne
 import { ACPChannel } from '../../workbench/contrib/void/electron-main/acpChannel.js';
 import { ComposioChannel } from '../../workbench/contrib/void/electron-main/composioChannel.js';
 import { CodeExecutionChannel } from '../../workbench/contrib/void/electron-main/codeExecutionChannel.js';
+import { HookChannel } from '../../workbench/contrib/void/electron-main/hookChannel.js';
 import { MorphChannel } from '../../workbench/contrib/void/electron-main/morphChannel.js';
 import { TokenCountingChannel } from '../../workbench/contrib/void/electron-main/tokenCountingChannel.js';
 import { ImageGenerationChannel } from '../../workbench/contrib/void/electron-main/imageGenerationChannel.js';
@@ -1285,6 +1286,9 @@ export class CodeApplication extends Disposable {
 
 		// Void - Code Execution with quickjs-emscripten
 		mainProcessElectronServer.registerChannel('void-channel-code-execution', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new CodeExecutionChannel())));
+
+		// Void - Hooks (command-type hook subprocess execution; main process for child_process + process.env)
+		mainProcessElectronServer.registerChannel('void-channel-hooks', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new HookChannel())));
 
 		// Void - Morph Fast Apply API
 		mainProcessElectronServer.registerChannel('void-channel-morph', new LazyServerChannel(() => instantiationService.invokeFunction(accessor => new MorphChannel())));

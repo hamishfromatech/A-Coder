@@ -7,6 +7,7 @@
 import { defaultModelsOfProvider, defaultProviderSettings, ModelOverrides } from './modelCapabilities.js';
 import { ToolApprovalType } from './toolsServiceTypes.js';
 import { VoidSettingsState } from './voidSettingsService.js'
+import { HooksConfig } from './hookServiceTypes.js';
 
 
 type UnionOfKeys<T> = T extends T ? keyof T : never;
@@ -569,6 +570,13 @@ export type GlobalSettings = {
 		ttsVoice: string; // Voice identifier for TTS (e.g. alloy)
 		ttsApiKey: string; // Optional API key for TTS endpoint
 		ttsResponseFormat: 'mp3' | 'opus' | 'aac' | 'flac' | 'wav' | 'pcm'; // Audio output format for TTS
+	// Plugins + marketplace (Claude Code compatibility)
+	pluginsEnabled: string[]; // Names of enabled plugins (matches manifest `name`)
+	marketplaces: { name: string; url: string }[]; // Registered plugin marketplaces
+	// Hooks (Claude Code compatibility): user-global hooks editable via the Settings UI.
+	// File-based hooks (~/.claude/settings.json etc.) are read directly; this field is
+	// for the UI-managed global hooks layer. See common/hookServiceTypes.ts for the shape.
+	userHooks: HooksConfig;
 }
 
 export const defaultGlobalSettings: GlobalSettings = {
@@ -636,6 +644,11 @@ export const defaultGlobalSettings: GlobalSettings = {
 		ttsVoice: 'alloy',
 		ttsApiKey: '',
 		ttsResponseFormat: 'mp3',
+	// Plugins + marketplace defaults (Claude Code compatibility)
+	pluginsEnabled: [], // No plugins enabled by default
+	marketplaces: [], // No marketplaces registered by default
+	// Hooks default (Claude Code compatibility): no user-global hooks by default.
+	userHooks: {},
 }
 
 export type GlobalSettingName = keyof GlobalSettings

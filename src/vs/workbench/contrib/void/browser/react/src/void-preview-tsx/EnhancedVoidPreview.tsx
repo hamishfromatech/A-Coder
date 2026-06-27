@@ -10,9 +10,6 @@ import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js';
 import { useAccessor, useIsDark } from '../util/services.js';
 import { registerPreviewTab } from '../sidebar-tsx/WalkthroughResultWrapper.js';
 
-// Re-export original types
-export type { VoidPreviewProps } from './VoidPreview.js';
-
 export interface EnhancedVoidPreviewProps {
 	title: string;
 	content: string;
@@ -57,6 +54,7 @@ export const EnhancedVoidPreview: React.FC<EnhancedVoidPreviewProps> = ({
 	const accessor = useAccessor();
 	const chatThreadsService = accessor.get('IChatThreadService');
 	const voidSettingsService = accessor.get('IVoidSettingsService');
+	const agentManagerService = accessor.get('IAgentManagerService');
 
 	// Content state
 	const [localContent, setLocalContent] = useState(content);
@@ -143,6 +141,14 @@ export const EnhancedVoidPreview: React.FC<EnhancedVoidPreviewProps> = ({
 		setError(null);
 
 		try {
+			// For implementation plans, flip the plan's `approved` flag on the
+			// shared planning service so execute_implementation_plan's gate
+			// passes. (Walkthroughs have no plan; skip.) Throws if no plan
+			// exists for the thread — surfaced via setError below.
+			if (isImplementationPlan) {
+				agentManagerService?.approveImplementationPlan(threadId);
+			}
+
 			voidSettingsService?.setGlobalSetting?.('chatMode', 'code');
 			const message = isImplementationPlan
 				? `The implementation plan (ID: ${planId}) has been approved for execution.\n\nBegin execution now.`
@@ -154,7 +160,7 @@ export const EnhancedVoidPreview: React.FC<EnhancedVoidPreviewProps> = ({
 		} finally {
 			setIsApproving(false);
 		}
-	}, [planId, threadId, isApproving, isImplementationPlan, voidSettingsService, chatThreadsService]);
+	}, [planId, threadId, isApproving, isImplementationPlan, voidSettingsService, chatThreadsService, agentManagerService]);
 
 	const handleRequestChanges = useCallback(async () => {
 		if (!planId || !threadId || isRequestingChanges) return;
@@ -222,10 +228,10 @@ export const EnhancedVoidPreview: React.FC<EnhancedVoidPreviewProps> = ({
 				</header>
 
 				{/* Content and Sidebar */}
-				<div className="flex-1 overflow-hidden flex relative">
+				<div className="flex-1 min-h-0 overflow-hidden flex relative">
 
 					{/* Main Content */}
-					<main className="flex-1 overflow-y-auto custom-scrollbar group/content" onClick={handleContentClick}>
+					<main className="flex-1 min-h-0 min-w-0 overflow-y-auto custom-scrollbar group/content" onClick={handleContentClick}>
 						<article className="max-w-4xl mx-auto px-6 py-12">
 							<div className="bg-void-bg-1 border border-void-border-2 rounded-2xl shadow-lg overflow-hidden" ref={contentRef}>
 								<div className="h-1.5 w-full bg-void-accent/30" />

@@ -85,6 +85,16 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 		}
 	}, [toolMessage.result])
 
+	// Refresh open preview tabs with the FULL file content. The tool's
+	// `result.preview` is truncated to ~1000 chars (to keep the tool result
+	// sent to the LLM small); the preview tab must show the entire file, so
+	// we re-read it from disk via the service before refreshing.
+	const refreshWithFullContent = useCallback(async (filePath: string) => {
+		if (!agentManagerService) return
+		const full = await agentManagerService.getWalkthroughContent(filePath)
+		refreshPreviewTabs(filePath, full)
+	}, [agentManagerService])
+
 	// Recompute the latest walkthrough content when the thread state changes.
 	const computeNewerContent = useCallback(() => {
 		// Don't track updates for open_walkthrough_preview
@@ -113,11 +123,11 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 				// Update the latest result ref
 				latestResultRef.current = newerMsg.result
 
-				// Refresh any open preview tabs
-				refreshPreviewTabs(newerMsg.result.filePath, newerMsg.result.preview)
+				// Refresh any open preview tabs with the full file content
+				void refreshWithFullContent(newerMsg.result.filePath)
 			}
 		}
-	}, [chatThreadsService, threadId, toolMessage.id, toolMessage.name])
+	}, [chatThreadsService, threadId, toolMessage.id, toolMessage.name, refreshWithFullContent])
 
 	// Check for newer walkthrough updates in this thread
 	useEffect(() => {
@@ -148,7 +158,7 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 
 		try {
 			await agentManagerService.openWalkthroughPreview(latestResult.filePath, latestResult.preview, { threadId })
-			refreshPreviewTabs(latestResult.filePath, latestResult.preview)
+			void refreshWithFullContent(latestResult.filePath)
 		} catch (error) {
 			console.error('Failed to open walkthrough:', error)
 			if (commandService) {
@@ -160,7 +170,7 @@ const WalkthroughResultWrapper: React.FC<WalkthroughResultWrapperProps> = ({
 				}
 			}
 		}
-	}, [agentManagerService, commandService, threadId])
+	}, [agentManagerService, commandService, threadId, refreshWithFullContent])
 
 	// Show loading state if tool is still running (check type, not result)
 	// This matches how other wrappers work - they check toolMessage.type directly

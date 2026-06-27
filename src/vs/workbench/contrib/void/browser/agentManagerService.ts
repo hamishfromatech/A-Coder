@@ -20,6 +20,8 @@ import { INotificationService } from '../../../../platform/notification/common/n
 import { localize } from '../../../../nls.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { IWorkspaceRemoteControlService } from './workspaceRemoteControlService.js';
+import { IFileService } from '../../../../platform/files/common/files.js';
+import { implementationPlanningService } from '../common/implementationPlanningService.js';
 
 const AGENT_MANAGER_STATE_KEY = 'void.agentManager.state';
 
@@ -47,6 +49,7 @@ export class AgentManagerService extends Disposable implements IAgentManagerServ
 		@IEditorService private readonly _editorService: IEditorService,
 		@INotificationService private readonly _notificationService: INotificationService,
 		@IStorageService private readonly _storageService: IStorageService,
+		@IFileService private readonly _fileService: IFileService,
 	) {
 		super();
 	}
@@ -188,7 +191,20 @@ export class AgentManagerService extends Disposable implements IAgentManagerServ
 			path: filePath
 		});
 
-		const input = this._instantiationService.createInstance(VoidPreviewInput, 'Walkthrough: ' + filePath.split('/').pop(), preview, resource, {
+		// Always read the full file fresh so the preview tab shows the entire
+		// walkthrough, not the ~1000-char truncated `preview` the tool returns
+		// (that truncation is only meant to keep the tool result sent to the
+		// LLM small). Fall back to the passed preview only if the read fails.
+		let content = preview
+		try {
+			const fileContent = await this._fileService.readFile(URI.file(filePath))
+			const full = fileContent.value.toString()
+			if (full.length > 0) content = full
+		} catch {
+			// keep fallback `preview`
+		}
+
+		const input = this._instantiationService.createInstance(VoidPreviewInput, 'Walkthrough: ' + filePath.split('/').pop(), content, resource, {
 			isWalkthrough: true,
 			planId: filePath,
 			threadId: options?.threadId
@@ -196,7 +212,21 @@ export class AgentManagerService extends Disposable implements IAgentManagerServ
 		await this._editorService.openEditor(input, { pinned: true });
 
 		if (this._isOpen) {
-			this._onDidOpenWalkthrough.fire({ filePath, preview, threadId: options?.threadId });
+			this._onDidOpenWalkthrough.fire({ filePath, preview: content, threadId: options?.threadId });
+		}
+	}
+
+	/**
+	 * Reads the full contents of a walkthrough file from disk. Used by the
+	 * inline walkthrough wrapper to refresh open preview tabs with the
+	 * complete (non-truncated) content after an update.
+	 */
+	async getWalkthroughContent(filePath: string): Promise<string> {
+		try {
+			const fileContent = await this._fileService.readFile(URI.file(filePath))
+			return fileContent.value.toString()
+		} catch {
+			return ''
 		}
 	}
 
@@ -218,6 +248,13 @@ export class AgentManagerService extends Disposable implements IAgentManagerServ
 		if (this._isOpen) {
 			this._onDidOpenContent.fire({ title, content });
 		}
+	}
+
+	approveImplementationPlan(threadId: string): void {
+		// Delegates to the shared singleton (same instance the create/preview
+		// tool handlers use), so the approved flag is visible to
+		// execute_implementation_plan. Throws if no plan exists for the thread.
+		implementationPlanningService.approvePlan(threadId);
 	}
 
 	closeAgentManager(): void {

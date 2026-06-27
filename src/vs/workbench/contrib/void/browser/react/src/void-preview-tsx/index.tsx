@@ -10,7 +10,6 @@ import { LearningPreviewWithTheme } from './LearningPreview.js'
 // Export components
 export { EnhancedVoidPreview } from './EnhancedVoidPreview.js'
 export { LearningPreview, LearningPreviewWithTheme } from './LearningPreview.js'
-export { VoidPreview } from './VoidPreview.js'
 
 // Default mount function uses EnhancedVoidPreview for walkthroughs and implementation plans
 // Uses VS Code design tokens (void-*) for theme compatibility

@@ -260,7 +260,7 @@ export const AgentManager = ({ className }: { className: string }) => {
 	const [preview, setPreview] = useState(true);
 	const [sidebar, setSidebar] = useState(true);
 	const [selectedFile, setSelectedFile] = useState<string | null>(null);
-	const [walkthrough, setWalkthrough] = useState<{ filePath: string, preview: string } | null>(null);
+	const [walkthrough, setWalkthrough] = useState<{ filePath: string, preview: string, threadId?: string } | null>(null);
 	const [content, setContent] = useState<{ title: string, content: string } | null>(null);
 	const [searchQuery, setSearchQuery] = useState('');
 
@@ -278,7 +278,7 @@ export const AgentManager = ({ className }: { className: string }) => {
 	const handleOpenFile = useCallback((uri: URI) => {
 		setSelectedFile(uri.fsPath); setWalkthrough(null); setContent(null); setPreview(true);
 	}, []);
-	const handleOpenWalkthrough = useCallback((d: { filePath: string, preview: string }) => {
+	const handleOpenWalkthrough = useCallback((d: { filePath: string, preview: string, threadId?: string }) => {
 		setWalkthrough(d); setSelectedFile(null); setContent(null); setPreview(true);
 	}, []);
 	const handleOpenContent = useCallback((d: { title: string, content: string }) => {
@@ -332,6 +332,53 @@ export const AgentManager = ({ className }: { className: string }) => {
 		const commandService = accessor.get('ICommandService');
 		if (commandService) commandService.executeCommand('vscode.open', fileUri);
 	}, [fileUri, accessor]);
+
+	// Resolve the thread id to direct walkthrough actions at: prefer the id
+	// captured when the walkthrough was opened, fall back to the active thread.
+	const walkthroughThreadId = useMemo(() => {
+		if (walkthrough?.threadId) return walkthrough.threadId
+		const ts = accessor.get('IChatThreadService')
+		return ts?.state?.currentThreadId
+	}, [walkthrough, accessor]);
+
+	// Open the full EnhancedVoidPreview tab for this walkthrough. The tab
+	// re-reads the file from disk (full content, not the truncated ~1000-char
+	// side-panel preview) and renders the complete Approve/Request/Reject
+	// action bar, so the side panel stays lightweight while the tab does the
+	// heavy review UI.
+	const handleOpenWalkthroughInTab = useCallback(() => {
+		if (!walkthrough) return
+		const agentManagerService = accessor.get('IAgentManagerService')
+		if (!agentManagerService) return
+		void agentManagerService.openWalkthroughPreview(walkthrough.filePath, walkthrough.preview, { threadId: walkthroughThreadId })
+	}, [walkthrough, accessor, walkthroughThreadId]);
+
+	// Lightweight in-side-panel actions: send a directive message to the
+	// thread. Approve tells the agent to proceed; Request Changes keeps us in
+	// Plan mode and asks for revisions.
+	const handleApproveWalkthrough = useCallback(() => {
+		const tid = walkthroughThreadId
+		if (!walkthrough || !tid) return
+		const ts = accessor.get('IChatThreadService')
+		if (!ts) return
+		void ts.addUserMessageAndStreamResponse({
+			threadId: tid,
+			userMessage: `The walkthrough (File: ${walkthrough.filePath}) has been approved. Proceed.`,
+		})
+	}, [walkthrough, accessor, walkthroughThreadId]);
+
+	const handleRequestWalkthroughChanges = useCallback(() => {
+		const tid = walkthroughThreadId
+		if (!walkthrough || !tid) return
+		const ts = accessor.get('IChatThreadService')
+		const vs = accessor.get('IVoidSettingsService')
+		if (!ts) return
+		if (vs?.setGlobalSetting) vs.setGlobalSetting('chatMode', 'plan')
+		void ts.addUserMessageAndStreamResponse({
+			threadId: tid,
+			userMessage: `I request changes to the walkthrough (File: ${walkthrough.filePath}).\n\nPlease revise the walkthrough based on my feedback.`,
+		})
+	}, [walkthrough, accessor, walkthroughThreadId]);
 
 	const stats = useMemo(() => {
 		const threads = Object.values(chatThreadsState?.allThreads ?? {});
@@ -520,6 +567,15 @@ export const AgentManager = ({ className }: { className: string }) => {
 											<ExternalLink className="w-3.5 h-3.5" />
 										</button>
 										)}
+							{walkthrough && (
+								<button
+									onClick={handleOpenWalkthroughInTab}
+									className="p-1.5 rounded hover:bg-void-bg-3 text-void-fg-4 hover:text-void-fg-1 transition-colors"
+									title="Open in tab"
+								>
+									<Maximize2 className="w-3.5 h-3.5" />
+								</button>
+							)}
 									<button
 										onClick={() => { setPreview(false); setSelectedFile(null); setWalkthrough(null); setContent(null); }}
 										className="p-1.5 rounded hover:bg-void-bg-3 text-void-fg-4 hover:text-void-fg-1 transition-colors"
@@ -536,7 +592,27 @@ export const AgentManager = ({ className }: { className: string }) => {
 									{fileUri ? (
 										<CodePreview selectedFileUri={fileUri} />
 									) : walkthrough ? (
-										<ContentPreview title="Walkthrough" content={walkthrough.preview} />
+										<div className="h-full flex flex-col">
+											<div className="flex-1 min-h-0 overflow-hidden">
+												<ContentPreview title="Walkthrough" content={walkthrough.preview} />
+											</div>
+											<div className="flex-shrink-0 border-t border-void-border-2 bg-void-bg-2 px-3 py-2 flex items-center justify-end gap-2">
+												<button
+													onClick={handleRequestWalkthroughChanges}
+													className="px-3 py-1.5 bg-void-bg-1 text-void-fg-2 border border-void-border-2 rounded-md text-xs font-medium hover:bg-void-bg-3 transition-colors"
+													title="Ask the agent to revise the walkthrough"
+												>
+													Request Changes
+												</button>
+												<button
+													onClick={handleApproveWalkthrough}
+													className="px-3 py-1.5 bg-void-accent text-white rounded-md text-xs font-medium hover:opacity-90 transition-opacity"
+													title="Approve the walkthrough and tell the agent to proceed"
+												>
+													Approve
+												</button>
+											</div>
+										</div>
 									) : content ? (
 										<ContentPreview title={content.title} content={content.content} />
 									) : (

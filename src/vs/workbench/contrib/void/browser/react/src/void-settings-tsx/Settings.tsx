@@ -9,7 +9,7 @@ import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js'
 import { VoidButtonBgDarken, VoidCustomDropdownBox, VoidInputBox2, VoidSimpleInputBox, VoidSwitch } from '../util/inputs.js'
 import { useAccessor, useClipboardService, useIsDark, useIsOptedOut, useRefreshModelListener, useRefreshModelState, useSettingsState, /* useACoderOAuthState, useACoderModels */ } from '../util/services.js'
 // import { IACoderOAuthService, type ACoderModelInfo } from '../../../../common/aCoderOAuthService.js'
-import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, List, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User, Download, Star, MessageCircle, Store, Plug, ExternalLink, AlertTriangle, Eye, EyeOff, ChevronRight, Wind, Brain, Terminal, Code, BookOpen, Target, Trophy, Palette, Image as ImageIcon, Volume2, Play, Mic, Bot } from 'lucide-react'
+import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, List, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User, Download, Star, MessageCircle, Store, Plug, ExternalLink, AlertTriangle, Eye, EyeOff, ChevronRight, Wind, Brain, Terminal, Code, BookOpen, Target, Trophy, Palette, Image as ImageIcon, Volume2, Play, Mic, Bot, Puzzle, Trash2, FolderInput, Webhook } from 'lucide-react'
 import { URI } from '../../../../../../../base/common/uri.js'
 import { VSBuffer } from '../../../../../../../base/common/buffer.js'
 import { generateUuid } from '../../../../../../../base/common/uuid.js'
@@ -25,13 +25,13 @@ import { getModelCapabilities, modelOverrideKeys, ModelOverrides } from '../../.
 import { TransferEditorType, TransferFilesInfo } from '../../../extensionTransferTypes.js';
 import { MCPServer } from '../../../../common/mcpServiceTypes.js';
 import { ACPAgentState } from '../../../../common/acpServiceTypes.js';
-import { useMCPServiceState, useACPServiceState, useComposioServiceState } from '../util/services.js';
+import { useMCPServiceState, useACPServiceState, useComposioServiceState, usePluginServiceState, useMarketplaceServiceState, useHookServiceState } from '../util/services.js';
 import { OPT_OUT_KEY } from '../../../../common/storageKeys.js';
 import { StorageScope, StorageTarget } from '../../../../../../../platform/storage/common/storage.js';
 import '../styles.css'
 
 type Tab =
-	| 'models' | 'localProviders' | 'providers' | 'featureOptions' | 'mediaGeneration' | 'general' | 'mcp' | 'acp' | 'composio' | 'skills' | 'mobileApi' | 'about' | 'all';
+	| 'models' | 'localProviders' | 'providers' | 'featureOptions' | 'mediaGeneration' | 'general' | 'mcp' | 'acp' | 'composio' | 'skills' | 'plugins' | 'hooks' | 'mobileApi' | 'about' | 'all';
 
 const TTS_RESPONSE_FORMATS = ['mp3', 'opus', 'aac', 'flac', 'wav', 'pcm'] as const;
 type TTSResponseFormat = typeof TTS_RESPONSE_FORMATS[number];
@@ -2040,6 +2040,16 @@ const MCPServerComponent = ({ name, server }: { name: string, server: MCPServer 
 
 					{/* Server name */}
 					<div className="text-sm font-medium text-void-fg-1">{name}</div>
+					{server.source && (
+						<span
+							className="text-[10px] text-void-fg-4 px-1.5 py-0.5 rounded bg-void-bg-3"
+							data-tooltip-id='void-tooltip'
+							data-tooltip-content={`Contributed by ${server.source}`}
+							data-tooltip-class-name='void-max-w-[300px]'
+						>
+							{server.source}
+						</span>
+					)}
 				</div>
 
 				{/* Right side - power toggle switch */}
@@ -2991,6 +3001,396 @@ const SkillsList = () => {
 	);
 };
 
+// ─── Plugins & Marketplaces ─────────────────────────────────────────────────
+// Mirrors the SkillsList two-tab (installed / marketplace) layout but drives off the
+// IPluginService (installed plugins from ~/.a-coder/plugins + ~/.claude/plugins) and the
+// IMarketplaceService (add/browse/install via marketplace.json). Both read Claude Code's
+// on-disk formats directly so a user's existing plugins/marketplaces work unchanged.
+const PluginsList = () => {
+	const accessor = useAccessor();
+	const pluginService = accessor.get('IPluginService');
+	const marketplaceService = accessor.get('IMarketplaceService');
+	const notificationService = accessor.get('INotificationService');
+	const pluginState = usePluginServiceState();
+	const marketplaceState = useMarketplaceServiceState();
+
+	const [activeTab, setActiveTab] = useState<'installed' | 'marketplace'>('installed');
+	const [busy, setBusy] = useState<string | null>(null);
+	const [newMarketplaceUrl, setNewMarketplaceUrl] = useState('');
+	const [addError, setAddError] = useState<string | null>(null);
+	const [adding, setAdding] = useState(false);
+
+	const plugins = pluginState.plugins ?? [];
+	const enabledCount = plugins.filter(p => p.enabled).length;
+
+	const togglePlugin = async (name: string, enable: boolean) => {
+		setBusy(name);
+		try {
+			if (enable) await pluginService.enable(name);
+			else await pluginService.disable(name);
+		} catch (e: any) {
+			notificationService.error(`Failed to ${enable ? 'enable' : 'disable'} "${name}": ${e?.message || e}`);
+		} finally {
+			setBusy(null);
+		}
+	};
+
+	const addMarketplace = async () => {
+		const url = newMarketplaceUrl.trim();
+		if (!url) return;
+		setAdding(true);
+		setAddError(null);
+		try {
+			const res = await marketplaceService.addMarketplace(url);
+			if (res.success) {
+				setNewMarketplaceUrl('');
+				notificationService.info(`Marketplace "${res.name}" added.`);
+			} else {
+				setAddError(res.error || 'Failed to add marketplace.');
+			}
+		} catch (e: any) {
+			setAddError(e?.message || String(e));
+		} finally {
+			setAdding(false);
+		}
+	};
+
+	const installPlugin = async (name: string, marketplaceName: string) => {
+		setBusy(name);
+		try {
+			const res = await marketplaceService.installPlugin(name, marketplaceName);
+			if (res.success) notificationService.info(res.message);
+			else notificationService.error(res.message);
+		} catch (e: any) {
+			notificationService.error(`Failed to install "${name}": ${e?.message || e}`);
+		} finally {
+			setBusy(null);
+		}
+	};
+
+	const uninstallPlugin = async (name: string) => {
+		setBusy(name);
+		try {
+			const res = await marketplaceService.uninstallPlugin(name);
+			if (res.success) notificationService.info(res.message);
+			else notificationService.error(res.message);
+		} catch (e: any) {
+			notificationService.error(`Failed to uninstall "${name}": ${e?.message || e}`);
+		} finally {
+			setBusy(null);
+		}
+	};
+
+	const sourceLabel = (source: string) => source === 'claude' ? '~/.claude' : source === 'marketplace' ? 'marketplace' : '~/.a-coder';
+
+	return (
+		<div className="space-y-4">
+			{/* Tab switcher */}
+			<div className="flex border-b border-void-border-2">
+				<button
+					onClick={() => setActiveTab('installed')}
+					className={`flex-1 py-2 px-4 text-sm font-medium transition-all ${
+						activeTab === 'installed'
+							? 'text-void-accent border-b-2 border-void-accent'
+							: 'text-void-fg-3 hover:text-void-fg-1'
+					}`}
+				>
+					Installed ({plugins.length}, {enabledCount} enabled)
+				</button>
+				<button
+					onClick={() => setActiveTab('marketplace')}
+					className={`flex-1 py-2 px-4 text-sm font-medium transition-all ${
+						activeTab === 'marketplace'
+							? 'text-void-accent border-b-2 border-void-accent'
+							: 'text-void-fg-3 hover:text-void-fg-1'
+					}`}
+				>
+					Marketplace
+				</button>
+			</div>
+
+			{activeTab === 'installed' ? (
+				<div className="flex flex-col gap-2">
+					{plugins.length === 0 ? (
+						<div className="text-void-fg-3 text-sm italic p-4 text-center void-card">
+							No plugins found. Drop a plugin into <code>~/.a-coder/plugins</code> or <code>~/.claude/plugins</code>, or browse the marketplace tab.
+						</div>
+					) : (
+						plugins.map(p => (
+							<div key={p.manifest.name + p.source} className="void-card p-4 group">
+								<div className="flex items-center justify-between">
+									<div className="flex items-center gap-3 min-w-0">
+										<div className="p-1.5 bg-void-accent/10 rounded-md">
+											<Puzzle size={16} className="text-void-accent" />
+										</div>
+										<div className="flex flex-col min-w-0">
+											<div className="flex items-center gap-2">
+												<span className="text-sm font-medium text-void-fg-1 truncate">{p.manifest.name}</span>
+												{p.manifest.version && <span className="text-[10px] text-void-fg-4">v{p.manifest.version}</span>}
+												<span className="text-[10px] text-void-fg-4 px-1.5 py-0.5 rounded bg-void-bg-3">{sourceLabel(p.source)}</span>
+											</div>
+											<span className="text-[12px] text-void-fg-3 truncate">{p.manifest.description || 'No description'}</span>
+										</div>
+									</div>
+									<div className="flex items-center gap-2 flex-shrink-0">
+										{p.source === 'a-coder' && (
+											<button
+												onClick={() => uninstallPlugin(p.manifest.name)}
+												disabled={busy === p.manifest.name}
+												title="Uninstall"
+												className="p-1.5 rounded-md text-void-fg-4 hover:text-red-400 hover:bg-void-bg-3 transition-colors"
+											>
+												{busy === p.manifest.name ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+											</button>
+										)}
+										<VoidSwitch
+											value={p.enabled}
+											onChange={(v) => togglePlugin(p.manifest.name, v)}
+											disabled={busy === p.manifest.name}
+											size="sm"
+										/>
+									</div>
+								</div>
+							</div>
+						))
+					)}
+					<div className="text-[11px] text-void-fg-4 px-1 pt-1">
+						Plugins contribute skills and slash commands when enabled. Enabling a plugin makes its <code>skills/</code> and <code>commands/</code> dirs discoverable to the chat.
+					</div>
+				</div>
+			) : (
+				<div className="space-y-3">
+					{/* Add marketplace by URL */}
+					<div className="void-card p-4">
+						<div className="text-sm font-medium text-void-fg-1 mb-2">Add marketplace</div>
+						<div className="flex gap-2">
+							<input
+								type="text"
+								value={newMarketplaceUrl}
+								onChange={(e) => { setNewMarketplaceUrl(e.target.value); setAddError(null); }}
+								placeholder="git URL or local path to a marketplace.json"
+								onKeyDown={(e) => { if (e.key === 'Enter') addMarketplace(); }}
+								className="flex-1 px-3 py-1.5 text-sm rounded-md bg-void-bg-3 border border-void-border-2 text-void-fg-1 placeholder-void-fg-4 focus:outline-none focus:ring-1 focus:ring-void-accent"
+							/>
+							<button
+								onClick={addMarketplace}
+								disabled={adding || !newMarketplaceUrl.trim()}
+								className="px-3 py-1.5 text-sm rounded-md bg-void-accent text-white flex items-center gap-1.5 hover:opacity-90 disabled:opacity-50"
+							>
+								{adding ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+								Add
+							</button>
+						</div>
+						{addError && <div className="text-red-400 text-xs mt-2">{addError}</div>}
+					</div>
+
+					{/* Added marketplaces + their listings */}
+					{marketplaceState.marketplaces.length === 0 ? (
+						<div className="text-void-fg-3 text-sm italic p-4 text-center void-card">
+							No marketplaces added yet. Add one above (e.g. a git repo containing a <code>marketplace.json</code>).
+						</div>
+					) : (
+						marketplaceState.marketplaces.map(m => {
+							const listing = marketplaceState.listings[m.name] || {};
+							const listingPlugins = listing.plugins ?? [];
+							return (
+								<div key={m.name} className="void-card p-4">
+									<div className="flex items-center justify-between mb-2">
+										<div className="flex flex-col min-w-0">
+											<span className="text-sm font-medium text-void-fg-1 truncate">{m.name}</span>
+											<span className="text-[11px] text-void-fg-4 truncate">{m.url}</span>
+										</div>
+										<div className="flex items-center gap-1.5 flex-shrink-0">
+											<button
+												onClick={() => marketplaceService.refreshListing(m.name)}
+												title="Refresh"
+												className="p-1.5 rounded-md text-void-fg-4 hover:text-void-fg-1 hover:bg-void-bg-3 transition-colors"
+											>
+												<RefreshCw size={13} />
+											</button>
+											<button
+												onClick={() => marketplaceService.removeMarketplace(m.name)}
+												title="Remove marketplace"
+												className="p-1.5 rounded-md text-void-fg-4 hover:text-red-400 hover:bg-void-bg-3 transition-colors"
+											>
+												<Trash2 size={13} />
+											</button>
+										</div>
+									</div>
+
+									{listing.loading && (
+										<div className="flex items-center gap-2 py-3 text-void-fg-3 text-xs">
+											<Loader2 size={14} className="animate-spin" /> Loading plugins...
+										</div>
+									)}
+									{listing.error && !listing.loading && (
+										<div className="text-red-400 text-xs py-2">{listing.error}</div>
+									)}
+									{!listing.loading && !listing.error && (
+										<div className="flex flex-col gap-1.5">
+											{listingPlugins.length === 0 ? (
+												<div className="text-void-fg-4 text-xs italic py-2">No plugins listed in this marketplace.</div>
+											) : listingPlugins.map(pl => {
+												const installed = plugins.some(p => p.manifest.name === pl.name);
+												return (
+													<div key={pl.name} className="flex items-center justify-between gap-3 px-2 py-1.5 rounded-md hover:bg-void-bg-3/40">
+														<div className="flex flex-col min-w-0">
+															<div className="flex items-center gap-2">
+																<span className="text-[13px] font-medium text-void-fg-1 truncate">{pl.name}</span>
+																{pl.version && <span className="text-[10px] text-void-fg-4">v{pl.version}</span>}
+																{pl.category && <span className="text-[10px] text-void-fg-4 px-1.5 py-0.5 rounded bg-void-bg-3">{pl.category}</span>}
+															</div>
+															{pl.description && <span className="text-[11px] text-void-fg-3 truncate">{pl.description}</span>}
+														</div>
+														<button
+															onClick={() => installed ? uninstallPlugin(pl.name) : installPlugin(pl.name, m.name)}
+															disabled={busy === pl.name}
+															className={`px-2.5 py-1 text-xs rounded-md flex items-center gap-1.5 transition-colors flex-shrink-0 ${
+																installed
+																	? 'bg-void-bg-3 text-void-fg-2 hover:text-red-400'
+																	: 'bg-void-accent text-white hover:opacity-90'
+															} disabled:opacity-50`}
+														>
+															{busy === pl.name
+																? <Loader2 size={12} className="animate-spin" />
+																: installed ? <Trash2 size={12} /> : <FolderInput size={12} />}
+															{installed ? 'Uninstall' : 'Install'}
+														</button>
+													</div>
+												);
+											})}
+										</div>
+									)}
+								</div>
+							);
+						})
+					)}
+				</div>
+			)}
+		</div>
+	);
+};
+
+/**
+ * Hooks panel: shows the currently-active hooks (aggregated from session, plugin,
+ * project, and global sources) grouped by event, an active-session-goal indicator
+ * with a Clear button (for `/goal`), and a JSON editor for the user-global hooks
+ * stored in `globalSettings.userHooks`. Mirrors the SkillsList/PluginsList layout.
+ */
+const HooksList = () => {
+	const accessor = useAccessor();
+	const hookService = accessor.get('IHookService');
+	const voidSettingsService = accessor.get('IVoidSettingsService');
+	const notificationService = accessor.get('INotificationService');
+	const hookState = useHookServiceState();
+	const settingsState = useSettingsState();
+
+	const userHooks = settingsState.globalSettings.userHooks ?? {};
+	const [jsonText, setJsonText] = useState(() => JSON.stringify(userHooks, null, 2));
+	const [jsonError, setJsonError] = useState<string | null>(null);
+
+	// Re-sync the editor when the persisted userHooks changes elsewhere.
+	useEffect(() => {
+		setJsonText(JSON.stringify(userHooks, null, 2));
+	}, [JSON.stringify(userHooks)]);
+
+	const saveUserHooks = async () => {
+		try {
+			const parsed = JSON.parse(jsonText);
+			await voidSettingsService.setGlobalSetting('userHooks', parsed);
+			setJsonError(null);
+			notificationService.info('Global hooks saved.');
+		} catch (e: any) {
+			setJsonError(e?.message ? `Invalid JSON: ${e.message}` : 'Invalid JSON.');
+		}
+	};
+
+	const events = Object.keys(hookState.hooksConfig ?? {}) as string[];
+	const hasActiveGoal = !!hookState.sessionGoal;
+
+	return (
+		<div className="space-y-6">
+			{/* Active session goal (/goal) */}
+			{hasActiveGoal && (
+				<div className="rounded-lg border border-void-border-1 bg-void-bg-2 p-4">
+					<div className="flex items-start justify-between gap-4">
+						<div className="min-w-0">
+							<div className="flex items-center gap-2 text-sm font-medium text-void-fg-1">
+								<Target size={14} /> Active session goal
+							</div>
+							<p className="text-xs text-void-fg-3 mt-1.5 break-words">{hookState.sessionGoal}</p>
+							<p className="text-[11px] text-void-fg-4 mt-1">Set via /goal. The agent keeps working (code mode) until it judges this goal met.</p>
+						</div>
+						<button
+							onClick={() => { hookService.clearSessionGoal(); notificationService.info('Session goal cleared.'); }}
+							className="shrink-0 px-2.5 py-1.5 text-xs rounded-md border border-void-border-1 text-void-fg-2 hover:bg-void-bg-1"
+						>Clear</button>
+					</div>
+				</div>
+			)}
+
+			{/* Aggregated active hooks */}
+			<div className="rounded-lg border border-void-border-1 bg-void-bg-2 p-4">
+				<div className="flex items-center justify-between mb-3">
+					<div className="text-sm font-medium text-void-fg-1">Active hooks</div>
+					<span className="text-[11px] text-void-fg-4">{events.length} event{events.length === 1 ? '' : 's'}</span>
+				</div>
+				{hookState.error && (
+					<div className="text-xs text-red-500 mb-2">Hook config error: {hookState.error}</div>
+				)}
+				{events.length === 0 ? (
+					<p className="text-xs text-void-fg-3">No hooks active. Add hooks via <code>~/.a-coder/settings.json</code>, <code>~/.claude/settings.json</code>, a plugin manifest, or the global editor below. Use <code>/goal &lt;condition&gt;</code> for a session goal.</p>
+				) : (
+					<div className="space-y-2.5">
+						{events.map(ev => {
+							const matchers = (hookState.hooksConfig as any)[ev] ?? [];
+							return (
+								<div key={ev} className="border border-void-border-1 rounded-md p-2.5 bg-void-bg-1">
+									<div className="flex items-center gap-2 mb-1.5">
+										<span className="text-xs font-semibold text-void-fg-1">{ev}</span>
+										<span className="text-[10px] text-void-fg-4">{matchers.length} matcher{matchers.length === 1 ? '' : 's'}</span>
+									</div>
+									{matchers.map((m: any, i: number) => (
+										<div key={i} className="ml-2 mb-1 last:mb-0">
+											<div className="text-[11px] text-void-fg-3">matcher: <code className="text-void-fg-2">{m.matcher || '(all)'}</code> · {m.hooks?.length ?? 0} hook{(m.hooks?.length ?? 0) === 1 ? '' : 's'}</div>
+											{(m.hooks ?? []).map((h: any, j: number) => (
+												<div key={j} className="ml-3 text-[11px] text-void-fg-3 flex gap-1.5">
+													<span className="px-1 rounded bg-void-bg-2 text-void-fg-2">{h.type}</span>
+													<span className="truncate">{h.command || h.prompt || '(no command/prompt)'}</span>
+													{h.once && <span className="text-void-fg-4">· once</span>}
+												</div>
+											))}
+										</div>
+									))}
+								</div>
+							)
+						})}
+					</div>
+				)}
+			</div>
+
+			{/* Global hooks JSON editor */}
+			<div className="rounded-lg border border-void-border-1 bg-void-bg-2 p-4">
+				<div className="text-sm font-medium text-void-fg-1 mb-1">Global hooks (user-global)</div>
+				<p className="text-xs text-void-fg-3 mb-2">Stored in <code>globalSettings.userHooks</code>. Same schema as <code>~/.claude/settings.json</code> <code>hooks</code>. Example: <code>{`{"PreToolUse":[{"matcher":"run_terminal_command","hooks":[{"type":"command","command":"echo denied && exit 2"}]}]}`}</code></p>
+				<textarea
+					value={jsonText}
+					onChange={(e) => setJsonText(e.target.value)}
+					spellCheck={false}
+					className="w-full h-48 font-mono text-xs rounded-md border border-void-border-1 bg-void-bg-1 text-void-fg-1 p-2.5 focus:outline-none"
+				/>
+				{jsonError && <div className="text-xs text-red-500 mt-1.5">{jsonError}</div>}
+				<div className="flex justify-end mt-2">
+					<button
+						onClick={saveUserHooks}
+						className="px-3 py-1.5 text-xs rounded-md bg-void-accent-1 text-white hover:opacity-90"
+					>Save global hooks</button>
+				</div>
+			</div>
+		</div>
+	);
+};
+
 export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 	const isDark = useIsDark()
 	const clipboardService = useClipboardService()
@@ -3015,6 +3415,8 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 		{ tab: 'acp', label: 'ACP Agents', icon: Bot },
 		{ tab: 'composio', label: 'App Integrations', icon: Store },
 		{ tab: 'skills', label: 'AI Skills', icon: Zap },
+		{ tab: 'plugins', label: 'Plugins', icon: Puzzle },
+		{ tab: 'hooks', label: 'Hooks', icon: Webhook },
 		{ tab: 'mobileApi', label: 'API & Mobile', icon: Smartphone },
 		{ tab: 'voice', label: 'Voice & Audio', icon: Mic },
 		{ tab: 'about', label: 'About A-Coder', icon: Info },
@@ -4050,6 +4452,50 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 								>
 									<SettingBox>
 										<SkillsList />
+									</SettingBox>
+								</SettingCard>
+							</section>
+						</ErrorBoundary>
+					</div>
+
+					{/* Plugins & Marketplaces section */}
+					<div className={shouldShowTab('plugins') ? 'space-y-8' : 'hidden'}>
+						<ErrorBoundary>
+							<section className="space-y-6">
+								<div className="mb-6">
+									<h2 className="text-xl font-medium text-void-fg-1">Plugins</h2>
+									<p className="text-sm text-void-fg-3 mt-1">Claude Code-compatible plugins, skills, and marketplaces. Your existing <code>~/.claude</code> plugins and skills work unchanged.</p>
+								</div>
+
+								<SettingCard
+									isDark={isDark}
+									title="Installed Plugins & Marketplaces"
+									description="Browse and manage plugins discovered on disk, and add marketplaces to install more."
+								>
+									<SettingBox>
+										<PluginsList />
+									</SettingBox>
+								</SettingCard>
+							</section>
+						</ErrorBoundary>
+					</div>
+
+					{/* Hooks section */}
+					<div className={shouldShowTab('hooks') ? 'space-y-8' : 'hidden'}>
+						<ErrorBoundary>
+							<section className="space-y-6">
+								<div className="mb-6">
+									<h2 className="text-xl font-medium text-void-fg-1">Hooks</h2>
+									<p className="text-sm text-void-fg-3 mt-1">Claude Code-compatible hooks fire at well-defined points in the agent loop. Use <code>/goal &lt;condition&gt;</code> to set a session goal, or configure hooks below / in <code>~/.claude/settings.json</code>.</p>
+								</div>
+
+								<SettingCard
+									isDark={isDark}
+									title="Hooks"
+									description="Active hooks, your session goal, and the global hooks editor."
+								>
+									<SettingBox>
+										<HooksList />
 									</SettingBox>
 								</SettingCard>
 							</section>

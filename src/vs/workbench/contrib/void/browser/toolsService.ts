@@ -3,6 +3,7 @@ import * as path from '../../../../base/common/path.js'
 import { URI } from '../../../../base/common/uri.js'
 import { VSBuffer } from '../../../../base/common/buffer.js'
 import { IFileService } from '../../../../platform/files/common/files.js'
+import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js'
 import { registerSingleton, InstantiationType } from '../../../../platform/instantiation/common/extensions.js'
 import { createDecorator, IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js'
 import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js'
@@ -24,15 +25,17 @@ import { generateUuid } from '../../../../base/common/uuid.js'
 import { IMorphService } from './morphService.js'
 import { ToonService } from '../common/toonService.js'
 import { PlanningService, TaskStatus as PlanTaskStatus } from '../common/planningService.js'
-import { ImplementationPlanningService, ImplementationPlan, ImplementationStep, StepStatus as ImplStepStatus } from '../common/implementationPlanningService.js'
+import { ImplementationPlanningService, ImplementationPlan, ImplementationStep, StepStatus as ImplStepStatus, implementationPlanningService } from '../common/implementationPlanningService.js'
 import { IAgentManagerService } from './agentManager.contribution.js'
 import { ISubagentService } from './subagentService.js'
 import { SubagentTypeName, subagentTypeNames } from '../common/subagentTypes.js'
 import { IPathService } from '../../../services/path/common/pathService.js'
 import { parseSkillFile, detectScriptLanguage, detectAssetType } from '../common/skillParser.js'
+import { ISkillService } from '../common/skillService.js'
 import { generateLessonHtml, LessonData, LessonSection } from '../common/lessonHtmlGenerator.js'
 import { IOpenerService } from '../../../../platform/opener/common/opener.js'
 import { INotificationService } from '../../../../platform/notification/common/notification.js'
+import { IMPLEMENT_PLANS_STORAGE_KEY } from '../common/storageKeys.js'
 /**
  * Parse markdown lesson content into structured sections
  */
@@ -302,13 +305,30 @@ export class ToolsService implements IToolsService {
 		@IAgentManagerService private readonly _agentManagerService: IAgentManagerService,
 		@IPathService private readonly _pathService: IPathService,
 
+		@IStorageService private readonly _storageService: IStorageService,
+
 		@IOpenerService private readonly _openerService: IOpenerService,
 	@INotificationService private readonly _notificationService: INotificationService,
 	) {
 		const queryBuilder = this._instantiationService.createInstance(QueryBuilder);
 		this._toonService = new ToonService();
 		this._planningService = new PlanningService();
-		this._implementationPlanningService = new ImplementationPlanningService();
+		// Use the shared singleton instance — AgentManagerService.approveImplementationPlan
+		// delegates to the same singleton, so the approve flow (React preview) and
+		// the tool handlers (create/execute/update) share one set of plans.
+		this._implementationPlanningService = implementationPlanningService;
+		// Restore persisted plans, then subscribe to persist future mutations.
+		// importAll does not fire onDidChangePlans, so subscribing after restore
+		// does not trigger a redundant write on startup.
+		const storedPlans = this._storageService.get(IMPLEMENT_PLANS_STORAGE_KEY, StorageScope.APPLICATION)
+		if (storedPlans) {
+			try { this._implementationPlanningService.importAll(storedPlans) } catch (e) { /* ignore corrupt persisted state */ }
+		}
+		this._implementationPlanningService.onDidChangePlans(() => {
+			try {
+				this._storageService.store(IMPLEMENT_PLANS_STORAGE_KEY, this._implementationPlanningService.exportAll(), StorageScope.APPLICATION, StorageTarget.USER)
+			} catch (e) { /* ignore persistence errors */ }
+		})
 		this.validateParams = {
 			read_file: (params: RawToolParamsObj) => {
 				const { uri: uriStr, start_line: startLineUnknown, end_line: endLineUnknown, page_number: pageNumberUnknown, explanation: explanationUnknown } = params
@@ -1822,13 +1842,16 @@ export class ToolsService implements IToolsService {
 				const plan = this._implementationPlanningService.createImplementationPlan(goal, steps, opts?.threadId);
 				const summary = this.formatImplementationPlanSummary(plan);
 
-				// Open in React tab
+				// Open in React tab. Pass the plan/thread identifiers so the
+				// preview tab renders its Approve/Reject/Request-Changes action
+				// bar (EnhancedVoidPreview.showActions requires these).
 				await this._agentManagerService.openContentPreview(
 					`Implementation Plan: ${plan.id}`,
-					summary
+					summary,
+					{ isImplementationPlan: true, planId: plan.id, threadId: opts?.threadId }
 				);
 
-				return { result: { planId: plan.id, summary } };
+				return { result: { planId: plan.id, summary, steps: plan.steps } };
 			},
 
 			preview_implementation_plan: async (_p, opts) => {
@@ -1838,10 +1861,13 @@ export class ToolsService implements IToolsService {
 				}
 				const summary = this.formatImplementationPlanSummary(plan);
 
-				// Open in React tab
+				// Open in React tab. Pass the plan/thread identifiers so the
+				// preview tab renders its Approve/Reject/Request-Changes action
+				// bar (EnhancedVoidPreview.showActions requires these).
 				await this._agentManagerService.openContentPreview(
 					`Implementation Plan: ${plan.id}`,
-					summary
+					summary,
+					{ isImplementationPlan: true, planId: plan.id, threadId: opts?.threadId }
 				);
 
 				return { result: { planId: plan.id, goal: plan.goal, steps: plan.steps, summary } };
@@ -2168,12 +2194,21 @@ For each module include:
 			},
 
 			load_skill: async ({ skill_name }, opts) => {
-				const userHome = await this._pathService.userHome();
-				const skillsDir = URI.joinPath(userHome, '.a-coder', 'skills');
-				const skillFolder = this._resolveWithin(skillsDir, [skill_name]);
-				const skillPath = this._resolveWithin(skillFolder, ['SKILL.md']);
-
+				// Resolve the skill folder across all roots (~/.a-coder, ~/.claude,
+				// enabled plugins) via ISkillService. Resolved lazily to avoid touching
+				// the ToolsService constructor.
+				const skillService = this._instantiationService.invokeFunction((accessor) => accessor.get(ISkillService));
 				opts?.onData?.(`Loading skill: ${skill_name}...`);
+
+				const resolved = await skillService.resolveSkillFolder(skill_name);
+				if (!resolved) {
+					const availableSkills = await skillService.listAllSkillNames();
+					const errorMsg = `Skill "${skill_name}" not found. ${availableSkills.length > 0 ? `Available skills: ${availableSkills.join(', ')}` : 'No skills are currently installed.'}`;
+					return { result: { skill_name, instructions: errorMsg, success: false } };
+				}
+
+				const skillFolder = resolved.folder;
+				const skillPath = this._resolveWithin(skillFolder, ['SKILL.md']);
 
 				try {
 					// Read and parse the SKILL.md file
@@ -2255,6 +2290,7 @@ For each module include:
 							skill_name,
 							instructions: parsed.content,
 							success: true,
+							source: resolved.source,
 							metadata: {
 								name: metadata.name,
 								description: metadata.description,
@@ -2270,27 +2306,16 @@ For each module include:
 					};
 				} catch (error) {
 					console.error(`[ToolsService] Failed to load skill ${skill_name}:`, error);
-					// Try to list available skills to help the LLM
-					let availableSkills: string[] = [];
-					try {
-						const stat = await this._fileService.resolve(skillsDir);
-						if (stat.children) {
-							availableSkills = stat.children
-								.filter(child => child.isDirectory)
-								.map(child => child.name);
-						}
-					} catch (e) {
-						// Skills dir might not exist yet
-					}
-
+					const availableSkills = await skillService.listAllSkillNames();
 					const errorMsg = `Skill "${skill_name}" not found. ${availableSkills.length > 0 ? `Available skills: ${availableSkills.join(', ')}` : 'No skills are currently installed.'}`;
 					return { result: { skill_name, instructions: errorMsg, success: false } };
 				}
 			},
 
 			list_skills: async (params, opts) => {
-				const userHome = await this._pathService.userHome();
-				const skillsDir = URI.joinPath(userHome, '.a-coder', 'skills');
+				// List skills across all roots (~/.a-coder, ~/.claude, enabled plugins),
+				// deduping by folder name with first-root precedence.
+				const skillService = this._instantiationService.invokeFunction((accessor) => accessor.get(ISkillService));
 				opts?.onData?.('Listing available skills...');
 
 				const skills: Array<{
@@ -2299,74 +2324,73 @@ For each module include:
 					version?: string;
 					author?: string;
 					tags?: string[];
+					source?: string;
 					hasScripts: boolean;
 					hasReferences: boolean;
 					hasAssets: boolean;
 				}> = [];
 
-				try {
-					const stat = await this._fileService.resolve(skillsDir);
-					if (stat.children) {
+				const seen = new Set<string>();
+				const rootsWithSource = await skillService.getSkillRootsWithSource();
+
+				for (const { uri: skillsDir, source } of rootsWithSource) {
+					try {
+						const stat = await this._fileService.resolve(skillsDir);
+						if (!stat.children) continue
 						for (const child of stat.children) {
-							if (child.isDirectory) {
-								const skillName = child.name;
-								const skillFolder = URI.joinPath(skillsDir, skillName);
-								const skillPath = URI.joinPath(skillFolder, 'SKILL.md');
-								try {
-									const content = await this._fileService.readFile(skillPath);
-									const text = content.value.toString();
-									const parsed = parseSkillFile(text);
+							if (!child.isDirectory) continue
+							const skillName = child.name
+							if (seen.has(skillName)) continue // first root wins
+							seen.add(skillName)
+							const skillFolder = URI.joinPath(skillsDir, skillName)
+							const skillPath = URI.joinPath(skillFolder, 'SKILL.md')
+							try {
+								const content = await this._fileService.readFile(skillPath)
+								const text = content.value.toString()
+								const parsed = parseSkillFile(text)
 
-									// Use folder name if metadata doesn't have a name
-									const name = parsed.metadata.name || skillName;
-									const description = parsed.metadata.description || 'No description available.';
+								const name = parsed.metadata.name || skillName
+								const description = parsed.metadata.description || 'No description available.'
 
-									// Check for optional folders
-									let hasScripts = false;
-									let hasReferences = false;
-									let hasAssets = false;
+								let hasScripts = false
+								let hasReferences = false
+								let hasAssets = false
+								try { await this._fileService.resolve(URI.joinPath(skillFolder, 'scripts')).then(s => hasScripts = (s.children?.length ?? 0) > 0) } catch (e) { }
+								try { await this._fileService.resolve(URI.joinPath(skillFolder, 'references')).then(r => hasReferences = (r.children?.length ?? 0) > 0) } catch (e) { }
+								try { await this._fileService.resolve(URI.joinPath(skillFolder, 'assets')).then(a => hasAssets = (a.children?.length ?? 0) > 0) } catch (e) { }
 
-									try {
-										await this._fileService.resolve(URI.joinPath(skillFolder, 'scripts')).then(s => hasScripts = (s.children?.length ?? 0) > 0);
-									} catch (e) { /* scripts folder doesn't exist */ }
-
-									try {
-										await this._fileService.resolve(URI.joinPath(skillFolder, 'references')).then(r => hasReferences = (r.children?.length ?? 0) > 0);
-									} catch (e) { /* references folder doesn't exist */ }
-
-									try {
-										await this._fileService.resolve(URI.joinPath(skillFolder, 'assets')).then(a => hasAssets = (a.children?.length ?? 0) > 0);
-									} catch (e) { /* assets folder doesn't exist */ }
-
-									skills.push({
-										name,
-										description,
-										version: parsed.metadata.version,
-										author: parsed.metadata.author,
-										tags: parsed.metadata.tags,
-										hasScripts,
-										hasReferences,
-										hasAssets
-									});
-								} catch (e) {
-									// Skip if SKILL.md is missing
-								}
+								skills.push({
+									name,
+									description,
+									version: parsed.metadata.version,
+									author: parsed.metadata.author,
+									tags: parsed.metadata.tags,
+									source,
+									hasScripts,
+									hasReferences,
+									hasAssets
+								})
+							} catch (e) {
+								// Skip if SKILL.md is missing
 							}
 						}
+					} catch (error) {
+						// Skills dir might not exist
 					}
-				} catch (error) {
-					// Skills dir might not exist
 				}
 
 				return { result: { skills } };
 			},
 
 			execute_skill_script: async ({ skill_name, script_name, args, timeout_ms }, opts) => {
-				const userHome = await this._pathService.userHome();
-				const skillsDir = URI.joinPath(userHome, '.a-coder', 'skills');
-				// Guard against path traversal: skill_name must stay within skillsDir,
-				// and script_name must stay within the skill's scripts/ folder.
-				const skillFolder = this._resolveWithin(skillsDir, [skill_name]);
+				// Resolve the skill folder across all roots, then guard script_name within
+				// the skill's scripts/ folder.
+				const skillService = this._instantiationService.invokeFunction((accessor) => accessor.get(ISkillService));
+				const resolved = await skillService.resolveSkillFolder(skill_name);
+				if (!resolved) {
+					return { result: { skill_name, script_name, success: false, output: '', error: `Skill "${skill_name}" not found.`, exitCode: 1, duration: 0 } };
+				}
+				const skillFolder = resolved.folder;
 				const scriptsDir = this._resolveWithin(skillFolder, ['scripts']);
 				const scriptPath = this._resolveWithin(scriptsDir, [script_name]);
 				const cwdPath = skillFolder.fsPath;
@@ -2460,11 +2484,14 @@ For each module include:
 			},
 
 			load_skill_reference: async ({ skill_name, reference_name }, opts) => {
-				const userHome = await this._pathService.userHome();
-				const skillsDir = URI.joinPath(userHome, '.a-coder', 'skills');
-				// Guard against path traversal: reference_name must stay within the
-				// skill's references/ folder.
-				const skillFolder = this._resolveWithin(skillsDir, [skill_name]);
+				// Resolve the skill folder across all roots, then guard reference_name
+				// within the skill's references/ folder.
+				const skillService = this._instantiationService.invokeFunction((accessor) => accessor.get(ISkillService));
+				const resolved = await skillService.resolveSkillFolder(skill_name);
+				if (!resolved) {
+					return { result: { skill_name, reference_name, content: '', success: false } };
+				}
+				const skillFolder = resolved.folder;
 				const refsDir = this._resolveWithin(skillFolder, ['references']);
 				const refPath = this._resolveWithin(refsDir, [reference_name]);
 
@@ -2493,11 +2520,14 @@ For each module include:
 			},
 
 			get_skill_asset: async ({ skill_name, asset_name, interpolate, variables }, opts) => {
-				const userHome = await this._pathService.userHome();
-				const skillsDir = URI.joinPath(userHome, '.a-coder', 'skills');
-				// Guard against path traversal: asset_name must stay within the
-				// skill's assets/ folder.
-				const skillFolder = this._resolveWithin(skillsDir, [skill_name]);
+				// Resolve the skill folder across all roots, then guard asset_name within
+				// the skill's assets/ folder.
+				const skillService = this._instantiationService.invokeFunction((accessor) => accessor.get(ISkillService));
+				const resolved = await skillService.resolveSkillFolder(skill_name);
+				if (!resolved) {
+					return { result: { skill_name, asset_name, content: '', type: 'other' as const, success: false } };
+				}
+				const skillFolder = resolved.folder;
 				const assetsDir = this._resolveWithin(skillFolder, ['assets']);
 				const assetPath = this._resolveWithin(assetsDir, [asset_name]);
 
@@ -2703,9 +2733,12 @@ For each module include:
 			},
 
 			run_skill_benchmark: async ({ skill_name, benchmark_name }, opts) => {
-				const userHome = await this._pathService.userHome();
-				const skillsDir = URI.joinPath(userHome, '.a-coder', 'skills');
-				const skillPath = this._resolveWithin(skillsDir, [skill_name]);
+				const skillService = this._instantiationService.invokeFunction((accessor) => accessor.get(ISkillService));
+				const resolved = await skillService.resolveSkillFolder(skill_name);
+				if (!resolved) {
+					return { result: { skill_name, benchmark_name: benchmark_name || 'unknown', success: false, score: 0, results: [], duration: 0 } };
+				}
+				const skillPath = resolved.folder;
 				const benchmarksDir = this._resolveWithin(skillPath, ['benchmarks']);
 
 				opts?.onData?.(`Running benchmark for skill: ${skill_name}...`);
@@ -2891,9 +2924,12 @@ For each module include:
 			},
 
 			list_skill_benchmarks: async ({ skill_name }) => {
-				const userHome = await this._pathService.userHome();
-				const skillsDir = URI.joinPath(userHome, '.a-coder', 'skills');
-				const skillPath = this._resolveWithin(skillsDir, [skill_name]);
+				const skillService = this._instantiationService.invokeFunction((accessor) => accessor.get(ISkillService));
+				const resolved = await skillService.resolveSkillFolder(skill_name);
+				if (!resolved) {
+					return { result: { skill_name, benchmarks: [] } };
+				}
+				const skillPath = resolved.folder;
 				const benchmarksDir = this._resolveWithin(skillPath, ['benchmarks']);
 
 				const benchmarks: Array<{ name: string; description: string; type: 'test' | 'evaluation' | 'benchmark' }> = [];

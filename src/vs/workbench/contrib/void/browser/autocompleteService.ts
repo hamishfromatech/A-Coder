@@ -23,6 +23,8 @@ import { IVoidSettingsService } from '../common/voidSettingsService.js';
 import { FeatureName } from '../common/voidSettingsTypes.js';
 import { IConvertToLLMMessageService } from './convertToLLMMessageService.js';
 import { IContextGatheringService } from './contextGatheringService.js';
+import { IHookService } from '../common/hookService.js';
+import { voidDevWarn } from '../common/devLog.js';
 
 
 
@@ -697,14 +699,14 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 			if (cachedAutocompletion.status === 'finished') {
 
 				const inlineCompletions = toInlineCompletions({ autocompletionMatchup, autocompletion: cachedAutocompletion, prefixAndSuffix, position })
-				return inlineCompletions
+				return this._applyAutocompleteHook(docUriStr, position, inlineCompletions)
 
 			} else if (cachedAutocompletion.status === 'pending') {
 
 				try {
 					await cachedAutocompletion.llmPromise;
 					const inlineCompletions = toInlineCompletions({ autocompletionMatchup, autocompletion: cachedAutocompletion, prefixAndSuffix, position })
-					return inlineCompletions
+					return this._applyAutocompleteHook(docUriStr, position, inlineCompletions)
 
 				} catch (e) {
 					this._autocompletionsOfDocument[docUriStr].delete(cachedAutocompletion.id)
@@ -891,7 +893,7 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 
 			const autocompletionMatchup: AutocompletionMatchupBounds = { startIdx: 0, startLine: 0, startCharacter: 0 }
 			const inlineCompletions = toInlineCompletions({ autocompletionMatchup, autocompletion: newAutocompletion, prefixAndSuffix, position })
-			return inlineCompletions
+			return this._applyAutocompleteHook(docUriStr, position, inlineCompletions)
 
 		} catch (e) {
 			this._autocompletionsOfDocument[docUriStr].delete(newAutocompletion.id)
@@ -899,6 +901,31 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 			return []
 		}
 
+	}
+
+	/**
+	 * Fire the AutocompleteSuggest hook against the produced completions and apply
+	 * its result. Autocomplete is latency-sensitive (fires on every keystroke), so
+	 * the hook is raced against a short timeout and FAILS OPEN: on timeout or any
+	 * error the original completions are returned unchanged. A `block` decision
+	 * suppresses the completion (returns []); `updatedInput.completions` replaces
+	 * the list when it is a valid InlineCompletion[].
+	 */
+	private async _applyAutocompleteHook(docUriStr: string, position: Position, completions: InlineCompletion[]): Promise<InlineCompletion[]> {
+		try {
+			const res = await Promise.race([
+				this._hookService.fireAutocompleteSuggest(docUriStr, { line: position.lineNumber, character: position.column }, completions as unknown[]),
+				new Promise<undefined>(resolve => setTimeout(() => resolve(undefined), 150)),
+			])
+			if (!res) return completions // timeout — fail open
+			if (res.decision === 'block') return []
+			const updated = res.updatedInput?.completions
+			if (Array.isArray(updated)) return updated as InlineCompletion[]
+			return completions
+		} catch (err) {
+			voidDevWarn('[hooks] AutocompleteSuggest fire threw (non-blocking):', err)
+			return completions
+		}
 	}
 
 	private async _getRelevantContext(model: ITextModel, position: Position): Promise<string> {
@@ -930,6 +957,7 @@ export class AutocompleteService extends Disposable implements IAutocompleteServ
 		@IVoidSettingsService private readonly _settingsService: IVoidSettingsService,
 		@IConvertToLLMMessageService private readonly _convertToLLMMessageService: IConvertToLLMMessageService,
 		@IContextGatheringService private readonly _contextGatheringService: IContextGatheringService,
+		@IHookService private readonly _hookService: IHookService,
 	) {
 		super()
 

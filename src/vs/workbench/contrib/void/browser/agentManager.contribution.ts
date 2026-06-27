@@ -26,9 +26,28 @@ export interface IAgentManagerService {
 	openWalkthroughPreview(filePath: string, preview: string, options?: { threadId?: string }): Promise<void>;
 
 	/**
+	 * Reads the full contents of a walkthrough file from disk (returns '' if
+	 * the read fails). Lets the inline walkthrough wrapper refresh open
+	 * preview tabs with the complete content rather than the truncated
+	 * ~1000-char preview the tool returns.
+	 */
+	getWalkthroughContent(filePath: string): Promise<string>;
+
+	/**
 	 * Opens Agent Manager with arbitrary markdown content (for implementation plans, etc.)
 	 */
 	openContentPreview(title: string, content: string, options?: { isImplementationPlan?: boolean, planId?: string, threadId?: string }): Promise<void>;
+
+	/**
+	 * Marks the current implementation plan for the given thread as approved
+	 * for execution. Delegates to the shared ImplementationPlanningService
+	 * singleton (the same instance the tool handlers populate), so the
+	 * `execute_implementation_plan` tool's `plan.approved` gate passes. Throws
+	 * if no plan exists for the thread. The React preview UI lives in a
+	 * separate bundle and can't reach the singleton directly, so it goes
+	 * through this service.
+	 */
+	approveImplementationPlan(threadId: string): void;
 
 	/**
 	 * Closes the Agent Manager

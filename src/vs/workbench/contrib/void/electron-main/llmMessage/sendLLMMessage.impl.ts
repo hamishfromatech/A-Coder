@@ -30,10 +30,18 @@ import product from '../../../../../platform/product/common/product.js';
  * to a string-keyed record instead of `as any` so the access stays type-safe.
  * Mirrors the original `delta?.[field] || delta?.reasoning || delta?.thinking`
  * truthy-fallback semantics, then coerces to string (the old `+ ''`).
+ *
+ * The fallback chain covers the three field names OpenAI-compatible servers use
+ * for separated reasoning: `reasoning` (gpt-oss / xAI), `reasoning_content`
+ * (DeepSeek, LM Studio, LiteLLM, OpenAI-compatible), and `thinking` (Ollama).
+ * The configured `fieldName` is tried first so a provider's declared field wins
+ * when present; the rest catch models whose field differs from the provider default
+ * (e.g. LM Studio streams `reasoning_content` for Qwen even though lmStudio is
+ * configured with `nameOfFieldInDelta: 'reasoning'` for gpt-oss).
  */
 const readReasoningFromDelta = (delta: object, fieldName: string | undefined): string => {
 	const d = delta as Record<string, unknown>
-	const v = (fieldName ? d[fieldName] : undefined) || d['reasoning'] || d['thinking'] || ''
+	const v = (fieldName ? d[fieldName] : undefined) || d['reasoning'] || d['reasoning_content'] || d['thinking'] || ''
 	return typeof v === 'string' ? v : (v === null || v === undefined) ? '' : String(v)
 }
 

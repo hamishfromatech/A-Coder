@@ -8,6 +8,10 @@
  * Allows the AI to create detailed implementation plans, track step progress, and integrate with walkthrough preview
  */
 
+import { Emitter, Event } from '../../../../base/common/event.js';
+import { Disposable } from '../../../../base/common/lifecycle.js';
+import { IMPLEMENT_PLANS_STORAGE_KEY } from './storageKeys.js';
+
 export type StepId = string;
 
 export type StepStatus = 'pending' | 'in_progress' | 'complete' | 'failed' | 'skipped';
@@ -38,19 +42,34 @@ export interface ImplementationPlan {
 }
 
 /**
- * Ephemeral in-memory implementation planning service.
+ * Implementation planning service.
  *
  * Plans are stored PER THREAD so that switching conversations does not clobber
  * one thread's plan with another's. Methods take an optional `threadId`; when
  * omitted they operate on the active thread (set via `switchToThread`). The
- * preview/React tab is driven from the tools that call `openContentPreview`, so
- * no change event is needed here.
+ * preview/React tab is driven from the tools that call `openContentPreview`.
  *
- * State is cleared when the IDE is restarted.
+ * State persists across IDE restarts: a DI consumer (ToolsService) restores
+ * the saved state on construct via `importAll` and subscribes to
+ * `onDidChangePlans` to persist mutations via `exportAll`. The service itself
+ * stays storage-agnostic (it does not import IStorageService) so it can also be
+ * instantiated from `common/` code without the workbench.
  */
-export class ImplementationPlanningService {
+export class ImplementationPlanningService extends Disposable {
 	private plansByThread = new Map<string, ImplementationPlan>();
 	private activeThreadId = '__default__';
+
+	private readonly _onDidChangePlans = this._register(new Emitter<void>());
+	/**
+	 * Fired whenever a plan is created, a step status changes, a plan is
+	 * approved, or a plan is cleared. NOT fired during `importAll` (restore),
+	 * so a consumer can restore-then-subscribe without triggering a write.
+	 */
+	readonly onDidChangePlans: Event<void> = this._onDidChangePlans.event;
+
+	private _fireChanged(): void {
+		this._onDidChangePlans.fire();
+	}
 
 	/**
 	 * Set the active thread.
@@ -101,6 +120,7 @@ export class ImplementationPlanningService {
 		};
 
 		this.plansByThread.set(this._tid(threadId), plan);
+		this._fireChanged();
 		return plan;
 	}
 
@@ -130,6 +150,7 @@ export class ImplementationPlanningService {
 		step.updatedAt = new Date();
 		plan.updatedAt = new Date();
 
+		this._fireChanged();
 		return step;
 	}
 
@@ -220,6 +241,7 @@ export class ImplementationPlanningService {
 
 		plan.approved = true;
 		plan.updatedAt = new Date();
+		this._fireChanged();
 	}
 
 	/**
@@ -233,7 +255,12 @@ export class ImplementationPlanningService {
 	 * Clears the current plan
 	 */
 	clearPlan(threadId?: string): void {
-		this.plansByThread.delete(this._tid(threadId));
+		const tid = this._tid(threadId);
+		if (!this.plansByThread.has(tid)) {
+			return;
+		}
+		this.plansByThread.delete(tid);
+		this._fireChanged();
 	}
 
 	/**
@@ -242,7 +269,132 @@ export class ImplementationPlanningService {
 	private generatePlanId(): string {
 		return `impl_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 	}
+
+	// ─────────────────────────────────────────────────────────────────────
+	// Persistence
+	// ─────────────────────────────────────────────────────────────────────
+
+	/**
+	 * Serializes a plan for storage, converting `Date` fields to ISO strings
+	 * (JSON has no native Date type). Round-trips through `_deserializePlan`.
+	 */
+	private _serializePlan(plan: ImplementationPlan): SerializedImplementationPlan {
+		return {
+			id: plan.id,
+			goal: plan.goal,
+			steps: plan.steps.map(s => ({
+				id: s.id,
+				title: s.title,
+				description: s.description,
+				complexity: s.complexity,
+				files: s.files,
+				dependencies: s.dependencies,
+				estimated_time: s.estimated_time,
+				status: s.status,
+				notes: s.notes,
+				createdAt: s.createdAt.toISOString(),
+				updatedAt: s.updatedAt.toISOString(),
+			})),
+			createdAt: plan.createdAt.toISOString(),
+			updatedAt: plan.updatedAt.toISOString(),
+			approved: plan.approved,
+		};
+	}
+
+	private _deserializePlan(s: SerializedImplementationPlan): ImplementationPlan {
+		return {
+			id: s.id,
+			goal: s.goal,
+			steps: s.steps.map(st => ({
+				id: st.id,
+				title: st.title,
+				description: st.description,
+				complexity: st.complexity,
+				files: st.files,
+				dependencies: st.dependencies,
+				estimated_time: st.estimated_time,
+				status: st.status,
+				notes: st.notes,
+				createdAt: new Date(st.createdAt),
+				updatedAt: new Date(st.updatedAt),
+			})),
+			createdAt: new Date(s.createdAt),
+			updatedAt: new Date(s.updatedAt),
+			approved: s.approved,
+		};
+	}
+
+	/**
+	 * Exports ALL thread plans (plus the active thread id) as a JSON string for
+	 * persistence. Safe to call on an empty service (returns a valid envelope).
+	 */
+	exportAll(): string {
+		const plans: { threadId: string; plan: SerializedImplementationPlan }[] = [];
+		for (const [threadId, plan] of this.plansByThread) {
+			plans.push({ threadId, plan: this._serializePlan(plan) });
+		}
+		return JSON.stringify({ version: 1, storageKey: IMPLEMENT_PLANS_STORAGE_KEY, activeThreadId: this.activeThreadId, plans });
+	}
+
+	/**
+	 * Restores ALL thread plans from a JSON string previously produced by
+	 * `exportAll`. Replaces the current in-memory state. Does NOT fire
+	 * `onDidChangePlans` (callers restore-then-subscribe). Silently ignores
+	 * corrupt/unparseable input so a bad stored blob can never block startup.
+	 */
+	importAll(json: string): void {
+		try {
+			const data = JSON.parse(json) as SerializedEnvelope;
+			if (!data || !Array.isArray(data.plans)) {
+				return;
+			}
+			this.plansByThread.clear();
+			for (const entry of data.plans) {
+				if (!entry || typeof entry.threadId !== 'string' || !entry.plan) {
+					continue;
+				}
+				try {
+					this.plansByThread.set(entry.threadId, this._deserializePlan(entry.plan));
+				} catch {
+					// skip a single corrupt plan, keep the rest
+				}
+			}
+			if (typeof data.activeThreadId === 'string') {
+				this.activeThreadId = data.activeThreadId;
+			}
+		} catch {
+			// ignore corrupt state
+		}
+	}
 }
+
+type SerializedImplementationPlan = {
+	id: string;
+	goal: string;
+	steps: Array<{
+		id: StepId;
+		title: string;
+		description: string;
+		complexity: Complexity;
+		files: string[];
+		dependencies: StepId[];
+		estimated_time?: number;
+		status: StepStatus;
+		notes?: string;
+		createdAt: string;
+		updatedAt: string;
+	}>;
+	createdAt: string;
+	updatedAt: string;
+	approved?: boolean;
+};
+
+type SerializedEnvelope = {
+	version?: number;
+	storageKey?: string;
+	activeThreadId?: string;
+	plans?: Array<{ threadId: string; plan: SerializedImplementationPlan }>;
+};
 
 // Singleton instance for the application
 export const implementationPlanningService = new ImplementationPlanningService();

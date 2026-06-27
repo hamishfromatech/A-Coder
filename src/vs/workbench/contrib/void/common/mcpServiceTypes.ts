@@ -140,11 +140,16 @@ export type MCPServer = {
 	status: 'loading' | 'success' | 'offline',
 	command?: string,
 	error?: string,
+	/** Provenance label, e.g. `plugin:<pluginName>` for plugin-contributed servers.
+	 *  Absent for servers declared in the user's own mcp.json. Set renderer-side. */
+	source?: string,
 } | {
 	tools?: undefined,
 	status: 'error',
 	command?: string,
 	error: string,
+	/** Provenance label, e.g. `plugin:<pluginName>` for plugin-contributed servers. */
+	source?: string,
 }
 
 export interface MCPServerOfName {

@@ -124,6 +124,13 @@ import '../common/voidModelService.js'
 // learning progress service
 import '../common/learningProgressService.js'
 
+// plugins + marketplace (Claude Code compatibility)
+import '../common/pluginService.js'
+import './marketplaceService.js'
+import '../common/skillService.js'
+// hooks system (Claude Code-compatible + A-Coder-native events + /goal)
+import '../common/hookService.js'
+
 // analytics services - Analytics enhancement
 import './fileAnalyticsService.js'
 import './editorAnalyticsService.js'

@@ -33,12 +33,14 @@ import { mountCtrlK } from './react/out/quick-edit-tsx/index.js'
 import { QuickEditPropsType } from './quickEditActions.js';
 import { IModelContentChangedEvent } from '../../../../editor/common/textModelEvents.js';
 import { extractCodeFromFIM, extractCodeFromRegular, ExtractedSearchReplaceBlock, extractSearchReplaceBlocks } from '../common/helpers/extractCodeFromResult.js';
-import { INotificationService, } from '../../../../platform/notification/common/notification.js';
+import { INotificationService, Severity } from '../../../../platform/notification/common/notification.js';
 import { EditorOption } from '../../../../editor/common/config/editorOptions.js';
 import { Emitter } from '../../../../base/common/event.js';
 import { ILLMMessageService } from '../common/sendLLMMessageService.js';
 import { LLMChatMessage } from '../common/sendLLMMessageTypes.js';
 import { IMetricsService } from '../common/metricsService.js';
+import { voidDevWarn } from '../common/devLog.js';
+import { IHookService } from '../common/hookService.js';
 import { IMorphService } from './morphService.js';
 import { IEditCodeService, AddCtrlKOpts, StartApplyingOpts, CallBeforeStartApplyingOpts, } from './editCodeServiceInterface.js';
 import { IVoidSettingsService } from '../common/voidSettingsService.js';
@@ -367,6 +369,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 		@IVoidModelService private readonly _voidModelService: IVoidModelService,
 		@IConvertToLLMMessageService private readonly _convertToLLMMessageService: IConvertToLLMMessageService,
 		@IMorphService private readonly _morphService: IMorphService,
+		@IHookService private readonly _hookService: IHookService,
 	) {
 		super();
 
@@ -3163,6 +3166,19 @@ ${problematicCode}
 
 		const uri = diffArea._URI
 
+		// Fire DiffZoneApply hook. A `block` decision prevents the accept (the
+		// reason is surfaced to the user as a notification). `updatedInput` is
+		// parsed but not applied to the diff in v1. Non-blocking on hook error.
+		try {
+			const applyHook = await this._hookService.fireDiffZoneApply(diffid, uri.toString())
+			if (applyHook.decision === 'block') {
+				this._notificationService.notify({ severity: Severity.Warning, message: `DiffZone apply blocked by a hook: ${applyHook.reason || 'no reason given'}` })
+				return
+			}
+		} catch (err) {
+			voidDevWarn('[hooks] DiffZoneApply fire threw (non-blocking):', err)
+		}
+
 		// add to history
 		const { onFinishEdit } = this._addToHistory(uri)
 
@@ -3231,6 +3247,14 @@ ${problematicCode}
 		if (diffArea.type !== 'DiffZone') return
 
 		const uri = diffArea._URI
+
+		// Fire DiffZoneReject hook (informational; hooks can log to the Learn
+		// dataset or react). Non-blocking on hook error.
+		try {
+			await this._hookService.fireDiffZoneReject(diffid, uri.toString())
+		} catch (err) {
+			voidDevWarn('[hooks] DiffZoneReject fire threw (non-blocking):', err)
+		}
 
 		// add to history
 		const { onFinishEdit } = this._addToHistory(uri)
