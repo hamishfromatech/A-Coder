@@ -587,6 +587,42 @@ const sanitizeOpenAIMessages = (messages: any[]): any[] => {
 	})
 }
 
+// Ollama Cloud is stricter than local Ollama about message ordering. It rejects
+// `role: 'tool'` messages that are not immediately preceded by an assistant message
+// with matching `tool_calls` (e.g. a tool result at the start of the conversation
+// right after `role: 'system'`). Convert those orphan tool results into user
+// messages so the conversation stays valid without losing the information.
+const sanitizeOllamaCloudMessages = (messages: any[]): any[] => {
+	const out: any[] = []
+	for (let i = 0; i < messages.length; i++) {
+		const m = messages[i]
+		if (m.role !== 'tool') {
+			out.push(m)
+			continue
+		}
+		const prev = out[out.length - 1]
+		const isPrecededByToolCallingAssistant = prev?.role === 'assistant'
+			&& Array.isArray(prev.tool_calls)
+			&& prev.tool_calls.some((tc: any) => tc.id === m.tool_call_id || tc.id === m.id)
+		if (isPrecededByToolCallingAssistant) {
+			out.push({
+				role: 'tool',
+				content: m.content,
+				tool_call_id: m.tool_call_id,
+			})
+		} else {
+			voidDevLog(`[sendLLMMessage] ollamaCloud: converting orphan tool result '${m.tool_call_id ?? m.id ?? '?'}' to user message`)
+			out.push({
+				role: 'user',
+				content: typeof m.content === 'string' && m.content.trim().length > 0
+					? `Tool result (${m.name ?? 'tool'}): ${m.content}`
+					: '(no tool output)',
+			})
+		}
+	}
+	return out
+}
+
 
 // ------------ OPENAI-COMPATIBLE ------------
 
@@ -650,29 +686,35 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		// Required to select the model
 		(openai as AzureOpenAI).deploymentName = modelName;
 	}
-	// llama.cpp (Qwen templates): ensure the final message is a plain user message
-	// when the conversation ends with tool results. Qwen3/3.5 templates scan backward
-	// for a genuine user query and raise if every user message is only a
-	// <tool_response>...</tool_response> wrapper. A trailing user message satisfies that
-	// check without changing the model's behavior, since all tool context is still present.
+	// llama.cpp (Qwen templates): Qwen3/3.5 templates scan backward for a genuine
+	// user query and raise if every user message is only a <tool_response>...</tool_response>
+	// wrapper. Only inject a synthetic user message when the history actually lacks a
+	// real user query, so we don't pollute every tool turn with "Continue." messages
+	// that show up in the model's reasoning traces.
 	let llamaCppMessages: OpenAILLMChatMessage[] | undefined
 	if (providerName === 'llamaCpp') {
 		llamaCppMessages = sanitizeOpenAIMessages(messages) as OpenAILLMChatMessage[]
-		const lastNonToolIdx = llamaCppMessages.length - 1 - [...llamaCppMessages].reverse().findIndex(m => m.role !== 'tool')
-		const hasPlainUserAfterTools = lastNonToolIdx >= 0
-			&& llamaCppMessages[lastNonToolIdx].role === 'user'
-			&& typeof llamaCppMessages[lastNonToolIdx].content === 'string'
-			&& (llamaCppMessages[lastNonToolIdx].content as string).length > 0
-			&& lastNonToolIdx === llamaCppMessages.length - 1
-		if (!hasPlainUserAfterTools) {
-			voidDevLog(`[sendLLMMessage] llama.cpp: appending trailing user message because conversation ends with tool results`)
-			llamaCppMessages.push({ role: 'user', content: 'Continue.' })
+		const hasPlainUserQuery = llamaCppMessages.some(m =>
+			m.role === 'user'
+			&& typeof m.content === 'string'
+			&& (m.content as string).length > 0
+			&& !(m.content as string).startsWith('<tool_response>')
+		)
+		if (!hasPlainUserQuery) {
+			voidDevLog(`[sendLLMMessage] llama.cpp: no plain user query found in history; appending synthetic user message`)
+			llamaCppMessages.push({ role: 'user', content: ' ' })
 		}
 	}
 
 	const options: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
 		model: modelName,
-		messages: providerName === 'mistral' || providerName === 'openRouter' ? sanitizeOpenAIMessages(messages) : providerName === 'llamaCpp' ? llamaCppMessages! : messages as any,
+		messages: providerName === 'mistral' || providerName === 'openRouter'
+			? sanitizeOpenAIMessages(messages)
+			: providerName === 'llamaCpp'
+				? llamaCppMessages!
+				: providerName === 'ollamaCloud'
+					? sanitizeOllamaCloudMessages(messages as any)
+					: messages as any,
 		stream: true,
 		...nativeToolsObj,
 		// Enable parallel tool calls for models that support native tool calling.
