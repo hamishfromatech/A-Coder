@@ -635,6 +635,15 @@ export class ToolsService implements IToolsService {
 				const terminalId = terminalIdUnknown ? validateProposedTerminalId(terminalIdUnknown) : undefined
 				return { command, cwd, isBackground, timeout, terminalId }
 			},
+			run_persistent_command: (params: RawToolParamsObj) => {
+				const { command: commandUnknown, cwd: cwdUnknown, is_background: isBackgroundUnknown, timeout: timeoutUnknown, terminal_id: terminalIdUnknown } = params
+				const command = validateStr('command', commandUnknown)
+				const cwd = validateOptionalStr('cwd', cwdUnknown)
+				const isBackground = validateBoolean(isBackgroundUnknown, { default: false })
+				const timeout = validateNumber(timeoutUnknown, { default: null })
+				const terminalId = validateProposedTerminalId(terminalIdUnknown)
+				return { command, cwd, isBackground, timeout, terminalId }
+			},
 			open_persistent_terminal: (params: RawToolParamsObj) => {
 				const { cwd: cwdUnknown } = params;
 				const cwd = validateOptionalStr('cwd', cwdUnknown)
@@ -980,6 +989,16 @@ export class ToolsService implements IToolsService {
 			},
 
 			generate_image: (params: RawToolParamsObj) => {
+				const { prompt, filename, width, height, quality } = params;
+				return {
+					prompt: validateStr('prompt', prompt),
+					filename: typeof filename === 'string' ? filename : undefined,
+					width: validateNumber(width, { default: null }) ?? undefined,
+					height: validateNumber(height, { default: null }) ?? undefined,
+					quality: (typeof quality === 'string' && ['low', 'medium', 'high', 'hd'].includes(quality)) ? quality as any : undefined,
+				};
+			},
+			generate_video: (params: RawToolParamsObj) => {
 				const { prompt, filename, width, height, quality } = params;
 				return {
 					prompt: validateStr('prompt', prompt),
@@ -1639,6 +1658,12 @@ export class ToolsService implements IToolsService {
 					return { result, interruptTool: interrupt };
 				}
 			},
+				run_persistent_command: async ({ command, cwd, isBackground, timeout, terminalId }, opts) => {
+					const timeoutMs = typeof timeout === 'number' ? Math.min(timeout * 1000, MAX_TERMINAL_TIMEOUT_MS) : MAX_TERMINAL_BG_COMMAND_TIME * 1000;
+					const { resPromise, interrupt } = await this._terminalToolService.runCommand(command, { type: 'persistent', persistentTerminalId: terminalId, onData: opts?.onData, timeoutMs });
+					const result = await resPromise;
+					return { result: { ...result, terminalId }, interruptTool: interrupt };
+				},
 			open_persistent_terminal: async ({ cwd }) => {
 				const persistentTerminalId = await this._terminalToolService.createPersistentTerminal({ cwd })
 				return { result: { persistentTerminalId } }
@@ -2975,6 +3000,10 @@ For each module include:
 
 				return { result: { url: relativePath, markdown } };
 			},
+				generate_video: async ({ prompt, filename, width, height, quality }, opts) => {
+					opts?.onData?.(`Generating video...`);
+					throw new Error('Video generation is not yet implemented.');
+				},
 
 			render_form: async ({ title, description, questions }, opts) => {
 				opts?.onData?.('Rendering form...');
@@ -3283,6 +3312,18 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 				}
 				throw new Error(`Unexpected internal error: Terminal command did not resolve with a valid reason.`)
 			},
+				run_persistent_command: (params, result) => {
+					const { resolveReason, result: result_, terminalId } = result
+					let prefix = `(Ran in persistent terminal "${terminalId}")\n`;
+					if (resolveReason.type === 'done') {
+						return `${prefix}${result_}\n(exit code ${resolveReason.exitCode})`
+					}
+					if (resolveReason.type === 'timeout') {
+						const timeoutSeconds = params.timeout ?? MAX_TERMINAL_BG_COMMAND_TIME;
+						return `${prefix}${result_}\n(Terminal command is running in background. The given outputs are the results after ${timeoutSeconds} seconds. Use check_terminal_status to check progress.)`
+					}
+					throw new Error(`Unexpected internal error: Terminal command did not resolve with a valid reason.`)
+				},
 
 			open_persistent_terminal: (_params, result) => {
 				const { persistentTerminalId } = result;
@@ -3612,6 +3653,9 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 			generate_image: (params, result) => {
 				return `Successfully generated image for prompt: "${params.prompt}"\n\n${result.markdown}`;
 			},
+				generate_video: (params, result) => {
+					return `Successfully generated video for prompt: "${params.prompt}"\n\n${result.markdown}`;
+				},
 
 			render_form: (params, result) => {
 				return result.template || 'Form rendered successfully. The user can now provide their responses.';

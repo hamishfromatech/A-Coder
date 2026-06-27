@@ -680,6 +680,10 @@ export interface IChatThreadService {
 
 	// call to add a task to a thread's task plan
 	createTask(threadId: string, description: string, dependencies?: string[]): string;
+	getTaskPlan(threadId: string): TaskPlan[];
+	updateTaskStatus(threadId: string, taskId: string, status: TaskPlan['status']): void;
+	deleteTask(threadId: string, taskId: string): void;
+	clearTaskPlan(threadId: string): void;
 
 	// approve/reject/skip
 	approveLatestToolRequest(threadId: string, toolId?: string): void;
@@ -694,6 +698,17 @@ export interface IChatThreadService {
 	deleteMessagesFromIndex(threadId: string, messageIdx: number): void;
 	retryFromMessage(threadId: string, messageIdx: number): Promise<void>;
 	copyMessageContent(threadId: string, messageIdx: number): string;
+
+	// Message queue
+	getQueuedMessagesCount(threadId: string): number;
+	getQueuedMessages(threadId: string): Array<{ userMessage: string, selections?: StagingSelectionItem[], images?: ImageAttachment[] }>;
+	removeQueuedMessage(threadId: string, index: number): void;
+	clearMessageQueue(threadId: string): void;
+	forceSendQueuedMessage(threadId: string, index: number): Promise<void>;
+
+	// Auto-continue preference
+	getAutoContinuePreference(threadId: string): boolean;
+	setAutoContinuePreference(threadId: string, enabled: boolean): void;
 
 	focusCurrentChat: (timeout?: number) => Promise<void>;
 	blurCurrentChat: () => Promise<void>;
@@ -1676,7 +1691,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 					toolResult = (await this._mcpService.callMCPTool({
 						serverName: mcpTool.mcpServerName,
 						toolName: toolName,
-						params: toolParams
+						params: toolParams as Record<string, unknown>
 					})).result
 				}
 			}

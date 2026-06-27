@@ -102,7 +102,7 @@ export const TerminalCommandApproval = ({ command, cwd, threadId, toolId }: { co
 	)
 }
 
-export const CommandToolResultWrapper: ResultWrapper<'run_command' | 'run_persistent_command' | 'wait'> = ({ toolMessage, threadId }) => {
+export const CommandToolResultWrapper: ResultWrapper<'run_command' | 'run_persistent_command' | 'wait' | 'check_terminal_status'> = ({ toolMessage, threadId }) => {
 	const accessor = useAccessor()
 	const terminalToolsService = accessor.get('ITerminalToolService')
 	const toolsService = accessor.get('IToolsService')
@@ -110,7 +110,7 @@ export const CommandToolResultWrapper: ResultWrapper<'run_command' | 'run_persis
 	const divRef = useRef<HTMLDivElement | null>(null)
 
 	const title = getTitle(toolMessage)
-	const { desc1, desc1Info } = toolNameToDesc(toolMessage.name as 'run_command' | 'run_persistent_command' | 'wait', toolMessage.params, accessor)
+	const { desc1, desc1Info } = toolNameToDesc(toolMessage.name as 'run_command' | 'run_persistent_command' | 'wait' | 'check_terminal_status', toolMessage.params, accessor)
 	const isRejected = toolMessage.type === 'rejected'
 	const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError: false, icon: null, isRejected }
 
@@ -150,9 +150,10 @@ export const CommandToolResultWrapper: ResultWrapper<'run_command' | 'run_persis
 		let msg = "";
 		if (toolMessage.name === 'run_command') msg = toolsService.stringOfResult['run_command'](toolMessage.params, result)
 		else if (toolMessage.name === 'run_persistent_command') msg = toolsService.stringOfResult['run_persistent_command'](toolMessage.params, result)
+		else if (toolMessage.name === 'check_terminal_status') msg = toolsService.stringOfResult['check_terminal_status'](toolMessage.params, result)
 		else msg = toolsService.stringOfResult['wait'](toolMessage.params, result)
 
-		if (toolMessage.name === 'run_persistent_command' || toolMessage.name === 'wait') {
+		if (toolMessage.name === 'run_persistent_command' || toolMessage.name === 'wait' || toolMessage.name === 'check_terminal_status') {
 			componentParams.info = persistentTerminalNameOfId(toolMessage.params.persistentTerminalId)
 		}
 

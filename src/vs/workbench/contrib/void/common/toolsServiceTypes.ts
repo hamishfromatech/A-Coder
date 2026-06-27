@@ -123,6 +123,7 @@ export type BuiltinToolCallParams = {
 	'run_code': { code: string, timeout: number | null },
 	// ---
 	'run_command': { command: string; cwd: string | null, isBackground: boolean, timeout: number | null, terminalId?: string },
+	'run_persistent_command': { command: string; cwd: string | null, isBackground: boolean, timeout: number | null, terminalId: string },
 	'open_persistent_terminal': { cwd: string | null },
 	'kill_persistent_terminal': { persistentTerminalId: string },
 	// ---
@@ -197,6 +198,13 @@ export type BuiltinToolCallParams = {
 		skill_name: string;
 	},
 	'generate_image': {
+		prompt: string;
+		filename?: string;
+		width?: number;
+		height?: number;
+		quality?: 'low' | 'medium' | 'high' | 'hd';
+	},
+	'generate_video': {
 		prompt: string;
 		filename?: string;
 		width?: number;
@@ -293,6 +301,7 @@ export type BuiltinToolResultType = {
 	'run_code': { success: boolean, result: any, error: string | null, logs: string[] },
 	// ---
 	'run_command': { result: string; resolveReason: TerminalResolveReason; terminalId?: string; },
+	'run_persistent_command': { result: string; resolveReason: TerminalResolveReason; terminalId: string },
 	'open_persistent_terminal': { persistentTerminalId: string },
 	'kill_persistent_terminal': {},
 	// ---
@@ -389,6 +398,7 @@ export type BuiltinToolResultType = {
 		}>;
 	},
 	'generate_image': { url: string, markdown: string },
+	'generate_video': { url: string, markdown: string },
 	// --- Generative UI (Forms & Questions)
 	'render_form': { template: string },
 	// --- Learn Mode (Quizzes)

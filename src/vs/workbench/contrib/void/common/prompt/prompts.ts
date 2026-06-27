@@ -677,6 +677,25 @@ return { activeCount: filtered.length, sample: filtered.slice(0, 3) };
 		},
 	},
 
+	run_persistent_command: {
+		name: 'run_persistent_command',
+		description: `Runs a command in an existing persistent terminal. Use this after opening a persistent terminal to send additional commands to it.
+
+**What you'll receive:** The command's output.
+
+**When to use:**
+- To send follow-up commands to a long-running process
+- To interact with a dev server, REPL, or interactive shell
+- To run commands in the same terminal session as a previous command`,
+		params: {
+			command: { description: 'The terminal command to run.' },
+			cwd: { description: cwdHelper },
+			terminal_id: { description: 'The ID of the existing persistent terminal to run the command in.' },
+			is_background: { description: 'Optional. If true, allow the command to run without waiting for it to finish. Default is false.' },
+			timeout: { description: 'Optional. Maximum time to wait for the command to finish, in seconds. Default is 60.' },
+		}
+	},
+
 	open_persistent_terminal: {
 		name: 'open_persistent_terminal',
 		description: `Opens a new persistent terminal that stays alive for long-running processes.
@@ -1381,6 +1400,25 @@ Skills can include a \`benchmarks/\` folder with test files:
 			width: { description: 'Optional. Image width in pixels. Default is 1024.' },
 			height: { description: 'Optional. Image height in pixels. Default is 1024.' },
 			quality: { description: 'Optional. Image quality: low, medium, high, or hd.' },
+		}
+	},
+
+	generate_video: {
+		name: 'generate_video',
+		description: `Generates a video from a text prompt using an OpenAI-compatible video generation API. Best for creating short visual clips or motion assets for your project or lessons.
+
+**What you'll receive:** A Markdown string containing the generated video URL, which will render directly in the chat.
+
+**When to use:**
+- When you need to create a short motion clip
+- To generate video placeholders or demos
+- To enhance educational content with video`,
+		params: {
+			prompt: { description: 'The text description of the video to generate. Be descriptive for better results.' },
+			filename: { description: 'Optional. The filename to save the video as (without extension). Default is a timestamp-based name.' },
+			width: { description: 'Optional. Video width in pixels. Default is 1024.' },
+			height: { description: 'Optional. Video height in pixels. Default is 1024.' },
+			quality: { description: 'Optional. Video quality: low, medium, high, or hd.' },
 		}
 	},
 

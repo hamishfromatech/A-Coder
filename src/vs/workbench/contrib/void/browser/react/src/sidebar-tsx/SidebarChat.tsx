@@ -25,7 +25,8 @@ import { WarningBox } from '../void-settings-tsx/WarningBox.js';
 import { getModelCapabilities, getIsReasoningEnabledState } from '../../../../common/modelCapabilities.js';
 import { AlertTriangle, ChevronRight, ChevronDown, X, Copy as CopyIcon, CircleEllipsis, Play, Settings, ArrowUp, ArrowDown, Trash2, Send, Circle, Loader2, Brain, Check, Pencil, CirclePlus, File as FileIcon, Folder as FolderIcon, Text as TextIcon, SkipForward, MessageCircle, RotateCw, FileText, FileCode, FileJson, Target, CheckCircle, Lightbulb, Trophy, Mic, Clock, Ban, Cpu } from 'lucide-react';
 import { ChatMessage, CheckpointEntry, StagingSelectionItem, ToolMessage, ImageAttachment, isToolMessage, hasParallelBatchId } from '../../../../common/chatThreadServiceTypes.js';
-import { BuiltinToolName, ToolName, IsRunningType, approvalTypeOfBuiltinToolName, LintErrorItem } from '../../../../common/toolsServiceTypes.js';
+import { BuiltinToolName, ToolName, approvalTypeOfBuiltinToolName, LintErrorItem } from '../../../../common/toolsServiceTypes.js';
+import { IsRunningType } from '../../../chatThreadService.js';
 import { CopyButton, EditToolAcceptRejectButtonsHTML, IconShell1, StatusIndicator, useEditToolStreamState } from '../markdown/ApplyBlockHoverButtons.js';
 import { AUTO_CONTINUE_CHAR_THRESHOLD } from '../../../chatThreadService.js';
 import { builtinToolNames, isABuiltinToolName, MAX_FILE_CHARS_PAGE } from '../../../../common/prompt/prompts.js';
@@ -45,14 +46,14 @@ import { ToastNotification } from './ToastNotification.js';
 import { KeyboardShortcutsBanner } from '../util/KeyboardShortcutsBanner.js';
 import { SkeletonMessageList } from './SkeletonMessage.js';
 
-import { 
-	ToolHeaderWrapper, 
-	ToolChildrenWrapper, 
-	CodeChildren, 
-	BottomChildren, 
-	SmallProseWrapper, 
+import {
+	ToolHeaderWrapper,
+	ToolChildrenWrapper,
+	CodeChildren,
+	BottomChildren,
+	SmallProseWrapper,
 	ProseWrapper,
-	getTitle, 
+	getTitle,
 	titleOfBuiltinToolName,
 	toolNameToDesc,
 	getRelative,
@@ -60,7 +61,7 @@ import {
 	getBasename,
 	getFolderName,
 	ResultWrapper,
-	WrapperProps,
+	ToolHeaderParams,
 	InvalidTool,
 	CanceledTool,
 } from './ToolResultHelpers.js';
@@ -68,7 +69,7 @@ import { DefaultToolResultWrapper } from './GenericToolResultWrapper.js';
 import { FileResultWrapper } from './FileResultWrapper.js';
 import { SearchQueryResultWrapper } from './SearchQueryResultWrapper.js';
 import { CommandToolResultWrapper, TerminalCommandApproval } from './TerminalResultWrapper.js';
-import { EditToolResultWrapper, EditToolChildren } from './EditToolResultWrapper.tsx';
+import { EditToolResultWrapper, EditToolChildren } from './EditToolResultWrapper.js';
 import { MCPToolResultWrapper } from './MCPToolResultWrapper.js';
 import { MediaResultWrapper } from './MediaResultWrapper.js';
 import { WebviewResultWrapper } from './WebviewResultWrapper.js';
@@ -532,13 +533,14 @@ const InlineSubagentCard = ({ run }: { run: SubagentRun }) => {
 
 const RunSubagentResultWrapper = ({ toolMessage }: WrapperProps<'run_subagent'>) => {
 	const runs = useSubagents()
-	const subagentId = (toolMessage.result as { subagentId?: string }).subagentId
-	const run = useMemo(() => runs.find(r => r.id === subagentId), [runs, subagentId])
+	const result = toolMessage.result as { subagentId?: string } | null
+	const subagentId = result?.subagentId
+	const run = useMemo(() => subagentId ? runs.find(r => r.id === subagentId) : undefined, [runs, subagentId])
 
 	if (!run) {
 		return (
 			<div className="rounded-lg border border-void-border-2 bg-void-bg-3 px-3 py-2 text-xs text-void-fg-3">
-				Subagent result not found (id: {subagentId || 'unknown'})
+				Subagent result not available (id: {subagentId || 'unknown'})
 			</div>
 		)
 	}
@@ -885,7 +887,7 @@ const StudentOnboardingModal = ({ isOpen, onClose, onSelectLevel }: {
 		}
 
 		// Handle Escape key
-		const handleKeyDown = (e: KeyboardEvent) => {
+		const handleKeyDown = (e: globalThis.KeyboardEvent) => {
 			if (e.key === 'Escape') {
 				onClose();
 				return;
@@ -2233,6 +2235,7 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 	'run_command': { resultWrapper: CommandToolResultWrapper as ResultWrapper<'run_command'> },
 	'run_persistent_command': { resultWrapper: CommandToolResultWrapper as ResultWrapper<'run_persistent_command'> },
 	'wait': { resultWrapper: CommandToolResultWrapper as ResultWrapper<'wait'> },
+	'check_terminal_status': { resultWrapper: CommandToolResultWrapper as ResultWrapper<'check_terminal_status'> },
 	'create_file_or_folder': {
 		resultWrapper: ({ toolMessage, threadId }) => {
 			const accessor = useAccessor()
@@ -2403,6 +2406,15 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 	'create_lesson_plan': { resultWrapper: TeachingResultWrapper as ResultWrapper<'create_lesson_plan'> },
 	'load_skill': { resultWrapper: SkillsResultWrapper as ResultWrapper<'load_skill'> },
 	'list_skills': { resultWrapper: SkillsResultWrapper as ResultWrapper<'list_skills'> },
+	'display_lesson': { resultWrapper: DefaultToolResultWrapper },
+	'execute_skill_script': { resultWrapper: DefaultToolResultWrapper },
+	'load_skill_reference': { resultWrapper: DefaultToolResultWrapper },
+	'get_skill_asset': { resultWrapper: DefaultToolResultWrapper },
+	'install_skill': { resultWrapper: DefaultToolResultWrapper },
+	'uninstall_skill': { resultWrapper: DefaultToolResultWrapper },
+	'run_skill_benchmark': { resultWrapper: DefaultToolResultWrapper },
+	'get_skill_metrics': { resultWrapper: DefaultToolResultWrapper },
+	'list_skill_benchmarks': { resultWrapper: DefaultToolResultWrapper },
 	'generate_image': { resultWrapper: MediaResultWrapper as ResultWrapper<'generate_image'> },
 	'generate_video': { resultWrapper: MediaResultWrapper as ResultWrapper<'generate_video'> },
 	'render_form': { resultWrapper: FormResultWrapper as ResultWrapper<'render_form'> },
@@ -3015,6 +3027,7 @@ const EditToolSoFar = ({ toolCallSoFar, }: { toolCallSoFar: RawToolCallObj }) =>
 					uri={uri}
 					code={content}
 					type={editToolType}
+					chatMessageLocation={undefined}
 				/>
 			</ToolChildrenWrapper>
 		)}
@@ -3438,7 +3451,7 @@ export const SidebarChat = () => {
 	// Escape exits voice mode; single press also stops an active recording.
 	useEffect(() => {
 		if (!voiceModeActive) return;
-		const handleKeyDown = (e: KeyboardEvent) => {
+		const handleKeyDown = (e: globalThis.KeyboardEvent) => {
 			if (e.key === 'Escape') {
 				e.preventDefault();
 				if (isListening) {
@@ -3651,13 +3664,12 @@ export const SidebarChat = () => {
 								const batchMessages: ToolMessage<ToolName>[] = [];
 								const batchIndices: number[] = [];
 
-								while (
-									i < filteredMessages.length &&
-									isToolMessage(filteredMessages[i].message) &&
-									hasParallelBatchId(filteredMessages[i].message) &&
-									filteredMessages[i].message.parallelBatchId === batchId
-								) {
-									batchMessages.push(filteredMessages[i].message);
+								while (i < filteredMessages.length) {
+									const batchMessage = filteredMessages[i].message;
+									if (!isToolMessage(batchMessage) || !hasParallelBatchId(batchMessage) || batchMessage.parallelBatchId !== batchId) {
+										break;
+									}
+									batchMessages.push(batchMessage);
 									batchIndices.push(filteredMessages[i].originalIdx);
 									i++;
 								}
@@ -3669,7 +3681,7 @@ export const SidebarChat = () => {
 											toolMessages={batchMessages as (ChatMessage & { role: 'tool' })[]}
 											indices={batchIndices}
 											currCheckpointIdx={currCheckpointIdx}
-											chatIsRunning={isRunning}
+											chatIsRunning={!!isRunning}
 											threadId={threadId}
 											_scrollToBottom={() => scrollToBottom(scrollContainerRef)}
 										/>
@@ -4351,7 +4363,7 @@ export const SidebarChat = () => {
 				</p>
 
 				{/* Keyboard shortcuts hint banner */}
-				<KeyboardShortcutsBanner keybindingString={keybindingString} />
+				<KeyboardShortcutsBanner keybindingString={keybindingString ?? undefined} />
 
 				{/* Student mode quick tips */}
 				{currentChatMode === 'learn' && (

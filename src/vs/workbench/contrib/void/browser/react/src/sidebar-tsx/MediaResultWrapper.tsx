@@ -20,8 +20,8 @@ import {
 	ToolHeaderParams
 } from './ToolResultHelpers.js';
 
-// Wrapper for image generation results
-export const MediaResultWrapper: ResultWrapper<'generate_image'> = ({ toolMessage, threadId }) => {
+// Wrapper for image/video generation results
+export const MediaResultWrapper: ResultWrapper<'generate_image' | 'generate_video'> = ({ toolMessage, threadId }) => {
 	const accessor = useAccessor()
 	const streamState = useChatThreadsStreamState(threadId)
 
