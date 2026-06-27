@@ -1,0 +1,12 @@
+# GitBook content configuration for A-Coder docs.
+# Docs live in ./docs/ — GitBook treats docs/README.md as the landing page
+# and docs/SUMMARY.md as the table of contents (left sidebar).
+root: ./docs/
+
+structure:
+  readme: README.md
+  summary: SUMMARY.md
+
+# Optional content redirects (path -> new path). Add entries when you move pages.
+redirects:
+  {}

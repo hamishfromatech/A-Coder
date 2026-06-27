@@ -1,229 +1,174 @@
 # A-Coder Documentation
 
-This directory contains technical documentation, implementation guides, and development resources for A-Coder, an AI-powered coding assistant built as a VS Code extension.
+A-Coder is an AI-native code editor built on VS Code. These docs cover everything you need to use it — from your first chat to configuring local models, MCP servers, and the Mobile API.
 
-## Quick Links
-
-- [Development Guide](#development) - Get started building A-Coder
-- [Tool Architecture](#tools) - Understanding the tool system
-- [Codebase Guide](./VOID_CODEBASE_GUIDE.md) - Architecture overview
+> New here? Start with **[Getting Started](user-guide/getting-started.md)** — you'll be running your first AI-assisted edit in a few minutes.
 
 ---
 
-## Table of Contents
+## User Guide
 
-- [Getting Started](#getting-started)
-- [Development](#development)
-- [Tools & LLM Integration](#tools--llm-integration)
-- [Features & Enhancements](#features--enhancements)
-- [API & Integration](#api--integration)
-- [Performance & Optimization](#performance--optimization)
-- [Architecture & Design](#architecture--design)
-- [Bug Fixes & Improvements](#bug-fixes--improvements)
+The user guide is organized by topic. Every essential feature and setting is covered.
 
----
+### Getting started
 
-## Getting Started
+- [Getting Started](user-guide/getting-started.md) — install, connect a model, run your first chat and edit
+- [Interface Tour](user-guide/interface-tour.md) — the sidebar, editor overlays, settings panes, and views
+- [Keyboard Shortcuts & Commands](user-guide/keyboard-shortcuts.md) — every A-Coder keybinding and slash command
 
-| File | Description |
-|------|-------------|
-| [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) | Complete guide for building, running, and packaging A-Coder |
-| [HOW_TO_CONTRIBUTE.md](HOW_TO_CONTRIBUTE.md) | Contribution guidelines and prerequisites |
-| [VOID_CODEBASE_GUIDE.md](VOID_CODEBASE_GUIDE.md) | Architecture overview of the A-Coder codebase |
-| [WINDOWS_BUILD_GUIDE.md](WINDOWS_BUILD_GUIDE.md) | Platform-specific build instructions for Windows |
+### Chat & modes
 
----
+- [Chat Modes](user-guide/chat-modes.md) — Chat / Plan / Code / Learn and when to use each
+- [Learn Mode](user-guide/learn-mode.md) — the AI tutor: levels, exercises, hints, quizzes, badges, streaks
+- [Proactive Coach](user-guide/proactive-coach.md) — ambient coaching suggestions while you work
 
-## Development
+### Models & providers
 
-### Core Development
-- **[DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md)** - Primary development guide with build commands, debugging tips, and common issues
-- **[HOW_TO_CONTRIBUTE.md](HOW_TO_CONTRIBUTE.md)** - Setup instructions for Mac, Windows, and Linux development environments
-- **[VOID_CODEBASE_GUIDE.md](VOID_CODEBASE_GUIDE.md)** - Understanding the codebase structure and key components
+- [Providers & Models](user-guide/providers-and-models.md) — every provider (cloud + local), per-feature model selection, capability & reasoning overrides
+- [Settings Reference](user-guide/settings-reference.md) — every setting, grouped by Settings tab, with defaults
 
-### Workflow & Patterns
-- **[ABOUT_TO_ACT_PATTERN.md](ABOUT_TO_ACT_PATTERN.md)** - The "about to act" UI pattern for confirming operations
-- **[PROMPT_REFACTOR_PLAN.md](PROMPT_REFACTOR_PLAN.md)** - Plans for refactoring prompt generation
+### Editing & code
 
----
+- [Autocomplete](user-guide/autocomplete.md) — inline FIM completions
+- [Quick Edit (Ctrl+K)](user-guide/quick-edit.md) — inline AI editing
+- [Inline Diffs](user-guide/inline-diffs.md) — applying/rejecting AI edits, auto-accept, Fast Apply
+- [Built-in Tools](user-guide/tools.md) — the complete agent tool catalog
+- [Tool Approval & Terminal](user-guide/tool-approval-and-terminal.md) — approval categories, auto-approve, terminal allow/deny patterns
+- [Context Management](user-guide/context-management.md) — context gathering, TOON compression, agent iteration cap
+- [Git & SCM](user-guide/git-and-scm.md) — AI commit messages and repo tools
 
-## Tools & LLM Integration
+### Multimodal & media
 
-### Tool Architecture
-- **[TOOL_ARCHITECTURE.md](TOOL_ARCHITECTURE.md)** - Comprehensive guide to the built-in tools system (read_file, edit_file, rewrite_file, etc.)
+- [Vision](user-guide/vision.md) — image understanding from chat
+- [Media Generation](user-guide/media-generation.md) — image & video generation tools
+- [Voice & Audio](user-guide/voice.md) — speech-to-text and text-to-speech
 
-### Tool Calling
-- **[XML_TOOL_CALLING_IMPLEMENTATION.md](XML_TOOL_CALLING_IMPLEMENTATION.md)** - XML-based tool calling for models without native support
-- **[XML_TOOL_CALL_LOADING_UI_BEST_PRACTICES.md](XML_TOOL_CALL_LOADING_UI_BEST_PRACTICES.md)** - UI best practices for tool loading states
-- **[TOOL_CALLING_FIX.md](TOOL_CALLING_FIX.md)** - Fixes for tool calling issues
-- **[TOOL_UI_FIX_FINAL.md](TOOL_UI_FIX_FINAL.md)** - Final UI fixes for tools
-- **[TOOL_UI_VISIBILITY_FIX.md](TOOL_UI_VISIBILITY_FIX.md)** - Tool visibility improvements
-- **[TOOLSSERVICE_FIX_WALKTHROUGH.md](TOOLSSERVICE_FIX_WALKTHROUGH.md)** - ToolsService debugging walkthrough
+### Integrations
 
-### LLM Provider Integration
-- **[OLLAMA_CLOUD_TOOL_CALLING_IMPROVEMENTS.md](OLLAMA_CLOUD_TOOL_CALLING_IMPROVEMENTS.md)** - Ollama Cloud API tool calling enhancements
-- **[OLLAMA_CLOUD_TOOL_CALLING_BUG.md](OLLAMA_CLOUD_TOOL_CALLING_BUG.md)** - Bug report and workaround for Ollama Cloud
-- **[LATEST_MODELS_TOOL_CALLING_ANALYSIS.md](LATEST_MODELS_TOOL_CALLING_ANALYSIS.md)** - Analysis of tool calling support across LLMs
-- **[LM_STUDIO_COMPARISON_AND_IMPROVEMENTS.md](LM_STUDIO_COMPARISON_AND_IMPROVEMENTS.md)** - LM Studio provider integration
-- **[POLLINATIONS.md](POLLINATIONS.md)** - Pollinations API provider integration
-
-### Context & Prompts
-- **[CONTEXT_WINDOW_IMPLEMENTATION.md](CONTEXT_WINDOW_IMPLEMENTATION.md)** - Context window management and token counting
-- **[CONTEXT_FIX_TOOL_CALLS.md](CONTEXT_FIX_TOOL_CALLS.md)** - Fix for context issues with tool calls
-- **[CONTEXT_COMPRESSION_COMPLETE.md](CONTEXT_COMPRESSION_COMPLETE.md)** - Context compression implementation
-- **[MESSAGE_QUEUE_SYSTEM.md](MESSAGE_QUEUE_SYSTEM.md)** - Message queue for LLM streaming
+- [MCP](user-guide/mcp.md) — Model Context Protocol servers
+- [ACP Agents](user-guide/acp.md) — Agent Communication Protocol agent servers
+- [Skills](user-guide/skills.md) — markdown skill packages in `~/.a-coder/skills/`
+- [Morph](user-guide/morph.md) — Fast Context, Fast Apply, Repo Storage
+- [Composio](user-guide/composio.md) — 1000+ app integrations and trigger webhooks
+- [Subagents & Agent Manager](user-guide/agent-manager.md) — focused delegations and multi-workspace orchestration
+- [Mobile API](user-guide/mobile-api.md) — REST + WebSocket remote control
 
 ---
 
-## Features & Enhancements
+## Quick reference
 
-### Agent Features
-- **[agent-manager-multi-workspace.md](agent-manager-multi-workspace.md)** - Multi-workspace agent management
-- **[student-mode-plan.md](student-mode-plan.md)** - Student mode feature planning
-- **[student-enhancements.md](student-enhancements.md)** - Student mode enhancements implementation
+### Add a model
 
-### Code Execution
-- **[CODE_EXECUTION_IMPLEMENTATION.md](CODE_EXECUTION_IMPLEMENTATION.md)** - Code execution feature implementation
-- **[CODE_EXECUTION_COMPLETE.md](CODE_EXECUTION_COMPLETE.md)** - Complete code execution documentation
+1. **Settings → Manage Models** → pick a provider.
+2. Cloud: paste your **API key**. Local: confirm the **endpoint** (auto-filled) — models auto-detect.
+3. Enable the model(s) you want. Assign models to features in **Settings → Features**.
 
-### Vision Support
-- **[VISION_SUPPORT_IMPLEMENTATION.md](VISION_SUPPORT_IMPLEMENTATION.md)** - Vision/multimodal capabilities
+See [Providers & Models](user-guide/providers-and-models.md).
 
-### File Operations
-- **[MORPH_INTEGRATION_COMPLETE.md](MORPH_INTEGRATION_COMPLETE.md)** - Morph code diff viewer integration
-- **[MORPH_FAST_APPLY_INTEGRATION.md](MORPH_FAST_APPLY_INTEGRATION.md)** - Fast apply functionality
-- **[MORPH_CORS_FIX.md](MORPH_CORS_FIX.md)** - CORS fix for Morph integration
+### Pick a chat mode
 
-### Auto-Continue & UX
-- **[AUTO_CONTINUE_CHARACTER_LIMIT.md](AUTO_CONTINUE_CHARACTER_LIMIT.md)** - Auto-continue based on character limit
-- **[AUTO_CONTINUE_TOGGLE_FIX.md](AUTO_CONTINUE_TOGGLE_FIX.md)** - Auto-continue toggle fixes
-- **[SILENT_AUTO_CONTINUE_SUMMARY.md](SILENT_AUTO_CONTINUE_SUMMARY.md)** - Silent auto-continue feature
-- **[DOUBLE_TAP_ENTER_FORCE_SEND.md](DOUBLE_TAP_ENTER_FORCE_SEND.md)** - Double-tap Enter to send message
+| Mode | Use when |
+|---|---|
+| 💬 Chat | Quick questions, no file access |
+| 🔍 Plan | Research & scope before editing |
+| 🤖 Code | Actually change code, run commands |
+| 🎓 Learn | Get tutored, practice, quiz yourself |
 
----
+See [Chat Modes](user-guide/chat-modes.md).
 
-## API & Integration
+### Essential shortcuts
 
-### Mobile API
-- **[MOBILE_API_IMPLEMENTATION.md](MOBILE_API_IMPLEMENTATION.md)** - Complete Mobile API documentation for companion apps
-- **[FOLDER_CONTENTS_API.md](FOLDER_CONTENTS_API.md)** - Folder contents API endpoint
+| Shortcut | Action |
+|---|---|
+| `Ctrl+K` | Quick Edit |
+| `Ctrl+L` | Add selection to chat |
+| `Ctrl+Shift+L` | New chat |
+| `Ctrl+Shift+A` | Open Agent Manager |
+| `Tab` | Accept autocomplete |
 
-### External APIs
-- **[rebrand.md](rebrand.md)** - Rebranding documentation
+Full list: [Keyboard Shortcuts](user-guide/keyboard-shortcuts.md).
 
 ---
 
-## Performance & Optimization
+## Contributing & building from source
 
-- **[optimisation.md](optimisation.md)** - Performance optimizations
-- **[LARGE_CODEBASE_MEMORY_ANALYSIS.md](LARGE_CODEBASE_MEMORY_ANALYSIS.md)** - Memory analysis for large codebases
-
----
-
-## Architecture & Design
-
-### System Design
-- **[TOOL_ARCHITECTURE.md](TOOL_ARCHITECTURE.md)** - Tool system architecture
-- **[VOID_CODEBASE_GUIDE.md](VOID_CODEBASE_GUIDE.md)** - Overall codebase architecture
-- **[MESSAGE_QUEUE_SYSTEM.md](MESSAGE_QUEUE_SYSTEM.md)** - Message queue system design
-
-### Planning & Analysis
-- **[LARGE_CODEBASE_MEMORY_ANALYSIS.md](LARGE_CODEBASE_MEMORY_ANALYSIS.md)** - Memory patterns for large codebases
-- **[walkthrough-feature.md](walkthrough-feature.md)** - Walkthrough feature planning
+- [Development Guide](DEVELOPMENT_GUIDE.md) — build, run, and package A-Coder
+- [Contributing Guidelines](HOW_TO_CONTRIBUTE.md) — setup for Mac, Windows, Linux
+- [Codebase Guide](VOID_CODEBASE_GUIDE.md) — architecture overview
+- [Windows Build Guide](WINDOWS_BUILD_GUIDE.md) — platform-specific build notes
 
 ---
 
-## Bug Fixes & Improvements
+## Release notes & project docs
 
-### Bug Fixes
-- **[EDIT_FILE_UI_FIX.md](EDIT_FILE_UI_FIX.md)** - Edit file UI fixes
-- **[TOOL_UI_FIX_FINAL.md](TOOL_UI_FIX_FINAL.md)** - Tool UI fixes
-- **[TOOL_UI_VISIBILITY_FIX.md](TOOL_UI_VISIBILITY_FIX.md)** - Tool visibility fixes
-- **[audit_report.md](audit_report.md)** - Security audit findings
-
-### Fine-Tuning
-- **[fine-tuning.md](fine-tuning.md)** - Model fine-tuning documentation
-
-### Implementation Notes
-- **[TOON_IMPLEMENTATION.md](TOON_IMPLEMENTATION.md)** - Toon feature implementation notes
+- [Release Notes](release-notes.md) — version history and changelog
+- [Design Document](../DESIGN.md) — product/design rationale
+- [Pitch Deck](PITCH_DECK.md) — product overview
 
 ---
 
-## Documentation Standards
+## Developer & internal notes
 
-This repository follows these documentation standards:
+The files below are **implementation notes, audit reports, and design records** — useful when hacking on A-Coder itself, not required for everyday use. All A-Coder code lives in `src/vs/workbench/contrib/void/`.
 
-1. **Markdown format** - All documentation uses GitHub Flavored Markdown
-2. **Code blocks** - Code examples include syntax highlighting
-3. **Section headers** - Clear hierarchical structure
-4. **Link syntax** - Use relative links for internal docs (e.g., `[Guide](./FILE.md)`)
+### Architecture & internals
+- [Tool Architecture](TOOL_ARCHITECTURE.md) — the built-in tools system
+- [Message Queue System](MESSAGE_QUEUE_SYSTEM.md) — LLM streaming message queue
+- [TOON Implementation](TOON_IMPLEMENTATION.md) — token-optimized output notation
+- [Context Window Implementation](CONTEXT_WINDOW_IMPLEMENTATION.md)
+- [Context Compression Complete](CONTEXT_COMPRESSION_COMPLETE.md)
+- [XML Tool Calling Implementation](XML_TOOL_CALLING_IMPLEMENTATION.md)
+- [XML Tool Call Loading UI Best Practices](XML_TOOL_CALL_LOADING_UI_BEST_PRACTICES.md)
+- [XML](xml.md)
+- [Latest Models Tool Calling Analysis](LATEST_MODELS_TOOL_CALLING_ANALYSIS.md)
+- [About To Act Pattern](ABOUT_TO_ACT_PATTERN.md)
+- [Prompt Refactor Plan](PROMPT_REFACTOR_PLAN.md)
+- [Folder Contents API](FOLDER_CONTENTS_API.md)
+- [Mobile API Implementation](MOBILE_API_IMPLEMENTATION.md)
 
----
+### Integrations & providers
+- [Morph Integration Complete](MORPH_INTEGRATION_COMPLETE.md)
+- [Morph Fast Apply Integration](MORPH_FAST_APPLY_INTEGRATION.md)
+- [Morph CORS Fix](MORPH_CORS_FIX.md)
+- [Ollama Cloud Tool Calling Improvements](OLLAMA_CLOUD_TOOL_CALLING_IMPROVEMENTS.md)
+- [Ollama Cloud Tool Calling Bug](OLLAMA_CLOUD_TOOL_CALLING_BUG.md)
+- [LM Studio Comparison and Improvements](LM_STUDIO_COMPARISON_AND_IMPROVEMENTS.md)
+- [Pollinations](POLLINATIONS.md)
+- [Agent Manager Multi-Workspace](agent-manager-multi-workspace.md)
+- [Vision Support Implementation](VISION_SUPPORT_IMPLEMENTATION.md)
+- [Code Execution Implementation](CODE_EXECUTION_IMPLEMENTATION.md) · [Complete](CODE_EXECUTION_COMPLETE.md)
 
-## Key Concepts
+### UX & features
+- [Sidebar Audit](sidebar-audit.md)
+- [IDE Command Bar Audit](ide-command-bar-audit.md)
+- [Learn Mode Audit](learn-mode-audit.md)
+- [Student Mode Plan](student-mode-plan.md) · [Student Enhancements](student-enhancements.md)
+- [Walkthrough Feature](walkthrough-feature.md)
+- [Double-Tap Enter Force Send](DOUBLE_TAP_ENTER_FORCE_SEND.md)
+- [Auto-Continue Character Limit](AUTO_CONTINUE_CHARACTER_LIMIT.md) · [Toggle Fix](AUTO_CONTINUE_TOGGLE_FIX.md) · [Silent Auto-Continue Summary](SILENT_AUTO_CONTINUE_SUMMARY.md)
+- [Edit File UI Fix](EDIT_FILE_UI_FIX.md)
+- [Tool UI Fix Final](TOOL_UI_FIX_FINAL.md) · [Tool UI Visibility Fix](TOOL_UI_VISIBILITY_FIX.md)
+- [Tool Calling Fix](TOOL_CALLING_FIX.md)
+- [ToolsService Fix Walkthrough](TOOLSSERVICE_FIX_WALKTHROUGH.md)
+- [Context Fix Tool Calls](CONTEXT_FIX_TOOL_CALLS.md)
 
-### A-Coder Code Location
-
-**All A-Coder code lives in `src/vs/workbench/contrib/void/`** - do NOT modify files outside this directory without consulting the user first.
-
-```
-src/vs/workbench/contrib/void/
-├── browser/          # Browser process (React UI, tool execution)
-├── electron-main/    # Main process (LLM calls, MCP connections)
-└── common/            # Shared types and service interfaces
-```
-
-### Tool Categories
-
-| Category | Tools |
-|----------|-------|
-| Context Gathering | `read_file`, `ls_dir`, `get_dir_tree`, `search_for_files`, `search_in_file` |
-| File Manipulation | `create_file_or_folder`, `delete_file_or_folder`, `rewrite_file`, `edit_file` |
-| Terminal | `run_command`, `run_persistent_command`, `open_persistent_terminal` |
-
-### Supported LLM Providers
-
-- OpenAI-compatible APIs (including Azure, AWS Bedrock, OpenRouter)
-- Anthropic (Claude)
-- Google Gemini
-- Ollama (local & cloud)
-- LM Studio
-- Pollinations
-- DeepSeek, Groq, Mistral, xAI Grok, vLLM, and more
-
----
-
-## Contributing
-
-See [HOW_TO_CONTRIBUTE.md](HOW_TO_CONTRIBUTE.md) for contribution guidelines.
-
-When adding new documentation:
-1. Use descriptive filenames
-2. Add a brief description at the top
-3. Update this README.md to reference new files
-4. Follow existing formatting conventions
+### Performance, tuning & audits
+- [Optimisation](optimisation.md)
+- [Large Codebase Memory Analysis](LARGE_CODEBASE_MEMORY_ANALYSIS.md)
+- [Audit Report](audit_report.md)
+- [Fine-Tuning](fine-tuning.md)
+- [Rebrand](rebrand.md)
 
 ---
 
-## Quick Command Reference
+## Documentation standards
 
-```bash
-# Development
-npm install                    # Install dependencies
-npm run watch                  # Watch for changes
-npm run buildreact             # Build React components
-npm run compile                # Compile TypeScript
-./scripts/code.sh              # Launch development build
-
-# Production
-npm run gulp -- vscode-darwin-arm64    # Build for macOS ARM
-hdiutil create -volname "A-Coder" ...  # Create DMG
-```
-
----
+- All documentation uses GitHub-Flavored Markdown with syntax-highlighted code blocks.
+- User-facing docs live in [`user-guide/`](user-guide/); implementation notes live at the top level of `docs/`.
+- Use relative links for internal references (e.g. `[Guide](./FILE.md)`).
+- When adding a user-facing page, add it to the **User Guide** section above. When adding an implementation note, add it to **Developer & internal notes**.
 
 ## Support
 
-For issues, questions, or contributions:
 - GitHub Issues: [github.com/hamishfromatech/A-Coder/issues](https://github.com/hamishfromatech/A-Coder/issues)
-- See [HOW_TO_CONTRIBUTE.md](HOW_TO_CONTRIBUTE.md) for more information
+- See [Contributing Guidelines](HOW_TO_CONTRIBUTE.md) for more.
