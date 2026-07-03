@@ -8,7 +8,7 @@
  * prompt to the LLM (e.g. clear thread, continue). Plugin/personal commands never use
  * these — they expand to `prompt` and send text to the model, matching Claude Code.
  */
-export type SlashCommandClientAction = 'client-clear' | 'client-continue' | 'client-goal' | 'client-goal-clear'
+export type SlashCommandClientAction = 'client-clear' | 'client-continue' | 'client-goal' | 'client-goal-clear' | 'client-compact' | 'client-compact-clear'
 
 /**
  * A slash command definition. Built-ins and plugin/personal `commands/*.md` files all

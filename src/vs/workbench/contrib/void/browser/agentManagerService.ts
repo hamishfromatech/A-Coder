@@ -21,7 +21,9 @@ import { localize } from '../../../../nls.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { IWorkspaceRemoteControlService } from './workspaceRemoteControlService.js';
 import { IFileService } from '../../../../platform/files/common/files.js';
+import { IHostService } from '../../../services/host/browser/host.js';
 import { implementationPlanningService } from '../common/implementationPlanningService.js';
+import { voidDevLog } from '../common/devLog.js';
 
 const AGENT_MANAGER_STATE_KEY = 'void.agentManager.state';
 
@@ -50,6 +52,7 @@ export class AgentManagerService extends Disposable implements IAgentManagerServ
 		@INotificationService private readonly _notificationService: INotificationService,
 		@IStorageService private readonly _storageService: IStorageService,
 		@IFileService private readonly _fileService: IFileService,
+		@IHostService private readonly _hostService: IHostService,
 	) {
 		super();
 	}
@@ -76,16 +79,22 @@ export class AgentManagerService extends Disposable implements IAgentManagerServ
 	async openAgentManager(): Promise<void> {
 		if (this._isOpen || this._isOpening) {
 			if (this._auxiliaryWindow) {
-				this._auxiliaryWindow.window.focus();
+				// Use hostService.focus, not DOM window.focus(): in Electron the
+				// latter fails to bring floating (auxiliary) windows to the front,
+				// notably on Windows.
+				this._hostService.focus(this._auxiliaryWindow.window).catch(() => { /* window may be gone */ });
 			}
+			voidDevLog('agentManager: open skipped (already open or opening)')
 			return;
 		}
 
 		this._isOpening = true;
 		this._metricsService.capture('Agent Manager', { action: 'open_attempt' });
+		voidDevLog('agentManager: open starting')
 
 		try {
 			const savedState = this._loadWindowState();
+			voidDevLog('agentManager: savedState', savedState ? { hasBounds: !!savedState.bounds, mode: savedState.mode } : null)
 
 			const auxWindow = await this._auxiliaryWindowService.open({
 				nativeTitlebar: true,
@@ -94,12 +103,29 @@ export class AgentManagerService extends Disposable implements IAgentManagerServ
 				mode: savedState?.mode,
 				zoomLevel: savedState?.zoomLevel,
 			});
+			voidDevLog('agentManager: auxiliary window opened')
 
 			this._auxiliaryWindow = auxWindow;
 			this._isOpen = true;
 			this._isOpening = false;
 
-			await auxWindow.whenStylesHaveLoaded;
+			// Windows does not reliably bring a freshly opened `window.open` popup
+			// to the front the way macOS/Linux do. Raise it via the host service
+			// (DOM window.focus() fails to bring floating windows to the front in
+			// Electron on Windows) — and do it BEFORE awaiting styles, so a stall in
+			// the aux workbench boot can't leave an invisible, unfocused popup with
+			// no error.
+			this._hostService.focus(auxWindow.window).catch(() => { /* ignore */ })
+
+			// Don't let a hung aux workbench boot (whenStylesHaveLoaded never
+			// resolves) block the mount forever and leave a blank invisible
+			// window. Race it with a timeout; if styles haven't loaded by then,
+			// mount anyway — a brief unstyled flash beats hanging invisibly.
+			await Promise.race([
+				auxWindow.whenStylesHaveLoaded,
+				new Promise<void>(resolve => setTimeout(resolve, 5000)),
+			]);
+			voidDevLog('agentManager: styles loaded (or timed out)')
 
 			const container = auxWindow.container;
 			container.classList.add('void-agent-manager-root');
@@ -158,11 +184,13 @@ export class AgentManagerService extends Disposable implements IAgentManagerServ
 				// Eagerly start the cross-window reader so the panel has live data
 				// before the React tree mounts.
 				accessor.get(IWorkspaceRemoteControlService);
+				voidDevLog('agentManager: mounting React tree')
 				const mountRes = mountAgentManager(reactWrapper, accessor, undefined, mainWindow.document) as { rerender: (props?: unknown) => void; dispose: () => void } | undefined;
 				if (mountRes?.dispose) {
 					this._mountDisposables.add(mountRes);
 				}
 			});
+			voidDevLog('agentManager: mount complete')
 
 			container.appendChild(reactWrapper);
 
@@ -179,8 +207,20 @@ export class AgentManagerService extends Disposable implements IAgentManagerServ
 			this._metricsService.capture('Agent Manager', { action: 'open_success' });
 
 		} catch (error) {
-			this._isOpening = false;
+			voidDevLog('agentManager: open failed', error)
 			console.error('Failed to open Agent Manager window:', error);
+			// Full reset so a failed open (or a mount throw after the window was
+			// already created) doesn't leave _isOpen/_isOpening stuck and silently
+			// make every later trigger a no-op. Dispose the partially-opened
+			// window and clear all bookkeeping so the next attempt starts clean.
+			this._mountDisposables.clear();
+			this._windowDisposables.clear();
+			if (this._auxiliaryWindow) {
+				try { this._auxiliaryWindow.dispose(); } catch { /* ignore */ }
+				this._auxiliaryWindow = null;
+			}
+			this._isOpen = false;
+			this._isOpening = false;
 			this._notificationService.error(localize('agentManager.openError', 'Failed to open Agent Manager. Please try again.'));
 		}
 	}

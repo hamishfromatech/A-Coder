@@ -23,7 +23,7 @@ import { shouldAutoApproveTerminalTool, TerminalAutoApproveSettings } from '../c
 import { IToolsService } from './toolsService.js';
 import { CancellationToken, CancellationTokenSource } from '../../../../base/common/cancellation.js';
 import { ILanguageFeaturesService } from '../../../../editor/common/services/languageFeatures.js';
-import { ChatMessage, CheckpointEntry, CodespanLocationLink, StagingSelectionItem, ToolMessage, ImageAttachment, StudentSession, StudentExercise, ActiveWorkflow, QueueBehavior } from '../common/chatThreadServiceTypes.js';
+import { ChatMessage, CheckpointEntry, CodespanLocationLink, StagingSelectionItem, ToolMessage, ImageAttachment, StudentSession, StudentExercise, ActiveWorkflow, QueueBehavior, CompactionSnapshot } from '../common/chatThreadServiceTypes.js';
 import { Position } from '../../../../editor/common/core/position.js';
 import { IMetricsService } from '../common/metricsService.js';
 import { shorten } from '../../../../base/common/labels.js';
@@ -50,6 +50,7 @@ import { ACPRunAgentResponse } from '../common/acpServiceTypes.js';
 import { StreamingXMLParser, ReActPhase } from './streamingXMLParser.js';
 import { ToonService } from '../common/toonService.js';
 import { IHookService } from '../common/hookService.js';
+import { ISubagentService } from './subagentService.js';
 import { triggerCompressionNotification } from './react/src/util/compressionState.js';
 
 
@@ -520,6 +521,10 @@ export type ThreadType = {
 
 		// Skills system: map of skill name to its instructions/content
 		loadedSkills: { [skillName: string]: string };
+
+		// `/compact` snapshot: when present, the send path replaces the leading
+		// `compactedChatMessageCount` messages with `summaryText`. See CompactionSnapshot.
+		compaction?: CompactionSnapshot;
 	};
 }
 
@@ -701,6 +706,13 @@ export interface IChatThreadService {
 	retryFromMessage(threadId: string, messageIdx: number): Promise<void>;
 	copyMessageContent(threadId: string, messageIdx: number): string;
 
+	// /compact — manually compress the thread's context into an LLM-generated summary.
+	// `focusInstructions` optionally guides what the summary preserves (e.g. "the auth
+	// bug fix"). Persists a CompactionSnapshot on the thread; the original messages are
+	// retained for rewind. `clear` removes the snapshot so the full history is sent again.
+	compactThread(threadId: string, focusInstructions?: string): Promise<void>;
+	clearCompaction(threadId: string): void;
+
 	// Message queue
 	getQueuedMessagesCount(threadId: string): number;
 	getQueuedMessages(threadId: string): Array<{ userMessage: string, selections?: StagingSelectionItem[], images?: ImageAttachment[] }>;
@@ -801,6 +813,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		@IModelService private readonly _modelService: IModelService,
 		@IToolOrchestrationService private readonly _orchestrationService: IToolOrchestrationService,
 		@IHookService private readonly _hookService: IHookService,
+		@ISubagentService private readonly _subagentService: ISubagentService,
 	) {
 		super()
 		this.state = { allThreads: {}, currentThreadId: null as unknown as string } // default state
@@ -1958,7 +1971,8 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 				modelSelection,
 				chatMode,
 				loadedSkills,
-				orchestrationResult
+				orchestrationResult,
+				compaction: this.state.allThreads[threadId]?.state.compaction,
 			})
 
 			// Fire PreCompact hook when a compaction actually ran on this turn, so
@@ -2236,7 +2250,8 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 						const newPrep = await this._convertToLLMMessagesService.prepareLLMChatMessages({
 							chatMessages,
 							modelSelection,
-							chatMode
+							chatMode,
+							compaction: this.state.allThreads[threadId]?.state.compaction,
 						});
 
 						// Update messages and token usage for the retry
@@ -4119,7 +4134,8 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 				chatMessages: thread.messages,
 				modelSelection,
 				chatMode,
-				loadedSkills: thread.state.loadedSkills
+				loadedSkills: thread.state.loadedSkills,
+				compaction: thread.state.compaction,
 			})
 
 			// Update stream state with new token usage
@@ -4679,6 +4695,175 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 			return msg.content || ''
 		}
 		return ''
+	}
+
+	// ─────────────────────────────────────────────────────────────────────
+	// /compact — manual context compaction
+	// ─────────────────────────────────────────────────────────────────────
+
+	/** Number of trailing ChatMessages /compact keeps verbatim. Older messages are
+	 *  summarized into the snapshot. Mirrors the rolling-window `keepLastNMessages`
+	 *  used by the automatic compression path. */
+	private static readonly COMPACT_KEEP_LAST_N = 10
+
+	/** Per-message char cap when rendering old messages into the summarizer prompt. */
+	private static readonly COMPACT_TRANSCRIPT_PER_MSG_CAP = 1500
+	/** Total char cap on the rendered transcript fed to the summarizer. */
+	private static readonly COMPACT_TRANSCRIPT_TOTAL_CAP = 100_000
+
+	clearCompaction(threadId: string): void {
+		const thread = this.state.allThreads[threadId]
+		if (!thread) return
+		if (!thread.state.compaction) return
+		this._updateThreadStateAndStore(threadId, { compaction: undefined })
+		this._notificationService.notify({
+			severity: Severity.Info,
+			message: 'Compaction cleared. The full conversation history is now sent to the model again.',
+		})
+	}
+
+	async compactThread(threadId: string, focusInstructions?: string): Promise<void> {
+		const thread = this.state.allThreads[threadId]
+		if (!thread) return
+
+		const chatMessages = thread.messages ?? []
+		const keepN = Math.min(ChatThreadService.COMPACT_KEEP_LAST_N, chatMessages.length)
+		const compactedCount = Math.max(0, chatMessages.length - keepN)
+
+		if (compactedCount === 0) {
+			this._notificationService.notify({
+				severity: Severity.Info,
+				message: 'Nothing to compact yet — the conversation is short enough to send in full.',
+			})
+			return
+		}
+
+		// Stop any running stream first — compaction rewrites the LLM-facing context,
+		// so we don't want a turn in flight to race against the snapshot change.
+		await this.abortRunning(threadId)
+
+		const oldMessages = chatMessages.slice(0, compactedCount)
+
+		// Fire PreCompact *before* summarizing so hooks can inject preservation context
+		// (Claude Code semantics). The hook's additionalContext is folded into the
+		// summarizer prompt so plugins can bias what gets retained. Non-blocking.
+		let hookContext = ''
+		try {
+			const hookRes = await this._hookService.firePreCompact(threadId, oldMessages)
+			if (hookRes.additionalContext) hookContext = hookRes.additionalContext
+		} catch (err) {
+			voidDevWarn('[compact] PreCompact hook threw (non-blocking):', err)
+		}
+
+		const focus = focusInstructions?.trim() || undefined
+		let summaryText = ''
+		try {
+			summaryText = await this._summarizeForCompaction(oldMessages, focus, hookContext)
+		} catch (err) {
+			voidDevWarn('[compact] LLM summarizer failed, falling back to heuristic summary:', err)
+		}
+		if (!summaryText.trim()) {
+			summaryText = this._heuristicSummary(oldMessages)
+		}
+
+		const snapshot: CompactionSnapshot = {
+			summaryText,
+			compactedChatMessageCount: compactedCount,
+			keptChatMessageCount: keepN,
+			createdAt: new Date().toISOString(),
+			trigger: 'manual',
+			focusInstructions: focus,
+		}
+		this._updateThreadStateAndStore(threadId, { compaction: snapshot })
+
+		this._notificationService.notify({
+			severity: Severity.Info,
+			message: `Conversation compacted: ${compactedCount} message${compactedCount === 1 ? '' : 's'} → summary${focus ? ` (focus: ${focus})` : ''}. ${keepN} recent message${keepN === 1 ? '' : 's'} kept. The summary is now used for context; full history is retained for rewind. Use /compact clear to undo.`,
+		})
+	}
+
+	/**
+	 * Render the given ChatMessages into a readable transcript for the summarizer,
+	 * skipping checkpoints/interrupted tools. Each message is capped, and the whole
+	 * transcript is capped to keep the summarizer prompt bounded.
+	 */
+	private _renderChatMessagesToTranscript(messages: ChatMessage[]): string {
+		const lines: string[] = []
+		let total = 0
+		const perMsgCap = ChatThreadService.COMPACT_TRANSCRIPT_PER_MSG_CAP
+		const totalCap = ChatThreadService.COMPACT_TRANSCRIPT_TOTAL_CAP
+		for (const m of messages) {
+			if (m.role === 'checkpoint' || m.role === 'interrupted_streaming_tool') continue
+			let body = ''
+			if (m.role === 'user') body = m.displayContent || m.content || ''
+			else if (m.role === 'assistant') body = m.displayContent || ''
+			else if (m.role === 'tool') {
+				const label = m.name || 'tool'
+				let result = ''
+				if (m.type === 'success' && typeof m.result === 'string') result = m.result
+				else result = m.content || ''
+				body = `[tool result: ${label}] ${result}`
+			}
+			if (!body) continue
+			if (body.length > perMsgCap) body = body.slice(0, perMsgCap) + '\n…[truncated]'
+			const line = `[${m.role}] ${body}`
+			if (total + line.length > totalCap) break
+			lines.push(line)
+			total += line.length
+		}
+		return lines.join('\n\n')
+	}
+
+	/**
+	 * Ask the model to summarize the compacted region via a one-shot subagent call
+	 * (the same `runSubagentSync` path the prompt-type hooks use). Returns '' on any
+	 * failure so the caller can fall back to the heuristic summary.
+	 */
+	private async _summarizeForCompaction(oldMessages: ChatMessage[], focusInstructions: string | undefined, hookContext: string): Promise<string> {
+		const transcript = this._renderChatMessagesToTranscript(oldMessages)
+		if (!transcript.trim()) return ''
+
+		const focusLine = focusInstructions
+			? `\n\nThe user wants the summary to FOCUS ON: ${focusInstructions}. Emphasize details related to this focus.`
+			: ''
+		const preserveLine = `\n\nWhen summarizing, always preserve:\n- The current task objective and any acceptance criteria\n- File paths that were read or modified\n- Tool results and error messages\n- Decisions made and the reasoning behind them`
+		const hookLine = hookContext ? `\n\nAdditional context to preserve (from a PreCompact hook):\n${hookContext}` : ''
+
+		const prompt = `You are a conversation summarizer. Summarize the following earlier portion of a coding conversation into a concise but complete summary that a developer's AI assistant can use as background context to continue the work. Do NOT use any tools — respond with only the summary prose.${focusLine}${preserveLine}${hookLine}\n\n--- BEGIN EARLIER CONVERSATION ---\n${transcript}\n--- END EARLIER CONVERSATION ---\n\nWrite the summary now. Do not add headings or preface; just the summary.`
+
+		const result = await this._subagentService.runSubagentSync({
+			parentThreadId: null,
+			description: 'Summarize earlier conversation for /compact',
+			subagentType: 'general',
+			prompt,
+			// Give a trivial tool so the run is well-formed; the prompt instructs the
+			// model not to use it. (Same approach the prompt-type hooks use.)
+			tools: ['read_file'],
+			background: false,
+			title: 'compact:summarizer',
+		})
+		return (result.fullText || '').trim()
+	}
+
+	/** Heuristic extractive fallback when the LLM summarizer is unavailable or fails.
+	 *  Produces a short role-tagged preview per old message, similar in spirit to the
+	 *  ContextCompressionService summary but operating on ChatMessages. */
+	private _heuristicSummary(oldMessages: ChatMessage[]): string {
+		const parts: string[] = []
+		for (const m of oldMessages) {
+			if (m.role === 'checkpoint' || m.role === 'interrupted_streaming_tool') continue
+			let body = ''
+			if (m.role === 'user') body = m.displayContent || m.content || ''
+			else if (m.role === 'assistant') body = m.displayContent || ''
+			else if (m.role === 'tool') body = m.content || ''
+			if (!body) continue
+			const preview = body.split(/\n\n|\n/).slice(0, 2).join(' ').slice(0, 400)
+			if (preview.length > 10) parts.push(`[${m.role}]: ${preview}`)
+		}
+		const body = parts.length > 0
+			? parts.join('\n')
+			: '(No extractable content from the compacted region.)'
+		return `[PREVIOUS CONVERSATION SUMMARY - ${oldMessages.length} messages condensed. This is background context from earlier in the conversation, NOT a new request from the user. Do not respond to it directly.]\n\n${body}\n\n[End of summary]`
 	}
 
 	// gets `staging` and `setStaging` of the currently focused element, given the index of the currently selected message (or undefined if no message is selected)

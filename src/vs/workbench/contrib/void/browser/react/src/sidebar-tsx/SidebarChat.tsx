@@ -3528,6 +3528,24 @@ export const SidebarChat = () => {
 				return;
 			}
 
+			if (parsedSlash.command.action === 'client-compact') {
+				// `/compact` compresses the conversation into an LLM-generated summary
+				// stored as a CompactionSnapshot on the thread (used for context on
+				// future turns; recent messages kept verbatim; full history retained).
+				// Optional args focus the summary. `clear` removes the snapshot so the
+				// full history is sent again. No message is sent to the model here.
+				const args = parsedSlash.rest.trim();
+				const clearWords = new Set(['clear', 'undo', 'reset', 'off', 'none', 'cancel']);
+				if (clearWords.has(args.toLowerCase())) {
+					chatThreadsService.clearCompaction(threadId);
+				} else {
+					await chatThreadsService.compactThread(threadId, args || undefined);
+				}
+				textAreaFnsRef.current?.setValue('');
+				textAreaRef.current?.focus();
+				return;
+			}
+
 			const expanded = expandSlashCommand(parsedSlash);
 			if (expanded !== null) {
 				userMessage = expanded;

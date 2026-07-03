@@ -184,6 +184,35 @@ export interface ActiveWorkflow {
 
 export type QueueBehavior = 'immediate' | 'wait_for_workflow' | 'hold';
 
+/**
+ * A persistent compaction snapshot stored on a thread's `state`.
+ *
+ * `/compact` (manual or, later, auto) summarizes the leading `compactedChatMessageCount`
+ * ChatMessages into `summaryText` and keeps the trailing messages verbatim. The send
+ * path (prepareLLMChatMessages) honors this by replacing those leading messages with a
+ * single user-role summary message, so subsequent turns use the compressed context
+ * instead of re-expanding the full history. The original ChatMessages are NOT deleted —
+ * they're retained for rewind/inspection — only the LLM-facing view is compressed.
+ *
+ * `compactedChatMessageCount` is a count into the thread's `messages` array (which only
+ * ever grows at the tail), so it stays valid as new messages are appended.
+ */
+export type CompactionSnapshot = {
+	/** The LLM-generated (or heuristic-fallback) summary of the compacted region. */
+	summaryText: string
+	/** Number of leading ChatMessages (all roles, including checkpoints) that were
+	 *  summarized. The send path skips these and substitutes `summaryText`. */
+	compactedChatMessageCount: number
+	/** Number of trailing ChatMessages kept verbatim after compaction. */
+	keptChatMessageCount: number
+	/** ISO timestamp of when this compaction was created. */
+	createdAt: string
+	/** 'manual' = user ran /compact; 'auto' = automatic threshold compaction. */
+	trigger: 'manual' | 'auto'
+	/** Optional focus instructions the user supplied with /compact, e.g. "the auth bug fix". */
+	focusInstructions?: string
+}
+
 // Standalone session for workspace isolation in agent manager
 export type StandaloneSession = {
 	id: string;

@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------*/
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Wand2, Eraser, FileText, Lightbulb, Repeat, TerminalSquare, Target } from 'lucide-react';
+import { Search, Wand2, Eraser, FileText, Lightbulb, Repeat, TerminalSquare, Target, Minimize2 } from 'lucide-react';
 import { useAccessor, usePluginServiceState } from '../util/services.js';
 import { BUILTIN_SLASH_COMMANDS } from '../../../../common/slashCommands.js';
 import { SlashCommandDef } from '../../../../common/slashCommandTypes.js';
@@ -16,8 +16,10 @@ export interface SlashCommand {
 	icon: React.ReactNode;
 	/** What happens when the command is invoked. `client-clear` clears the thread;
 	 *  `client-goal` installs/clears a session goal Stop hook (no LLM send);
+	 *  `client-compact` compresses the conversation into a /compact snapshot (no LLM
+	 *  send — the snapshot takes effect on the next turn);
 	 *  `llm-prompt` expands `prompt`/`expand` and sends the result to the LLM. */
-	action: 'client-clear' | 'client-goal' | 'llm-prompt';
+	action: 'client-clear' | 'client-goal' | 'client-compact' | 'llm-prompt';
 	/** Prompt template for `llm-prompt` (plugin/personal commands). `$ARGUMENTS` is substituted. */
 	prompt?: string;
 	/** Custom expander for built-in commands. Takes precedence over `prompt`. */
@@ -35,6 +37,7 @@ const BUILTIN_ICONS: { [label: string]: React.ReactNode } = {
 	continue: <Repeat size={14} />,
 	explain: <Lightbulb size={14} />,
 	goal: <Target size={14} />,
+	compact: <Minimize2 size={14} />,
 };
 
 /** Build the React SlashCommand list for the 6 built-ins (from common/slashCommands.ts). */
@@ -49,7 +52,7 @@ function defToSlashCommand(def: SlashCommandDef, source: string): SlashCommand {
 		label: def.label,
 		description: def.description,
 		icon: BUILTIN_ICONS[def.label] ?? <TerminalSquare size={14} />,
-		action: def.clientAction === 'client-clear' ? 'client-clear' : (def.clientAction === 'client-goal' || def.clientAction === 'client-goal-clear' ? 'client-goal' : 'llm-prompt'),
+		action: def.clientAction === 'client-clear' ? 'client-clear' : (def.clientAction === 'client-goal' || def.clientAction === 'client-goal-clear' ? 'client-goal' : (def.clientAction === 'client-compact' || def.clientAction === 'client-compact-clear' ? 'client-compact' : 'llm-prompt')),
 		prompt: def.prompt || '',
 		expand: def.expand,
 		source,

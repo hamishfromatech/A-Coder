@@ -522,10 +522,12 @@ class HookService extends Disposable implements IHookService {
 				description: isAgent
 					? `Verify a ${input.hook_event_name} hook condition. ${hook.prompt}`
 					: `Decide a ${input.hook_event_name} hook outcome. ${hook.prompt}`,
-				subagentType: 'Explore',
+				subagentType: 'researcher',
 				prompt: prompt,
 				// prompt hooks: give the model a trivial tool so it tends to just answer;
-				// agent hooks: let the Explore subagent use its read/search tools to verify.
+				// agent hooks: pass `tools: undefined` so the run falls back to the
+				// 'researcher' type's readTools, letting the subagent read/search the
+				// codebase to verify the hook condition (the original "Explore" intent).
 				tools: isAgent ? undefined : ['read_file'],
 				background: false,
 				title: `hook:${input.hook_event_name}`,

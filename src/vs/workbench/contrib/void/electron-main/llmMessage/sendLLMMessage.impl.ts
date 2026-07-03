@@ -426,16 +426,36 @@ const _sendOpenAICompatibleFIM = async ({ messages: { prefix, suffix, stopTokens
 }
 
 
-const toOpenAICompatibleTool = (toolInfo: InternalToolInfo) => {
+// Local llama.cpp-derived servers (llama.cpp, LM Studio, Ollama, Ollama Cloud) constrain
+// tool-call output by compiling the `tools` schemas into a GBNF grammar server-side. Their
+// `json_schema_to_grammar` is strict and rejects common MCP/ACP schema constructs — nullable
+// `type: ["string","null"]` unions, `$ref`, `oneOf`/`anyOf`, nested `items.properties`,
+// `format`/`pattern`, empty `enum`, etc. — with `Failed to initialize samplers: failed to
+// parse grammar` (HTTP 400), which hard-breaks every request that carries tools.
+// (Ollama masks this via its no-tools fallback in _sendOllamaChatWithFallback; llama.cpp and
+// LM Studio do not, so they hard-fail.) For these providers we flatten every tool param to
+// the previous GBNF-safe `{type:'string'}` shape. Cloud / vLLM servers don't use GBNF and
+// benefit from the real schema, so the rich passthrough is kept for everyone else.
+const GBNF_GRAMMAR_TOOL_PROVIDERS: ReadonlySet<string> = new Set(['llamaCpp', 'lmStudio', 'ollama', 'ollamaCloud'])
+
+const toOpenAICompatibleTool = (toolInfo: InternalToolInfo, providerName?: string) => {
 	const { name, description, params } = toolInfo
 
-	// Emit the real JSON-Schema type/enum/items when the tool carries them (MCP/ACP tools
-	// whose inputSchema declares them), falling back to `type: 'string'` for builtin A-Coder
-	// tools (whose params are all strings). Forcing every param to `type: 'string'` was lossy
-	// for schema-aware servers like llama.cpp, which support full tool schemas. `enum`/`items`
-	// pass through via the spread.
+	// GBNF-based local servers: flatten to the safe string-only schema so the grammar always
+	// compiles. `description` is preserved; enum/items/rich types are dropped because they're
+	// exactly what breaks json_schema_to_grammar on these servers.
 	const paramsWithType: { [s: string]: { description: string; type: string; enum?: unknown[]; items?: unknown } } = {}
-	for (const key in params) { paramsWithType[key] = { ...params[key], type: params[key].type ?? 'string' } }
+	const flattenToString = !!providerName && GBNF_GRAMMAR_TOOL_PROVIDERS.has(providerName)
+	for (const key in params) {
+		if (flattenToString) {
+			paramsWithType[key] = { description: params[key].description, type: 'string' }
+		} else {
+			// Emit the real JSON-Schema type/enum/items when the tool carries them (MCP/ACP tools
+			// whose inputSchema declares them), falling back to `type: 'string'` for builtin A-Coder
+			// tools (whose params are all strings). `enum`/`items` pass through via the spread.
+			paramsWithType[key] = { ...params[key], type: params[key].type ?? 'string' }
+		}
+	}
 
 	return {
 		type: 'function',
@@ -453,13 +473,13 @@ const toOpenAICompatibleTool = (toolInfo: InternalToolInfo) => {
 	} satisfies OpenAI.Chat.Completions.ChatCompletionTool
 }
 
-const openAITools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined, acpTools: InternalToolInfo[] | undefined, composioTools: InternalToolInfo[] | undefined, options?: { enableMorphFastContext?: boolean; enableMediaGeneration?: boolean; allowedTools?: string[]; allowExternalTools?: boolean }) => {
+const openAITools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] | undefined, acpTools: InternalToolInfo[] | undefined, composioTools: InternalToolInfo[] | undefined, options?: { enableMorphFastContext?: boolean; enableMediaGeneration?: boolean; allowedTools?: string[]; allowExternalTools?: boolean; providerName?: string }) => {
 	const allowedTools = availableTools(chatMode, mcpTools, composioTools, acpTools, options)
 	if (!allowedTools || Object.keys(allowedTools).length === 0) return null
 
 	const openAITools: OpenAI.Chat.Completions.ChatCompletionTool[] = []
 	for (const t in allowedTools ?? {}) {
-		openAITools.push(toOpenAICompatibleTool(allowedTools[t]))
+		openAITools.push(toOpenAICompatibleTool(allowedTools[t], options?.providerName))
 	}
 	return openAITools
 }
@@ -673,6 +693,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		enableMediaGeneration: globalSettings.enableMediaGeneration,
 		allowedTools,
 		allowExternalTools,
+		providerName,
 	})
 	const nativeToolsObj = potentialTools && specialToolFormat === 'openai-style' ?
 		{ tools: potentialTools } as const
@@ -1657,6 +1678,7 @@ const _sendOllamaChatWithFallback = async (params: SendChatParams_Internal) => {
 		enableMediaGeneration: globalSettings.enableMediaGeneration,
 		allowedTools,
 		allowExternalTools,
+		providerName: 'ollama',
 	})
 	const hasTools = potentialTools && potentialTools.length > 0
 

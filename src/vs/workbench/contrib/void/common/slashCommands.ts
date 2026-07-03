@@ -66,4 +66,19 @@ export const BUILTIN_SLASH_COMMANDS: SlashCommandDef[] = [
 		// shows the current goal; `clear|stop|off|reset|none|cancel` removes it.
 		clientAction: 'client-goal',
 	},
+	{
+		label: 'compact',
+		description: 'Compress conversation history into an LLM summary now. Use /compact clear to undo.',
+		source: 'builtin',
+		argumentHint: '<focus instructions (optional)>',
+		prompt: '',
+		// `client-compact` is handled in SidebarChat.onSubmit: it calls
+		// ChatThreadService.compactThread, which summarizes the older messages into a
+		// persisted CompactionSnapshot (used for context on future turns) and keeps
+		// the recent messages verbatim. Optional args focus the summary (e.g.
+		// `/compact focus on the auth bug fix`). `clear` removes the snapshot so the
+		// full history is sent again. No message is sent to the model by /compact
+		// itself — the snapshot takes effect on the next turn.
+		clientAction: 'client-compact',
+	},
 ]

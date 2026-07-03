@@ -4,7 +4,7 @@ import { registerSingleton, InstantiationType } from '../../../../platform/insta
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
 import { IEditorService } from '../../../services/editor/common/editorService.js';
-import { ChatMessage } from '../common/chatThreadServiceTypes.js';
+import { ChatMessage, CompactionSnapshot } from '../common/chatThreadServiceTypes.js';
 import { getIsReasoningEnabledState, getReservedOutputTokenSpace, getModelCapabilities } from '../common/modelCapabilities.js';
 import { chat_systemMessage, InternalToolInfo } from '../common/prompt/prompts.js';
 import { AnthropicLLMChatMessage, AnthropicReasoning, GeminiLLMChatMessage, LLMChatMessage, LLMFIMMessage, OpenAILLMChatMessage, RawToolParamsObj } from '../common/sendLLMMessageTypes.js';
@@ -603,7 +603,7 @@ const prepareMessages = (params: {
 export interface IConvertToLLMMessageService {
 	readonly _serviceBrand: undefined;
 	prepareLLMSimpleMessages: (opts: { simpleMessages: SimpleLLMMessage[], systemMessage: string, modelSelection: ModelSelection | null, featureName: FeatureName }) => { messages: LLMChatMessage[], separateSystemMessage: string | undefined }
-	prepareLLMChatMessages: (opts: { chatMessages: ChatMessage[], chatMode: ChatMode, modelSelection: ModelSelection | null, loadedSkills?: { [name: string]: string }, orchestrationResult?: { suggestions: Array<{ toolName: string; toolParams?: Record<string, unknown>; reasoning: string; confidence: 'high' | 'medium' | 'low'; }>; reasoning: string; summary: string; } }) => Promise<{ messages: LLMChatMessage[], separateSystemMessage: string | undefined, tokenUsage: { used: number, total: number, percentage: number }, compressionStats?: { originalMessageCount: number, finalMessageCount: number, originalTokens: number, finalTokens: number, compressionRatio: number, messagesRemoved: number, messagesSummarized: number } }>
+	prepareLLMChatMessages: (opts: { chatMessages: ChatMessage[], chatMode: ChatMode, modelSelection: ModelSelection | null, loadedSkills?: { [name: string]: string }, orchestrationResult?: { suggestions: Array<{ toolName: string; toolParams?: Record<string, unknown>; reasoning: string; confidence: 'high' | 'medium' | 'low'; }>; reasoning: string; summary: string; }, compaction?: CompactionSnapshot }) => Promise<{ messages: LLMChatMessage[], separateSystemMessage: string | undefined, tokenUsage: { used: number, total: number, percentage: number }, compressionStats?: { originalMessageCount: number, finalMessageCount: number, originalTokens: number, finalTokens: number, compressionRatio: number, messagesRemoved: number, messagesSummarized: number } }>
 	prepareFIMMessage(opts: { messages: LLMFIMMessage, }): { prefix: string, suffix: string, stopTokens: string[] }
 	updateTokenRatio(modelName: string, estimatedTokens: number, actualTokens: number): void
 	// Builds the system message for a subagent run: the subagent's role prompt
@@ -863,7 +863,7 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 		const base = await this._generateChatMessagesSystemMessage('code', specialToolFormat, modelSelection, allowedTools, allowExternalTools)
 		return `${rolePrompt}\n\n${base}`
 	}
-	prepareLLMChatMessages: IConvertToLLMMessageService['prepareLLMChatMessages'] = async ({ chatMessages, chatMode, modelSelection, loadedSkills, orchestrationResult }) => {
+	prepareLLMChatMessages: IConvertToLLMMessageService['prepareLLMChatMessages'] = async ({ chatMessages, chatMode, modelSelection, loadedSkills, orchestrationResult, compaction }) => {
 		if (modelSelection === null) return { messages: [], separateSystemMessage: undefined, tokenUsage: { used: 0, total: 0, percentage: 0 }, compressionStats: undefined }
 
 		const { overridesOfModel } = this.voidSettingsService.state
@@ -907,7 +907,20 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 
 		const isReasoningEnabled = getIsReasoningEnabledState('Chat', providerName, modelName, modelSelectionOptions, overridesOfModel)
 		const reservedOutputTokenSpace = getReservedOutputTokenSpace(providerName, modelName, { isReasoningEnabled, overridesOfModel })
-		const llmMessages = this._chatMessagesToSimpleMessages(chatMessages)
+		// Honor a /compact snapshot: replace the leading `compactedChatMessageCount`
+		// messages with a single user-role summary message, then convert only the
+		// trailing (kept) messages. The original ChatMessages are retained by the
+		// caller for rewind — only this LLM-facing view is compressed. A user-role
+		// summary is the only mid-stream role every provider accepts; the summary
+		// text is framed as background context, not a fresh user request.
+		let llmMessages: SimpleLLMMessage[]
+		if (compaction && compaction.compactedChatMessageCount > 0 && chatMessages.length > compaction.compactedChatMessageCount) {
+			const kept = chatMessages.slice(compaction.compactedChatMessageCount)
+			llmMessages = this._chatMessagesToSimpleMessages(kept)
+			llmMessages.unshift({ role: 'user', content: compaction.summaryText })
+		} else {
+			llmMessages = this._chatMessagesToSimpleMessages(chatMessages)
+		}
 
 		let { messages, separateSystemMessage } = prepareMessages({
 			messages: llmMessages,
