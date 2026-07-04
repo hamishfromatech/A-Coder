@@ -214,6 +214,11 @@ class MCPService extends Disposable implements IMCPService {
 					params: this._transformInputSchemaToParams(tool.inputSchema),
 					name: tool.name,
 					mcpServerName: serverName,
+					// Carry the full inputSchema through so GBNF-based local servers
+					// (llama.cpp/LM Studio/Ollama) can sanitize it into a grammar-safe
+					// shape instead of being flattened to all-string params. Other
+					// providers ignore this field and use the flattened `params`.
+					rawInputSchema: tool.inputSchema,
 				})
 			})
 		}

@@ -18,6 +18,7 @@ import { AnthropicLLMChatMessage, AnthropicReasoning, GeminiLLMChatMessage, LLMC
 import { ChatMode, displayInfoOfProviderName, GlobalSettings, ModelSelectionOptions, OverridesOfModel, ProviderName, SettingsOfProvider } from '../../common/voidSettingsTypes.js';
 import { getSendableReasoningInfo, getModelCapabilities, getProviderCapabilities, defaultProviderSettings, getReservedOutputTokenSpace } from '../../common/modelCapabilities.js';
 import { availableTools, InternalToolInfo } from '../../common/prompt/prompts.js';
+import { sanitizeJsonSchemaForGBNF } from '../../common/helpers/sanitizeJsonSchemaForGBNF.js';
 import { generateUuid } from '../../../../../base/common/uuid.js';
 import { voidDevLog, voidDevWarn } from '../../common/devLog.js';
 import product from '../../../../../platform/product/common/product.js';
@@ -428,31 +429,55 @@ const _sendOpenAICompatibleFIM = async ({ messages: { prefix, suffix, stopTokens
 
 // Local llama.cpp-derived servers (llama.cpp, LM Studio, Ollama, Ollama Cloud) constrain
 // tool-call output by compiling the `tools` schemas into a GBNF grammar server-side. Their
-// `json_schema_to_grammar` is strict and rejects common MCP/ACP schema constructs — nullable
-// `type: ["string","null"]` unions, `$ref`, `oneOf`/`anyOf`, nested `items.properties`,
-// `format`/`pattern`, empty `enum`, etc. — with `Failed to initialize samplers: failed to
-// parse grammar` (HTTP 400), which hard-breaks every request that carries tools.
-// (Ollama masks this via its no-tools fallback in _sendOllamaChatWithFallback; llama.cpp and
-// LM Studio do not, so they hard-fail.) For these providers we flatten every tool param to
-// the previous GBNF-safe `{type:'string'}` shape. Cloud / vLLM servers don't use GBNF and
-// benefit from the real schema, so the rich passthrough is kept for everyone else.
+// `json_schema_to_grammar` is strict and rejects common MCP/Composio schema constructs —
+// nullable `type: ["string","null"]` unions, `$ref`, `oneOf`/`anyOf`, nested `items.properties`,
+// `format`/`pattern`, empty `enum`, `not`, `if/then/else`, etc. — with
+// `Failed to initialize samplers: failed to parse grammar` (HTTP 400), which hard-breaks every
+// request that carries tools. (Ollama masks this via its no-tools fallback in
+// _sendOllamaChatWithFallback; llama.cpp and LM Studio do not, so they hard-fail.)
+//
+// For these providers we sanitize the tool's raw JSON-Schema into a GBNF-safe shape
+// (sanitizeJsonSchemaForGBNF) instead of flattening every param to `{type:'string'}`. This
+// preserves enums, arrays, nested objects, numeric constraints, and `required` where the
+// schema declares them, while always compiling. Tools without a raw schema (builtin A-Coder
+// tools, ACP agents) still fall back to the all-string shape, since their params carry only a
+// description. Cloud / vLLM servers don't use GBNF and benefit from the real schema, so the rich
+// `type`/`enum`/`items` passthrough is kept for everyone else.
 const GBNF_GRAMMAR_TOOL_PROVIDERS: ReadonlySet<string> = new Set(['llamaCpp', 'lmStudio', 'ollama', 'ollamaCloud'])
 
 const toOpenAICompatibleTool = (toolInfo: InternalToolInfo, providerName?: string) => {
 	const { name, description, params } = toolInfo
+	const isGbnfProvider = !!providerName && GBNF_GRAMMAR_TOOL_PROVIDERS.has(providerName)
 
-	// GBNF-based local servers: flatten to the safe string-only schema so the grammar always
-	// compiles. `description` is preserved; enum/items/rich types are dropped because they're
-	// exactly what breaks json_schema_to_grammar on these servers.
+	// GBNF-based local servers: prefer the raw input schema (full JSON-Schema with
+	// `required`, nested `properties`, `$ref`, `anyOf`) and sanitize it into a
+	// grammar-safe shape. Builtin tools / ACP agents have no raw schema, so they fall
+	// back to the all-string params (current behavior). The sanitized schema's
+	// per-property `description` comes from the raw schema verbatim (the flattened
+	// `params[key].description` is JSON-stringified and less useful, so we don't merge it).
+	if (isGbnfProvider && toolInfo.rawInputSchema) {
+		const sanitized = sanitizeJsonSchemaForGBNF(toolInfo.rawInputSchema)
+		return {
+			type: 'function',
+			function: {
+				name: name,
+				// strict: true, // strict mode - https://platform.openai.com/docs/guides/function-calling?api-mode=chat
+				description: description,
+				parameters: sanitized,
+			}
+		} satisfies OpenAI.Chat.Completions.ChatCompletionTool
+	}
+
 	const paramsWithType: { [s: string]: { description: string; type: string; enum?: unknown[]; items?: unknown } } = {}
-	const flattenToString = !!providerName && GBNF_GRAMMAR_TOOL_PROVIDERS.has(providerName)
 	for (const key in params) {
-		if (flattenToString) {
+		if (isGbnfProvider) {
+			// No raw schema available (builtin / ACP): flatten to the safe string-only shape
+			// so the grammar always compiles. `description` is preserved; rich types are dropped.
 			paramsWithType[key] = { description: params[key].description, type: 'string' }
 		} else {
-			// Emit the real JSON-Schema type/enum/items when the tool carries them (MCP/ACP tools
-			// whose inputSchema declares them), falling back to `type: 'string'` for builtin A-Coder
-			// tools (whose params are all strings). `enum`/`items` pass through via the spread.
+			// Emit the real JSON-Schema type/enum/items when the tool carries them (MCP/Composio
+			// tools whose inputSchema declares them), falling back to `type: 'string'` for
+			// builtin A-Coder tools (whose params are all strings). `enum`/`items` pass through via the spread.
 			paramsWithType[key] = { ...params[key], type: params[key].type ?? 'string' }
 		}
 	}

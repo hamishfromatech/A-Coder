@@ -769,6 +769,10 @@ class ConvertToLLMMessageService extends Disposable implements IConvertToLLMMess
 					description: tool.description,
 					params,
 					mcpServerName: 'composio_tool_router',
+					// Carry the full Composio parameters schema (with nested properties
+					// and `required`) so GBNF-based local servers can sanitize it into a
+					// grammar-safe shape instead of losing all type info.
+					rawInputSchema: tool.parameters as Record<string, unknown>,
 				}
 			})
 		} catch (err) {

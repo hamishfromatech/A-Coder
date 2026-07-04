@@ -146,6 +146,15 @@ export type InternalToolInfo = {
 	// Only if the tool is from an ACP server
 	acpServerName?: string,
 	acpAgentName?: string,
+	// The full, unmodified JSON-Schema `parameters` object for the tool, when
+	// available (MCP `inputSchema`, Composio `parameters`). Builtin A-Coder tools
+	// and ACP agents (whose params are a single input string) leave this unset.
+	// GBNF-based local servers (llama.cpp/LM Studio/Ollama) need the original
+	// schema so it can be normalized into a grammar-safe shape; the flattened
+	// `params` (type/enum/items) doesn't carry enough structure (`required`,
+	// nested `properties`, `$ref`, `anyOf`) to sanitize meaningfully. Other
+	// providers ignore this and continue to use the flattened `params` fields.
+	rawInputSchema?: Record<string, unknown>,
 }
 
 

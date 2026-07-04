@@ -147,7 +147,7 @@ export const subTextMdOfProviderName = (providerName: ProviderName): string => {
 	//   - https://api.a-coder.dev/v1     OAuth/backend (aCoderOAuthMainService.ts ACODER_BACKEND_URL)
 	//   - https://provider.atech.industries/v1  LLM inference proxy (sendLLMMessage.impl.ts aCoder baseURL)
 	if (providerName === 'aCoder') return 'Get your key from [A-Coder](https://a-coder.dev).'
-	if (providerName === 'openAdapter') return 'Get your key → [OpenAdapter](https://openadapter.in). Models are fetched automatically.'
+	if (providerName === 'openAdapter') return 'Get your key → [OpenAdapter](https://dashboard.openadapter.in/?ref=NZ7BRYE6). Models are fetched automatically.'
 	if (providerName === 'llamaCpp') return 'Run `./llama-server` to start the OpenAI-compatible API. Models are fetched automatically.'
 
 	throw new Error(`subTextMdOfProviderName: Unknown provider name: "${providerName}"`)
