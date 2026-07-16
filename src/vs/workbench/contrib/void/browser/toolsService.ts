@@ -36,6 +36,8 @@ import { generateLessonHtml, LessonData, LessonSection } from '../common/lessonH
 import { IOpenerService } from '../../../../platform/opener/common/opener.js'
 import { INotificationService } from '../../../../platform/notification/common/notification.js'
 import { IMPLEMENT_PLANS_STORAGE_KEY } from '../common/storageKeys.js'
+import { os } from '../common/helpers/systemInfo.js'
+import { shellQuote, validateSkillArgKeys } from '../common/skillScriptUtils.js'
 /**
  * Parse markdown lesson content into structured sections
  */
@@ -79,7 +81,8 @@ function parseLessonContent(content: string): LessonSection[] {
 				const title = match[1] || match[0].replace(/^#+\s*/, '').trim();
 				currentSection = {
 					id: `section-${sectionIndex++}`,
-					title: title.replace(/[🎯📚📋🏆📈💡📖⚠️💻✏️]/g, '').trim(),
+					// eslint-disable-next-line no-misleading-character-class
+					title: title.replace(/[🎯📚📋🏆📈💡📖⚠️💻✏️]/gu, '').trim(),
 					content: '',
 					type: pattern.type,
 					order: sections.length,
@@ -949,7 +952,7 @@ export class ToolsService implements IToolsService {
 				return {
 					skill_name: validateStr('skill_name', skill_name),
 					script_name: validateStr('script_name', script_name),
-					args: args !== undefined ? (typeof args === 'object' ? args : {}) : undefined,
+					args: args !== undefined ? (typeof args === 'object' && args !== null ? args : {}) : undefined,
 					timeout_ms: timeout_ms !== undefined ? (typeof timeout_ms === 'number' ? timeout_ms : 60000) : undefined
 				};
 			},
@@ -2398,7 +2401,12 @@ For each module include:
 				opts?.onData?.(`Executing script: ${skill_name}/${script_name}...`);
 
 				const startTime = Date.now();
-				// Note: max timeout enforced by terminal service
+
+				// Clamp timeout to a safe range. The terminal service enforces a hard
+				// ceiling; align the skill-script default with the existing terminal
+				// inactive timeout (60 s) but let the model/user request up to 5 min.
+				const requestedTimeout = timeout_ms ?? (MAX_TERMINAL_INACTIVE_TIME * 1000);
+				const timeoutMs = Math.max(30_000, Math.min(requestedTimeout, 300_000));
 
 				try {
 					// Check if script exists
@@ -2407,45 +2415,78 @@ For each module include:
 						throw new Error(`Script path is a directory: ${script_name}`);
 					}
 
-					// Detect script language from extension
-					const ext = script_name.toLowerCase().split('.').pop() || '';
+					// Resolve interpreter and build the command. Prefer extension-based
+					// detection; fall back to shebang for extensionless scripts.
 					let command: string;
 					let scriptArgs: string[] = [];
 
-					switch (ext) {
-						case 'py':
-							command = 'python3';
-							scriptArgs = [scriptPath.fsPath];
-							break;
-						case 'sh':
-						case 'bash':
-							command = 'bash';
-							scriptArgs = [scriptPath.fsPath];
-							break;
-						case 'js':
-						case 'mjs':
-							command = 'node';
-							scriptArgs = [scriptPath.fsPath];
-							break;
-						default:
-							throw new Error(`Unsupported script type: ${ext}`);
+					const language = detectScriptLanguage(script_name);
+					if (language !== 'unknown') {
+						switch (language) {
+							case 'python':
+								command = os === 'windows' ? 'python' : 'python3';
+								scriptArgs = [scriptPath.fsPath];
+								break;
+							case 'bash':
+								command = 'bash';
+								scriptArgs = [scriptPath.fsPath];
+								break;
+							case 'node':
+								command = 'node';
+								scriptArgs = [scriptPath.fsPath];
+								break;
+						}
+					} else {
+						// Shebang fallback for extensionless scripts.
+						const firstLine = (await this._fileService.readFile(scriptPath)).value.toString().split('\n')[0] ?? '';
+						const shebangMatch = firstLine.match(/^#!\s*(?:\/usr\/bin\/env\s+)?(\S+)/);
+						const interpreter = shebangMatch?.[1];
+						if (!interpreter) {
+							throw new Error(`Unsupported script type: ${script_name} has no recognized extension or shebang.`);
+						}
+						command = interpreter;
+						scriptArgs = [scriptPath.fsPath];
 					}
 
-					// Prepare input - pass args via environment variable and stdin
-					const envVars = args ? Object.entries(args)
-						.map(([k, v]) => `SKILL_ARG_${k.toUpperCase()}=${JSON.stringify(v)}`)
-						.join(' ') : '';
+					// Windows shell helpers for native batch/PowerShell scripts.
+					const ext = script_name.toLowerCase().split('.').pop() || '';
+					if (os === 'windows') {
+						if (ext === 'bat' || ext === 'cmd') {
+							command = 'cmd';
+							scriptArgs = ['/c', scriptPath.fsPath];
+						} else if (ext === 'ps1') {
+							command = 'powershell';
+							scriptArgs = ['-File', scriptPath.fsPath];
+						}
+					}
 
-					const fullCommand = envVars ? `${envVars} ${command} ${scriptArgs.join(' ')}` : `${command} ${scriptArgs.join(' ')}`;
+					// Build arguments as a single JSON env var so all languages receive
+					// them consistently without shell-injection risk.
+					if (args) validateSkillArgKeys(args);
+					const skillArgsJson = args && Object.keys(args).length > 0 ? JSON.stringify(args) : undefined;
+					const fullCommand = skillArgsJson
+						? os === 'windows'
+							? `$env:SKILL_ARGS=${shellQuote(skillArgsJson)}; ${command} ${scriptArgs.map(shellQuote).join(' ')}`
+							: `SKILL_ARGS=${shellQuote(skillArgsJson)} ${command} ${scriptArgs.map(shellQuote).join(' ')}`
+						: `${command} ${scriptArgs.map(shellQuote).join(' ')}`;
 
 					// Execute using terminal service
 					const tempId = `skill-script-${Date.now()}`;
-					const { resPromise } = await this._terminalToolService.runCommand(fullCommand, {
+					const { interrupt, resPromise } = await this._terminalToolService.runCommand(fullCommand, {
 						type: 'temporary',
 						cwd: cwdPath,
 						terminalId: tempId,
+						timeoutMs,
 						onData: opts?.onData
 					});
+
+					// Wire cancellation so stopping the chat also kills the script.
+					if (opts?.cancellationToken) {
+						const cancellationDisposable = opts.cancellationToken.onCancellationRequested(() => {
+							try { interrupt(); } catch { /* ignore */ }
+						});
+						resPromise.finally(() => cancellationDisposable.dispose());
+					}
 
 					const result = await resPromise;
 					const duration = Date.now() - startTime;
@@ -2463,7 +2504,8 @@ For each module include:
 							error: success ? undefined : result.result,
 							exitCode,
 							duration
-						}
+						},
+						interruptTool: interrupt
 					};
 				} catch (error: any) {
 					const duration = Date.now() - startTime;
@@ -3702,10 +3744,19 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 			},
 
 			run_subagent: (params, result) => {
+				const description = params.description.slice(0, 80)
 				if (result.background) {
-					return `Subagent started in the background (id: ${result.subagentId}, status: ${result.status}). ${result.summary}\n\nYou can continue working; the result will be delivered when the subagent finishes.`;
+					return result.status === 'failed' || result.status === 'cancelled'
+						? `\u{26A0}\u{FE0F} Subagent "${description}" failed in the background (id: ${result.subagentId}, status: ${result.status}).\n\n${result.summary}`
+						: `Subagent started in the background (id: ${result.subagentId}, status: ${result.status}). ${result.summary}\n\nYou can continue working; the result will be delivered when the subagent finishes.`;
 				}
-				return `Subagent "${params.description.slice(0, 80)}" finished (status: ${result.status}).\n\n${result.summary}`;
+				if (result.status === 'failed') {
+					return `\u{274C} Subagent "${description}" failed. Do not rely on its output; verify what happened before continuing.\n\n${result.summary}`;
+				}
+				if (result.status === 'cancelled') {
+					return `\u{26A0}\u{FE0F} Subagent "${description}" was cancelled. It may have partial or no results.\n\n${result.summary}`;
+				}
+				return `Subagent "${description}" finished (status: ${result.status}).\n\n${result.summary}`;
 			},
 		}
 	}

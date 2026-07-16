@@ -9,7 +9,7 @@ import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js'
 import { VoidButtonBgDarken, VoidCustomDropdownBox, VoidInputBox2, VoidSimpleInputBox, VoidSwitch } from '../util/inputs.js'
 import { useAccessor, useClipboardService, useIsDark, useIsOptedOut, useRefreshModelListener, useRefreshModelState, useSettingsState, /* useACoderOAuthState, useACoderModels */ } from '../util/services.js'
 // import { IACoderOAuthService, type ACoderModelInfo } from '../../../../common/aCoderOAuthService.js'
-import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, List, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User, Download, Star, MessageCircle, Store, Plug, ExternalLink, AlertTriangle, Eye, EyeOff, ChevronRight, Wind, Brain, Terminal, Code, BookOpen, Target, Trophy, Palette, Image as ImageIcon, Volume2, Play, Mic, Bot, Puzzle, Trash2, FolderInput, Webhook } from 'lucide-react'
+import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, List, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User, Download, Star, MessageCircle, Store, Plug, ExternalLink, AlertTriangle, Eye, EyeOff, ChevronRight, Wind, Brain, Terminal, Code, BookOpen, Target, Trophy, Palette, Image as ImageIcon, Volume2, Play, Mic, Bot, Puzzle, Trash2, FolderInput, Webhook, Minimize2 } from 'lucide-react'
 import { URI } from '../../../../../../../base/common/uri.js'
 import { VSBuffer } from '../../../../../../../base/common/buffer.js'
 import { generateUuid } from '../../../../../../../base/common/uuid.js'
@@ -4017,6 +4017,70 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 																		/>
 																	</SettingRow>
 																</SettingBox>
+															</div>
+														</SettingCard>
+
+														{/* Auto /compact Card */}
+														<SettingCard
+															isDark={isDark}
+															title="Auto /compact"
+															description="Automatically summarize old conversation history into a background snapshot when threads grow long."
+															icon={Minimize2}
+														>
+															<div className="space-y-3">
+																<SettingBox>
+																	<SettingRow label="Enable auto /compact" description="When enabled, old messages are summarized automatically after each assistant turn once the thread exceeds the threshold.">
+																		<VoidSwitch
+																			size='sm'
+																			value={settingsState.globalSettings.enableAutoCompact}
+																			onChange={(newVal) => voidSettingsService.setGlobalSetting('enableAutoCompact', newVal)}
+																		/>
+																	</SettingRow>
+																</SettingBox>
+
+																{settingsState.globalSettings.enableAutoCompact && (
+																	<>
+																		<SettingBox>
+																			<SettingRow
+																				label="Threshold messages"
+																				description="Auto-compact only starts once the thread has at least this many messages."
+																			>
+																				<VoidSimpleInputBox
+																					value={String(settingsState.globalSettings.autoCompactThresholdMessages)}
+																					placeholder="30"
+																					onChangeValue={(newVal) => {
+																						const val = parseInt(newVal);
+																						if (!isNaN(val) && val >= 10) {
+																							voidSettingsService.setGlobalSetting('autoCompactThresholdMessages', val);
+																						}
+																					}}
+																					className="w-20 text-center"
+																					compact
+																				/>
+																			</SettingRow>
+																		</SettingBox>
+
+																		<SettingBox>
+																			<SettingRow
+																				label="Min messages between compactions"
+																				description="After an auto-compact, wait until at least this many new messages have been added before compacting again."
+																			>
+																				<VoidSimpleInputBox
+																					value={String(settingsState.globalSettings.autoCompactMinMessagesSinceLast)}
+																					placeholder="20"
+																					onChangeValue={(newVal) => {
+																						const val = parseInt(newVal);
+																						if (!isNaN(val) && val >= 5) {
+																							voidSettingsService.setGlobalSetting('autoCompactMinMessagesSinceLast', val);
+																						}
+																					}}
+																					className="w-20 text-center"
+																					compact
+																				/>
+																			</SettingRow>
+																		</SettingBox>
+																	</>
+																	)}
 															</div>
 														</SettingCard>
 

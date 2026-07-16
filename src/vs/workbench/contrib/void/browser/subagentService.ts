@@ -100,6 +100,7 @@ export interface ISubagentService {
 	runSubagent(opts: RunSubagentOpts): string
 	runSubagentSync(opts: RunSubagentOpts): Promise<SubagentResult>
 	cancel(subagentId: string): void
+	cancelAllForThread(threadId: string): void
 	getSubagent(subagentId: string): SubagentRun | undefined
 	getSubagents(): SubagentRun[]
 }
@@ -193,6 +194,14 @@ class SubagentService extends Disposable implements ISubagentService {
 		// Abort the in-flight LLM stream (no-op if between requests).
 		if (run.requestId) this._llmMessageService.abort(run.requestId)
 		this._fire(run, true)
+	}
+
+	cancelAllForThread(threadId: string): void {
+		for (const run of this._runs.values()) {
+			if (run.parentThreadId === threadId && (run.status === 'running' || run.status === 'queued')) {
+				this.cancel(run.id)
+			}
+		}
 	}
 
 	getSubagent(subagentId: string): SubagentRun | undefined {

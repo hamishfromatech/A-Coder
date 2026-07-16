@@ -1419,6 +1419,9 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		if (typeof interrupt === 'function')
 			interrupt()
 
+		// Cancel any subagents spawned by this thread so hitting Stop in chat
+		// also stops background/foreground delegated work.
+		this._subagentService.cancelAllForThread(threadId)
 
 		this._setStreamState(threadId, undefined)
 	}
@@ -3139,6 +3142,8 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 		p.then(() => {
 			if (threadId !== this.state.currentThreadId) notify({ error: null })
+			// Auto-compact old conversation history now that the turn is complete.
+			return this._maybeAutoCompact(threadId)
 		}).catch((e) => {
 			if (threadId !== this.state.currentThreadId) notify({ error: getErrorMessage(e) })
 			// Log but do not re-throw to avoid unhandled promise rejection
@@ -4864,6 +4869,74 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 			? parts.join('\n')
 			: '(No extractable content from the compacted region.)'
 		return `[PREVIOUS CONVERSATION SUMMARY - ${oldMessages.length} messages condensed. This is background context from earlier in the conversation, NOT a new request from the user. Do not respond to it directly.]\n\n${body}\n\n[End of summary]`
+	}
+
+	/**
+	 * Auto-compact a thread when it grows past the configured threshold. Called from
+	 * the run-agent wrapper after a turn completes and the thread is idle.
+	 */
+	private async _maybeAutoCompact(threadId: string): Promise<void> {
+		const { globalSettings } = this._settingsService.state
+		if (!globalSettings.enableAutoCompact) return
+
+		const thread = this.state.allThreads[threadId]
+		if (!thread) return
+		if (this.streamState[threadId]?.isRunning !== undefined && this.streamState[threadId]?.isRunning !== 'idle') return
+
+		const chatMessages = thread.messages ?? []
+		const threshold = Math.max(10, globalSettings.autoCompactThresholdMessages ?? 30)
+		const minSinceLast = Math.max(5, globalSettings.autoCompactMinMessagesSinceLast ?? 20)
+
+		const existing = thread.state.compaction
+		const messagesSinceLast = existing ? Math.max(0, chatMessages.length - existing.compactedChatMessageCount) : chatMessages.length
+		const shouldCompact = chatMessages.length >= threshold && messagesSinceLast >= minSinceLast
+		if (!shouldCompact) return
+
+		// Avoid auto-compacting if there is an active workflow/plan in progress.
+		if (thread.state.activeWorkflow?.status === 'active') return
+
+		const keepN = Math.min(ChatThreadService.COMPACT_KEEP_LAST_N, chatMessages.length)
+		const compactedCount = Math.max(0, chatMessages.length - keepN)
+		if (compactedCount === 0) return
+
+		const oldMessages = chatMessages.slice(0, compactedCount)
+		let hookContext = ''
+		try {
+			const hookRes = await this._hookService.firePreCompact(threadId, oldMessages)
+			if (hookRes.additionalContext) hookContext = hookRes.additionalContext
+		} catch (err) {
+			voidDevWarn('[auto-compact] PreCompact hook threw (non-blocking):', err)
+		}
+
+		let summaryText = ''
+		try {
+			summaryText = await this._summarizeForCompaction(oldMessages, undefined, hookContext)
+		} catch (err) {
+			voidDevWarn('[auto-compact] LLM summarizer failed, falling back to heuristic summary:', err)
+		}
+		if (!summaryText.trim()) {
+			summaryText = this._heuristicSummary(oldMessages)
+		}
+
+		const snapshot: CompactionSnapshot = {
+			summaryText,
+			compactedChatMessageCount: compactedCount,
+			keptChatMessageCount: keepN,
+			createdAt: new Date().toISOString(),
+			trigger: 'auto',
+		}
+		this._updateThreadStateAndStore(threadId, { compaction: snapshot })
+
+		// Surface to the UI with the same toast used by rolling-window compression.
+		triggerCompressionNotification({
+			originalMessageCount: chatMessages.length,
+			finalMessageCount: keepN + 1, // kept messages + summary
+			originalTokens: chatMessages.length * 200, // rough estimate; we don't token-count here
+			finalTokens: (keepN + 1) * 200,
+			compressionRatio: Math.round(((keepN + 1) / Math.max(1, chatMessages.length)) * 100),
+			messagesRemoved: compactedCount,
+			messagesSummarized: compactedCount,
+		}, threadId)
 	}
 
 	// gets `staging` and `setStaging` of the currently focused element, given the index of the currently selected message (or undefined if no message is selected)

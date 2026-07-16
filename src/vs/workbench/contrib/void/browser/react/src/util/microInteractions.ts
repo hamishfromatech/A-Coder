@@ -3,6 +3,8 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
+/* eslint-disable local/code-import-patterns, local/code-amd-node-module, no-restricted-globals, no-restricted-syntax */
+
 import React, { useState, useRef, useEffect } from 'react';
 import { generateHoverEffect } from './proceduralUtils.js';
 

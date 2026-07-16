@@ -1192,7 +1192,7 @@ Skills can contain:
 
 **Where skills come from:** Skills are discovered across multiple roots — your personal \`~/.a-coder/skills\` and \`~/.claude/skills\` directories, plus the \`skills/\` dir of any enabled plugin. The result reports a \`source\` field indicating which root the skill was found in. On name collisions, the precedence order is: \`~/.a-coder/skills\` > \`~/.claude/skills\` > plugin skills.`,
 		params: {
-			skill_name: { description: "The name of the skill to load (e.g., 'pdf-processing', 'code-review')." }
+			skill_name: { description: `The name of the skill to load (e.g., 'pdf-processing', 'code-review').` }
 		}
 	},
 
@@ -1220,8 +1220,15 @@ Skills can contain:
 
 **Supported Languages:**
 - Python (.py files)
-- Bash/Shell (.sh files)
+- Bash/Shell (.sh, extensionless files with #!/bin/bash shebang)
 - Node.js (.js, .mjs, .cjs files)
+- Windows: PowerShell (.ps1) and batch (.bat, .cmd) scripts
+
+**Argument passing:**
+Arguments are serialized to JSON and exposed as a single environment variable named \`SKILL_ARGS\`. Scripts can read it with:
+- Python: \`json.loads(os.environ.get('SKILL_ARGS', '{}'))\`
+- Node.js: \`JSON.parse(process.env.SKILL_ARGS || '{}')\`
+- Bash: \`python3 -c "import os,json; print(os.environ['SKILL_ARGS'])"\` or \`node -e "console.log(process.env.SKILL_ARGS)"\`
 
 **What you'll receive:**
 - Script execution output (stdout)
@@ -1234,12 +1241,12 @@ Skills can contain:
 - To process files with specialized tools
 - To perform validation or transformation steps
 
-**Important:** Scripts run in a sandboxed environment with timeout controls (default 60 seconds, max 5 minutes).`,
+**Important:** Scripts run in a temporary terminal with the user's shell permissions and are gated by the "code execution" auto-approval setting. Timeout is clamped to 30 seconds minimum and 5 minutes maximum (default 60 seconds).`,
 		params: {
-			skill_name: { description: "The name of the skill containing the script." },
-			script_name: { description: "The filename of the script to execute (e.g., 'process.py')." },
-			args: { description: "Optional. JSON object of arguments to pass to the script." },
-			timeout_ms: { description: "Optional. Maximum execution time in milliseconds (default: 60000, max: 300000)." }
+			skill_name: { description: `The name of the skill containing the script.` },
+			script_name: { description: `The filename of the script to execute (e.g., 'process.py').` },
+			args: { description: `Optional. JSON object of arguments to pass to the script. Keys must be valid environment-variable identifiers (letters, digits, underscore; must not start with a digit).` },
+			timeout_ms: { description: `Optional. Maximum execution time in milliseconds (default: 60000, min: 30000, max: 300000).` }
 		}
 	},
 
@@ -1258,8 +1265,8 @@ Reference documents provide detailed documentation that can be loaded on-demand 
 - When working with complex APIs or protocols
 - When the task requires reference material`,
 		params: {
-			skill_name: { description: "The name of the skill containing the reference." },
-			reference_name: { description: "The filename of the reference document (e.g., 'api.md')." }
+			skill_name: { description: `The name of the skill containing the reference.` },
+			reference_name: { description: `The filename of the reference document (e.g., 'api.md').` }
 		}
 	},
 
@@ -1282,10 +1289,10 @@ If \`interpolate\` is true and the asset is a template, you can provide \`variab
 - To access brand assets (fonts, images, icons)
 - To load configuration files or data`,
 		params: {
-			skill_name: { description: "The name of the skill containing the asset." },
-			asset_name: { description: "The filename of the asset (e.g., 'template.json')." },
-			interpolate: { description: "Optional. If true, replace {{variable}} placeholders with provided values." },
-			variables: { description: "Optional. JSON object of variables for template interpolation." }
+			skill_name: { description: `The name of the skill containing the asset.` },
+			asset_name: { description: `The filename of the asset (e.g., 'template.json').` },
+			interpolate: { description: `Optional. If true, replace {{variable}} placeholders with provided values.` },
+			variables: { description: `Optional. JSON object of variables for template interpolation.` }
 		}
 	},
 
@@ -1308,10 +1315,10 @@ If \`interpolate\` is true and the asset is a template, you can provide \`variab
 - To install skills from community repositories
 - To set up development workflows`,
 		params: {
-			source: { description: "The source type: 'github', 'url', or 'local'." },
-			url: { description: "Required for 'github' or 'url' sources. GitHub URL or direct download URL." },
-			path: { description: "Required for 'local' source. Local filesystem path." },
-			branch: { description: "Optional for 'github'. Branch to clone (default: main)." }
+			source: { description: `The source type: 'github', 'url', or 'local'.` },
+			url: { description: `Required for 'github' or 'url' sources. GitHub URL or direct download URL.` },
+			path: { description: `Required for 'local' source. Local filesystem path.` },
+			branch: { description: `Optional for 'github'. Branch to clone (default: main).` }
 		}
 	},
 
@@ -1328,7 +1335,7 @@ If \`interpolate\` is true and the asset is a template, you can provide \`variab
 - To clean up unused skills
 - To reinstall a skill from scratch`,
 		params: {
-			skill_name: { description: "The name of the skill to uninstall." }
+			skill_name: { description: `The name of the skill to uninstall.` }
 		}
 	},
 

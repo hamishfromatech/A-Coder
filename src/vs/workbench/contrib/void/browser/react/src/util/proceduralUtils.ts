@@ -190,25 +190,29 @@ export function generateMoodPalette(mood: LessonTheme['mood'], seed: string): HS
 	const rng = new SeededRNG(seed);
 
 	switch (mood) {
-		case 'calm':
+		case 'calm': {
 			// Blues, teals, soft greens
 			const calmHues = [180, 200, 220, 210, 195];
 			return { h: rng.pick(calmHues), s: rng.nextFloat(40, 70), l: rng.nextFloat(50, 65) };
+		}
 
-		case 'energetic':
+		case 'energetic': {
 			// Oranges, reds, warm yellows
 			const energeticHues = [30, 15, 45, 20, 10];
 			return { h: rng.pick(energeticHues), s: rng.nextFloat(70, 100), l: rng.nextFloat(50, 60) };
+		}
 
-		case 'focused':
+		case 'focused': {
 			// Purples, deep blues, indigos
 			const focusedHues = [260, 270, 250, 280, 240];
 			return { h: rng.pick(focusedHues), s: rng.nextFloat(50, 80), l: rng.nextFloat(45, 60) };
+		}
 
-		case 'creative':
+		case 'creative': {
 			// Mix of vibrant colors
 			const creativeHues = rng.pickMany([300, 340, 280, 320, 0, 45, 120], 3);
 			return { h: rng.pick(creativeHues), s: rng.nextFloat(60, 90), l: rng.nextFloat(50, 65) };
+		}
 
 		default:
 			return { h: rng.nextFloat(0, 360), s: rng.nextFloat(60, 90), l: rng.nextFloat(45, 60) };

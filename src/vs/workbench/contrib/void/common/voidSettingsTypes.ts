@@ -577,6 +577,11 @@ export type GlobalSettings = {
 	// File-based hooks (~/.claude/settings.json etc.) are read directly; this field is
 	// for the UI-managed global hooks layer. See common/hookServiceTypes.ts for the shape.
 	userHooks: HooksConfig;
+	// Auto /compact: automatically summarize old conversation history into a
+	// persistent snapshot when a thread exceeds a message threshold.
+	enableAutoCompact: boolean;
+	autoCompactThresholdMessages: number;
+	autoCompactMinMessagesSinceLast: number;
 }
 
 export const defaultGlobalSettings: GlobalSettings = {
@@ -649,6 +654,11 @@ export const defaultGlobalSettings: GlobalSettings = {
 	marketplaces: [], // No marketplaces registered by default
 	// Hooks default (Claude Code compatibility): no user-global hooks by default.
 	userHooks: {},
+	// Auto /compact defaults: off by default, threshold 30 messages, minimum 20
+	// new messages before another auto-compact can fire.
+	enableAutoCompact: false,
+	autoCompactThresholdMessages: 30,
+	autoCompactMinMessagesSinceLast: 20,
 }
 
 export type GlobalSettingName = keyof GlobalSettings

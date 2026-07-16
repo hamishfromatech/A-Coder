@@ -475,12 +475,18 @@ const subagentStatusMeta: Record<SubagentStatus, { label: string, icon: React.El
 }
 
 const InlineSubagentCard = ({ run }: { run: SubagentRun }) => {
+	const accessor = useAccessor()
 	const [expanded, setExpanded] = useState(false)
 	const meta = subagentStatusMeta[run.status]
 	const Icon = meta.icon
 	const isActive = run.status === 'running' || run.status === 'queued'
 	const previewText = (run.status === 'running' ? run.streamingText : run.fullText) || run.error || ''
 	const fallbackText = run.currentToolActivity || (isActive ? 'Working…' : undefined)
+
+	const handleCancel = () => {
+		const svc = accessor.get('ISubagentService')
+		svc.cancel(run.id)
+	}
 
 	return (
 		<div className="rounded-lg border border-void-border-2 bg-void-bg-3 overflow-hidden my-2">
@@ -509,6 +515,16 @@ const InlineSubagentCard = ({ run }: { run: SubagentRun }) => {
 						</div>
 					)}
 				</div>
+				{isActive && (
+					<span
+						onClick={(e) => { e.stopPropagation(); handleCancel() }}
+						role="button"
+						className="p-1 rounded hover:bg-void-bg-2 text-void-fg-4 hover:text-void-error transition-colors flex-shrink-0"
+						title="Cancel subagent"
+					>
+						<Ban className="w-3.5 h-3.5" />
+					</span>
+				)}
 				<ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 text-void-fg-4 transition-transform ${expanded ? 'rotate-90' : ''}`} />
 			</button>
 			{isActive && (
