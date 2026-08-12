@@ -24,7 +24,7 @@ import { ChatMode, displayInfoOfProviderName, FeatureName, isFeatureNameDisabled
 import { ICommandService } from '../../../../../../../platform/commands/common/commands.js';
 import { WarningBox } from '../void-settings-tsx/WarningBox.js';
 import { getModelCapabilities, getIsReasoningEnabledState } from '../../../../common/modelCapabilities.js';
-import { AlertTriangle, ChevronRight, ChevronDown, X, Copy as CopyIcon, CircleEllipsis, Play, Settings, ArrowUp, ArrowDown, Trash2, Send, Circle, Loader2, Brain, Check, Pencil, CirclePlus, File as FileIcon, Folder as FolderIcon, Text as TextIcon, SkipForward, MessageCircle, RotateCw, FileText, FileCode, FileJson, Target, CheckCircle, Lightbulb, Trophy, Mic, Clock, Ban, Cpu } from 'lucide-react';
+import { AlertTriangle, ChevronRight, ChevronDown, X, Copy as CopyIcon, CircleEllipsis, Play, Settings, ArrowUp, ArrowDown, Trash2, Send, Circle, Loader2, Brain, Check, Pencil, CirclePlus, File as FileIcon, Folder as FolderIcon, Text as TextIcon, SkipForward, MessageCircle, RotateCw, FileText, FileCode, FileJson, Target, CheckCircle, Lightbulb, Trophy, Mic, Clock, Ban, Cpu, UserRound, GraduationCap, HelpCircle, Zap } from 'lucide-react';
 import { ChatMessage, CheckpointEntry, StagingSelectionItem, ToolMessage, ImageAttachment, isToolMessage, hasParallelBatchId } from '../../../../common/chatThreadServiceTypes.js';
 import { BuiltinToolName, ToolName, approvalTypeOfBuiltinToolName, LintErrorItem } from '../../../../common/toolsServiceTypes.js';
 import { IsRunningType } from '../../../chatThreadService.js';
@@ -229,7 +229,7 @@ const MessageContextMenu = ({
 			{canDelete && (
 				<button
 					onClick={() => { onDelete(); onClose(); }}
-					className="w-full flex items-center gap-2 px-3 py-1.5 text-red-400/80 hover:text-red-400 hover:bg-void-bg-3 transition-colors"
+					className="w-full flex items-center gap-2 px-3 py-1.5 text-void-error/80 hover:text-void-error hover:bg-void-bg-3 transition-colors"
 				>
 					<Trash2 size={14} />
 					<span>Delete from here</span>
@@ -266,11 +266,11 @@ const TaskPlanView = ({
 	const getStatusIcon = (status: TaskPlan['status']) => {
 		switch (status) {
 			case 'completed':
-				return <Check className="w-3.5 h-3.5 text-green-500" />;
+				return <Check className="w-3.5 h-3.5 text-void-success" />;
 			case 'in_progress':
-				return <div className="w-3.5 h-3.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />;
+				return <div className="w-3.5 h-3.5 border-2 border-void-info border-t-transparent rounded-full animate-spin" />;
 			case 'blocked':
-				return <AlertTriangle className="w-3.5 h-3.5 text-orange-500" />;
+				return <AlertTriangle className="w-3.5 h-3.5 text-void-warning" />;
 			case 'pending':
 			default:
 				return <Circle className="w-3.5 h-3.5 text-void-fg-4" />;
@@ -280,11 +280,11 @@ const TaskPlanView = ({
 	const getStatusColor = (status: TaskPlan['status']) => {
 		switch (status) {
 			case 'completed':
-				return 'text-green-500';
+				return 'text-void-success';
 			case 'in_progress':
-				return 'text-blue-500';
+				return 'text-void-info';
 			case 'blocked':
-				return 'text-orange-500';
+				return 'text-void-warning';
 			case 'pending':
 			default:
 				return 'text-void-fg-4';
@@ -499,7 +499,7 @@ const InlineSubagentCard = ({ run }: { run: SubagentRun }) => {
 					<div className="flex items-center gap-2 min-w-0">
 						<span className="text-xs font-medium text-void-fg-1 truncate">{run.title || 'Untitled subagent'}</span>
 						{run.isBackground && (
-							<span className="text-[9px] px-1 py-0.5 rounded bg-void-bg-2 text-void-fg-4 border border-void-border-2">BG</span>
+							<span className="text-[10px] px-1 py-0.5 rounded bg-void-bg-2 text-void-fg-4 border border-void-border-2">BG</span>
 						)}
 					</div>
 					<div className="flex items-center gap-2 text-[10px] text-void-fg-4">
@@ -603,7 +603,7 @@ const TokenCounter = ({ tokenUsage, cachedTokens }: { tokenUsage?: { used: numbe
 		return (
 			<div className='pill pill-neutral gap-1'>
 				<span className='font-mono tabular-nums'>0/0</span>
-				<span className='font-medium'>(0.0%)</span>
+				<span className='font-medium tabular-nums'>(0.0%)</span>
 			</div>
 		);
 	}
@@ -615,7 +615,7 @@ const TokenCounter = ({ tokenUsage, cachedTokens }: { tokenUsage?: { used: numbe
 	return (
 		<div className={`pill gap-1 ${isHigh ? 'pill-error' : isMedium ? 'pill-warning' : 'pill-neutral'}`}>
 			<span className='font-mono tabular-nums'>{used.toLocaleString()}/{total.toLocaleString()}</span>
-			<span className='font-medium'>
+			<span className='font-medium tabular-nums'>
 				({percentage.toFixed(1)}%)
 			</span>
 			{/* Prompt tokens served from the server's cache (e.g. llama.cpp cache_n). */}
@@ -626,7 +626,7 @@ const TokenCounter = ({ tokenUsage, cachedTokens }: { tokenUsage?: { used: numbe
 					data-tooltip-content={`${cachedTokens.toLocaleString()} prompt tokens served from the server cache`}
 					data-tooltip-place='top'
 				>
-					⚡{cachedTokens.toLocaleString()}
+					<Zap size={11} className="inline-block mr-0.5" />{cachedTokens.toLocaleString()}
 				</span>
 			)}
 		</div>
@@ -996,7 +996,7 @@ const StudentOnboardingModal = ({ isOpen, onClose, onSelectLevel }: {
 					</div>
 
 					<div className="mt-6 pt-5 border-t border-void-border-1">
-						<h4 className="text-xs font-semibold text-void-fg-2 uppercase tracking-wider mb-3">Included Features</h4>
+						<h4 className="text-xs font-semibold text-void-fg-2 mb-3">Included features</h4>
 						<div className="grid grid-cols-2 gap-y-2 gap-x-4">
 							{[
 								'Line-by-line explanations',
@@ -1073,6 +1073,7 @@ interface VoidChatAreaProps {
 
 	// UI customization
 	className?: string;
+	style?: React.CSSProperties;
 	showModelDropdown?: boolean;
 	showSelections?: boolean;
 	showProspectiveSelections?: boolean;
@@ -1105,6 +1106,7 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 	isStreaming = false,
 	isDisabled = false,
 	className = '',
+	style,
 	showModelDropdown = true,
 	showSelections = false,
 	showProspectiveSelections = false,
@@ -1120,9 +1122,10 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 	return (
 		<div
 			ref={divRef}
+			style={style}
 					className={`
 						flex flex-col p-3 relative text-left shrink-0 w-full
-						glass-premium rounded-2xl
+						bg-void-depth-elevated border border-void-border-1 rounded-xl
 						transition-all duration-300 ease-out
 						focus-within:border-void-accent/30
 						hover:border-void-border-1 hover:shadow-void-md
@@ -1242,7 +1245,7 @@ export const ButtonStop = ({ className, ...props }: ButtonHTMLAttributes<HTMLBut
 		aria-label="Stop"
 		{...props}
 	>
-		<div className='text-red-500 dark:text-red-400'>
+		<div className='text-void-error'>
 			<IconSquare size={DEFAULT_BUTTON_SIZE} className="stroke-[3] p-[5px]" />
 		</div>
 	</button>
@@ -1546,7 +1549,7 @@ export const SelectedFiles = (
 							}
 
 							{selection.type === 'File' && selection.state.wasAddedAsCurrentFile && messageIdx === undefined && currentURI?.fsPath === selection.uri.fsPath ?
-								<span className="text-[8px] text-void-fg-4/60">
+								<span className="text-[10px] text-void-fg-4/60">
 									{`(Current File)`}
 								</span>
 								: null
@@ -1801,18 +1804,21 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 	const displayContent = chatMessage.displayContent || ''
 
 	return (
-		<div className={`flex gap-3 mb-6 ${mode === 'edit' ? 'w-full' : 'self-end max-w-[92%]'} ${isCheckpointGhost && !isMsgAfterCheckpoint ? 'opacity-40 grayscale' : ''}`}
+		<div className={`flex gap-3 mb-4 group w-full ${isCheckpointGhost && !isMsgAfterCheckpoint ? 'opacity-40 grayscale' : ''}`}
 			onMouseEnter={useCallback(() => setIsHovered(true), [])}
 			onMouseLeave={useCallback(() => setIsHovered(false), [])}
 			onContextMenu={handleContextMenu}
 		>
-			<div className="flex flex-col items-end gap-1.5 flex-1 min-w-0">
+			<div className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center bg-void-bg-2 text-void-fg-4">
+				<UserRound size={16} />
+			</div>
+			<div className="flex-1 min-w-0">
 				{mode === 'edit' ? (
 					// Edit mode: use existing chat area, with a visible cancel affordance
 					// (Escape also cancels via onKeyDown, but a button is discoverable)
 					<div className="w-full">
 						<div className="flex items-center justify-between mb-1.5 px-0.5">
-							<span className="text-[10px] font-bold uppercase tracking-wider text-void-fg-3">Editing message</span>
+							<span className="text-[10px] font-semibold text-void-fg-3">Editing message</span>
 							<button
 								onClick={onCloseEdit}
 								className="user-message-action-btn"
@@ -2008,10 +2014,27 @@ const AssistantMessageComponent = React.memo(({ chatMessage, isCheckpointGhost, 
 	if (isEmpty) return null
 
 	return (
-		<div className={`flex gap-3 mb-8 ${isCheckpointGhost ? 'opacity-40 grayscale' : ''}`}
+		<div className={`flex gap-3 mb-4 group ${isCheckpointGhost ? 'opacity-40 grayscale' : ''}`}
 			onContextMenu={handleContextMenu}
 		>
-			<div className="flex flex-col gap-2 flex-1 min-w-0">
+			<div className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center bg-void-accent/10 text-void-accent">
+				<VoidIcon size={18} opacity={1} />
+			</div>
+			<div className="flex flex-col gap-1.5 min-w-0 flex-1">
+				<div className="flex items-center gap-1.5">
+					<span className="text-xs font-medium text-void-fg-2">A-Coder</span>
+					{timeAgo && (
+						<span
+							className="text-xs text-void-fg-4 cursor-default"
+							data-tooltip-id="void-tooltip"
+							data-tooltip-content={formatFullTimestamp(chatMessage._timestamp)}
+							data-tooltip-place="top"
+							data-tooltip-delay-show={500}
+						>
+							· {timeAgo}
+						</span>
+					)}
+				</div>
 				<div className="flex flex-col gap-3">
 					{/* reasoning token */}
 					{hasReasoning &&
@@ -2044,20 +2067,6 @@ const AssistantMessageComponent = React.memo(({ chatMessage, isCheckpointGhost, 
 							</ProseWrapper>
 						</div>
 					}
-				</div>
-				<div className="flex items-center gap-2 px-1">
-					<span className="text-[9px] font-black uppercase tracking-[0.15em] text-void-fg-4/60">A-Coder</span>
-					{timeAgo && (
-						<span
-							className="text-[10px] text-void-fg-4/50 cursor-default"
-							data-tooltip-id="void-tooltip"
-							data-tooltip-content={formatFullTimestamp(chatMessage._timestamp)}
-							data-tooltip-place="top"
-							data-tooltip-delay-show={500}
-						>
-							{timeAgo}
-						</span>
-					)}
 				</div>
 
 			{/* Context Menu */}
@@ -2122,7 +2131,7 @@ const ToolRequestAcceptRejectButtons = ({ toolName, toolId }: { toolName: ToolNa
                 text-white
                 hover:bg-[var(--vscode-button-hoverBackground)]
                 rounded-xl shadow-sm
-                text-xs font-bold uppercase tracking-wider
+                text-xs font-bold
                 transition-all duration-200 active:scale-95 flex items-center gap-1.5
             `}
 		>
@@ -2141,7 +2150,7 @@ const ToolRequestAcceptRejectButtons = ({ toolName, toolId }: { toolName: ToolNa
                 hover:bg-void-bg-3
                 border border-void-border-2
                 rounded-xl shadow-sm
-                text-xs font-bold uppercase tracking-wider
+                text-xs font-bold
                 transition-all duration-200 active:scale-95 flex items-center gap-1.5
             `}
 			data-tooltip-id='void-tooltip'
@@ -2163,7 +2172,7 @@ const ToolRequestAcceptRejectButtons = ({ toolName, toolId }: { toolName: ToolNa
                 hover:bg-void-bg-3
                 border border-void-border-2
                 rounded-xl shadow-sm
-                text-xs font-bold uppercase tracking-wider
+                text-xs font-bold
                 transition-all duration-200 active:scale-95 flex items-center gap-1.5
             `}
 		>
@@ -2195,7 +2204,7 @@ const ToolRequestAcceptRejectButtons = ({ toolName, toolId }: { toolName: ToolNa
 	const alwaysAllowButton = approvalType ? (
 		<button
 			onClick={onAlwaysAllow}
-			className="flex items-center gap-1.5 px-3 py-1.5 bg-void-bg-3 text-void-fg-1 hover:bg-void-bg-4 rounded-xl shadow-sm text-xs font-bold uppercase tracking-wider border border-void-border-2 transition-all duration-200 active:scale-95"
+			className="flex items-center gap-1.5 px-3 py-1.5 bg-void-bg-3 text-void-fg-1 hover:bg-void-bg-4 rounded-xl shadow-sm text-xs font-bold border border-void-border-2 transition-all duration-200 active:scale-95"
 			data-tooltip-id='void-tooltip'
 			data-tooltip-place='top'
 			data-tooltip-content={`Run now and auto-approve ${approvalType} in future`}
@@ -2786,7 +2795,7 @@ const CommandBarInChat = () => {
 	const getFileIcon = (pathStr: string) => {
 		const ext = pathStr.split('.').pop()?.toLowerCase() || '';
 		if (['tsx', 'ts', 'jsx', 'js'].includes(ext)) return <FileCode size={13} className="text-void-accent flex-shrink-0" />;
-		if (['json', 'yaml', 'yml'].includes(ext)) return <FileJson size={13} className="text-yellow-400 flex-shrink-0" />;
+		if (['json', 'yaml', 'yml'].includes(ext)) return <FileJson size={13} className="text-void-warning flex-shrink-0" />;
 		return <FileText size={13} className="text-void-fg-4 flex-shrink-0" />;
 	};
 
@@ -2999,8 +3008,8 @@ const EditToolSoFar = ({ toolCallSoFar, }: { toolCallSoFar: RawToolCallObj }) =>
 				<span>{getBasename(toolCallSoFar.rawParams['uri'] ?? 'unknown')}</span>
 				{(addedLines > 0 || removedLines > 0) && (
 					<span className='flex items-center gap-1 text-xs'>
-						{addedLines > 0 && <span className='text-green-500'>+{addedLines}</span>}
-						{removedLines > 0 && <span className='text-red-500'>-{removedLines}</span>}
+						{addedLines > 0 && <span className='text-void-success'>+{addedLines}</span>}
+						{removedLines > 0 && <span className='text-void-error'>-{removedLines}</span>}
 					</span>
 				)}
 			</>
@@ -4207,7 +4216,7 @@ export const SidebarChat = () => {
 											e.stopPropagation();
 											chatThreadsService.removeQueuedMessage(threadId, index);
 										}}
-										className="p-1 text-void-fg-4 hover:text-red-400 rounded transition-colors duration-100"
+										className="p-1 text-void-fg-4 hover:text-void-error rounded transition-colors duration-100"
 										data-tooltip-id='void-tooltip'
 										data-tooltip-content='Remove'
 										data-tooltip-place='left'
@@ -4222,9 +4231,8 @@ export const SidebarChat = () => {
 			</div>
 		)}
 
-		{voiceModeActive && voiceError && <div className="mb-2 text-xs text-red-400">{voiceError}</div>}
+		{voiceModeActive && voiceError && <div className="mb-2 text-xs text-void-error">{voiceError}</div>}
 
-		<div className={`rounded-2xl transition-all duration-300 ${voiceModeActive ? 'voice-ring-active' : ''}`} style={voiceModeActive ? { '--voice-intensity': String(audioLevel) } as React.CSSProperties : undefined}>
 		<VoidChatArea
 			featureName='Chat'
 			onSubmit={() => onSubmit()}
@@ -4238,9 +4246,11 @@ export const SidebarChat = () => {
 			tokenUsage={currThreadStreamState?.tokenUsage}
 			cachedTokens={cachedTokens}
 			onClickAnywhere={() => { textAreaRef.current?.focus() }}
+			className={voiceModeActive ? 'voice-ring-active' : undefined}
+			style={voiceModeActive ? { '--voice-intensity': String(audioLevel) } as React.CSSProperties : undefined}
 			extraActions={
 				<button
-					className={`flex items-center justify-center w-8 h-8 rounded-md transition-all duration-200 cursor-pointer ${voiceModeActive ? (isListening ? 'text-void-accent bg-void-accent/10' : 'text-void-accent bg-void-accent/10') : 'text-void-fg-3 hover:text-void-fg-1 hover:bg-void-bg-3'}`}
+					className={`flex items-center justify-center w-8 h-8 rounded-md transition-all duration-200 cursor-pointer ${voiceModeActive ? 'text-void-accent bg-void-accent/10' : 'text-void-fg-3 hover:text-void-fg-1 hover:bg-void-bg-3'}`}
 					onClick={toggleVoiceMode}
 					data-tooltip-id='void-tooltip'
 					data-tooltip-content={voiceModeActive ? (isListening ? 'Listening... (click to stop)' : 'Voice mode active (click to turn off)') : 'Voice mode'}
@@ -4305,7 +4315,6 @@ export const SidebarChat = () => {
 			/>
 
 		</VoidChatArea>
-		</div>
 	</div>
 
 
@@ -4343,9 +4352,9 @@ export const SidebarChat = () => {
 			<div className='px-4 flex gap-2'>
 				<button
 					onClick={handleImStuck}
-					className="flex items-center gap-2 px-3 py-1.5 text-sm bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 rounded-lg transition-colors"
+					className="flex items-center gap-2 px-3 py-1.5 text-sm bg-void-info/20 hover:bg-void-info/30 text-void-info rounded-lg transition-colors"
 				>
-					<span>🤔</span>
+					<HelpCircle size={14} />
 					<span>I'm stuck</span>
 				</button>
 			</div>
@@ -4387,20 +4396,20 @@ export const SidebarChat = () => {
 			<ErrorBoundary>
 				{/* Logo - different for student mode */}
 				{currentChatMode === 'learn' ? (
-					<div className='text-6xl mb-6'>{"\u{1F393}"}</div>
+					<GraduationCap size={48} className="text-void-accent mb-6" />
 				) : (
 					<VoidIcon size={96} opacity={0.9} className="mb-8" />
 				)}
 
 				{/* Title with mode */}
 				<div className="text-center space-y-3">
-					<h1 className='text-void-fg-1 text-3xl font-bold mb-2'>
+					<h1 className='text-void-fg-1 text-3xl font-bold mb-2 text-balance'>
 						{currentChatMode === 'learn' ? 'A-Coder Tutor' : 'A-Coder'}
 					</h1>
 					<div className="flex items-center justify-center gap-2">
 						<span className={`px-3 py-1 text-sm font-medium rounded-full ${
 							currentChatMode === 'learn'
-								? 'bg-purple-500/20 text-purple-400'
+								? 'bg-void-info/20 text-void-info'
 								: 'bg-void-accent/20 text-void-accent'
 						}`}>
 							{chatModeName}
@@ -4414,7 +4423,7 @@ export const SidebarChat = () => {
 				</div>
 
 				{/* Tagline */}
-				<p className='text-void-fg-3 text-base text-center mt-6 leading-relaxed max-w-md'>
+				<p className='text-void-fg-3 text-base text-center mt-6 leading-relaxed max-w-md text-pretty'>
 					{modeTaglines[currentChatMode]}
 				</p>
 
@@ -4424,7 +4433,7 @@ export const SidebarChat = () => {
 				{/* Student mode quick tips */}
 				{currentChatMode === 'learn' && (
 					<div className="mt-6 p-4 bg-void-bg-2 rounded-xl max-w-sm text-sm">
-						<div className="font-medium text-void-fg-2 mb-2">{"\u{1F4A1}"} Try asking:</div>
+						<div className="font-medium text-void-fg-2 mb-2"><Lightbulb size={14} className="text-void-fg-3 inline-block mr-1.5" /> Try asking:</div>
 						<ul className="text-void-fg-3 space-y-1">
 							<li>"What is a function?"</li>
 							<li>"Explain this code to me"</li>
@@ -4441,8 +4450,8 @@ export const SidebarChat = () => {
 			{Object.keys(chatThreadsState.allThreads).length > 1 ? // show if there are threads
 				<ErrorBoundary>
 					<div className="space-y-2">
-						<div className="text-xs font-medium text-void-fg-4 uppercase tracking-wide mb-3">
-							Recent Conversations
+						<div className="text-xs font-medium text-void-fg-4 mb-3">
+							Recent conversations
 						</div>
 						<PastThreadsList />
 					</div>
@@ -4478,7 +4487,7 @@ export const SidebarChat = () => {
 					<div className='flex justify-between items-center'>
 						<div className='flex items-center gap-3 text-xs'>
 							{activeExerciseCount > 0 && (
-								<div className='flex items-center gap-1.5 text-purple-400'
+								<div className='flex items-center gap-1.5 text-void-info'
 									data-tooltip-id='void-tooltip'
 									data-tooltip-content={`${activeExerciseCount} active exercise${activeExerciseCount !== 1 ? 's' : ''}`}
 									data-tooltip-place='bottom'
@@ -4488,7 +4497,7 @@ export const SidebarChat = () => {
 								</div>
 							)}
 							{completedExerciseCount > 0 && (
-								<div className='flex items-center gap-1.5 text-green-400'
+								<div className='flex items-center gap-1.5 text-void-success'
 									data-tooltip-id='void-tooltip'
 									data-tooltip-content={`${completedExerciseCount} exercise${completedExerciseCount !== 1 ? 's' : ''} completed`}
 									data-tooltip-place='bottom'
