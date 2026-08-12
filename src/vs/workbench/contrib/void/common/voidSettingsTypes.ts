@@ -654,9 +654,13 @@ export const defaultGlobalSettings: GlobalSettings = {
 	marketplaces: [], // No marketplaces registered by default
 	// Hooks default (Claude Code compatibility): no user-global hooks by default.
 	userHooks: {},
-	// Auto /compact defaults: off by default, threshold 30 messages, minimum 20
-	// new messages before another auto-compact can fire.
-	enableAutoCompact: false,
+	// Auto /compact defaults: on by default so long threads are LLM-summarized
+	// between turns (see ChatThreadService._maybeAutoCompact, which calls the LLM
+	// summarizer with a heuristic fallback and persists a CompactionSnapshot).
+	// Threshold 30 messages, minimum 20 new messages before another auto-compact
+	// can fire. The mid-loop emergency compressor in ContextCompressionService
+	// stays heuristic by design — calling an LLM there would be re-entrant.
+	enableAutoCompact: true,
 	autoCompactThresholdMessages: 30,
 	autoCompactMinMessagesSinceLast: 20,
 }

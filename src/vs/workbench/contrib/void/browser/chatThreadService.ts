@@ -922,6 +922,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 	resetState = () => {
 		// MEMORY FIX: Clean up all auxiliary data when resetting state
 		this.toolCallHistory = {};
+		this.toolResultCache = {};
 		this.messageQueue = {};
 		this.taskPlans = {};
 
@@ -1050,6 +1051,7 @@ class ChatThreadService extends Disposable implements IChatThreadService {
 		const threadIdsToPrune = sortedThreadIds.slice(this.MAX_THREADS_IN_STORAGE);
 		for (const threadId of threadIdsToPrune) {
 			delete this.toolCallHistory[threadId];
+			delete this.toolResultCache[threadId];
 			delete this.messageQueue[threadId];
 			delete this.taskPlans[threadId];
 
@@ -1444,6 +1446,11 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 	// Track tool call history for loop detection
 	private toolCallHistory: { [threadId: string]: Array<{ name: string, params: any, result: any, type: string, _paramsKey?: string }> } = {};
 
+	// Per-thread memoization of read-only tool results (read_file, search_*, etc.)
+	// keyed by a stable, complete param signature. Invalidated wholesale on any
+	// mutating/external tool call (see _runToolCall).
+	private toolResultCache: { [threadId: string]: Map<string, { resultStr: string, result: ToolResult<ToolName> }> } = {};
+
 	private _truncateToolResult(result: any): any {
 		if (typeof result === 'string') {
 			if (result.length > MAX_TOOL_RESULT_LENGTH) {
@@ -1511,6 +1518,22 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		return `${toolName}:${String(params)}`;
 	}
 
+	// Stable, complete cache key for tool results. Unlike _getToolParamsKey (a
+	// lossy fast-path for loop detection), this captures every param field so
+	// e.g. read_file with different line ranges can't collide.
+	private _toolCacheKey(toolName: string, params: object): string {
+		const stableStringify = (value: unknown): string => {
+			if (value === null || value === undefined) return 'null'
+			if (typeof value !== 'object') return String(value)
+			// URI-like values: identify by their filesystem path.
+			if ('fsPath' in value && typeof (value as { fsPath: unknown }).fsPath === 'string') return (value as { fsPath: string }).fsPath
+			if (Array.isArray(value)) return '[' + value.map(stableStringify).join(',') + ']'
+			const keys = Object.keys(value).sort()
+			return '{' + keys.map(k => `${k}:${stableStringify((value as Record<string, unknown>)[k])}`).join(',') + '}'
+		}
+		return `${toolName}:${stableStringify(params)}`
+	}
+
 	// Predictive progress messages based on tool name
 	private getPredictiveProgressMessage(toolName: string, params: any): string {
 		switch (toolName) {
@@ -1572,6 +1595,27 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 				const errorMessage = getErrorMessage(error)
 				this._addMessageToThread(threadId, { role: 'tool', type: 'invalid_params', rawParams: opts.unvalidatedToolParams, result: null, name: toolName, content: errorMessage, id: toolId, mcpServerName, thought_signature: opts.thought_signature, parallelBatchId })
 				return {}
+			}
+
+			// PLAN-MODE BACKSTOP — block mutating/external tools at the dispatch layer.
+			// Plan mode is research-only. The prompt-level tool omission in prompts.ts is
+			// not a guarantee (external MCP/Composio/ACP tools are advertised in plan mode
+			// and are opaque to us), so this guard catches writes and external tools that
+			// leak in regardless of how they were advertised — before the approval gate
+			// shows a tool_request, and before any edit checkpoint is recorded.
+			if (this._settingsService.state.globalSettings.chatMode === 'plan') {
+				const planApprovalType = isBuiltInTool ? approvalTypeOfBuiltinToolName[toolName] : 'MCP tools'
+				const planBlocked = !isBuiltInTool
+					|| planApprovalType === 'edits'
+					|| planApprovalType === 'terminal'
+					|| planApprovalType === 'code execution'
+					|| planApprovalType === 'image generation'
+					|| planApprovalType === 'repo'
+				if (planBlocked) {
+					const blockReason = `Tool '${toolName}' is blocked in Plan mode. Switch to Code or Agent mode to make changes.`
+					this._addMessageToThread(threadId, { role: 'tool', type: 'tool_error', params: toolParams, result: blockReason, name: toolName, content: blockReason, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature, parallelBatchId })
+					return {}
+				}
 			}
 
 			// LOOP DETECTION: Check if we've tried this exact failing call recently
@@ -1661,6 +1705,27 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 					toolParams = { ...(toolParams as object), ...preHook.updatedInput } as typeof toolParams
 				}
 				if (preHook.additionalContext) preHookAdditionalContext = preHook.additionalContext
+			}
+
+			// TOOL-RESULT CACHE — read-only deterministic tools (read_file, search_*, etc.)
+			// are memoized per thread so repeated identical calls skip re-execution. Any
+			// non-read-only tool (write/terminal/external) invalidates the whole thread
+			// cache, since it may have changed what the cached reads would return. Runs
+			// after PreToolUse so a param rewrite changes the lookup key.
+			if (isBuiltInTool && READ_ONLY_TOOLS.has(toolName)) {
+				if (!this.toolResultCache[threadId]) this.toolResultCache[threadId] = new Map()
+				const cached = this.toolResultCache[threadId]!.get(this._toolCacheKey(toolName, toolParams))
+				if (cached) {
+					this._updateToolMessage(threadId, { role: 'tool', type: 'success', params: toolParams, result: cached.result, name: toolName, content: cached.resultStr, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature, parallelBatchId }, !!parallelMode)
+					if (!this.toolCallHistory[threadId]) this.toolCallHistory[threadId] = []
+					this.toolCallHistory[threadId].push({ name: toolName, params: toolParams, result: this._truncateToolResult(cached.resultStr), type: 'success', _paramsKey: this._getToolParamsKey(toolName, toolParams) })
+					if (this.toolCallHistory[threadId].length > MAX_TOOL_CALL_HISTORY_PER_THREAD) this.toolCallHistory[threadId] = this.toolCallHistory[threadId].slice(-MAX_TOOL_CALL_HISTORY_PER_THREAD)
+					return {}
+				}
+			}
+			else {
+				// A mutating or external tool is about to run — drop cached reads.
+				delete this.toolResultCache[threadId]
 			}
 
 			if (isBuiltInTool) {
@@ -1848,6 +1913,13 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 		// 5. add to history and keep going
 		this._updateToolMessage(threadId, { role: 'tool', type: 'success', params: toolParams, result: toolResult, name: toolName, content: toolResultStr, id: toolId, rawParams: opts.unvalidatedToolParams, mcpServerName, thought_signature: opts.thought_signature, parallelBatchId }, !!parallelMode)
+
+		// TOOL-RESULT CACHE — store the post-hook result for read-only deterministic
+		// tools so identical repeat calls skip execution (see lookup before execute).
+		if (isBuiltInTool && READ_ONLY_TOOLS.has(toolName)) {
+			if (!this.toolResultCache[threadId]) this.toolResultCache[threadId] = new Map()
+			this.toolResultCache[threadId]!.set(this._toolCacheKey(toolName, toolParams), { resultStr: toolResultStr, result: toolResult })
+		}
 
 		// SIDE EFFECT: if it's load_skill, update the thread's loadedSkills
 		if (toolName === 'load_skill') {
@@ -3886,6 +3958,7 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 
 		// MEMORY FIX: Clean up associated data structures to prevent memory leaks
 		delete this.toolCallHistory[threadId];
+		delete this.toolResultCache[threadId];
 		delete this.messageQueue[threadId];
 		delete this.taskPlans[threadId];
 		delete this.streamState[threadId];
