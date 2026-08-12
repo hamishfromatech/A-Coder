@@ -9,7 +9,7 @@ import ErrorBoundary from '../sidebar-tsx/ErrorBoundary.js'
 import { VoidButtonBgDarken, VoidCustomDropdownBox, VoidInputBox2, VoidSimpleInputBox, VoidSwitch } from '../util/inputs.js'
 import { useAccessor, useClipboardService, useIsDark, useIsOptedOut, useRefreshModelListener, useRefreshModelState, useSettingsState, /* useACoderOAuthState, useACoderModels */ } from '../util/services.js'
 // import { IACoderOAuthService, type ACoderModelInfo } from '../../../../common/aCoderOAuthService.js'
-import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, List, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User, Download, Star, MessageCircle, Store, Plug, ExternalLink, AlertTriangle, Eye, EyeOff, ChevronRight, Wind, Brain, Terminal, Code, BookOpen, Target, Trophy, Palette, Image as ImageIcon, Volume2, Play, Mic, Bot, Puzzle, Trash2, FolderInput, Webhook, Minimize2 } from 'lucide-react'
+import { X, RefreshCw, Loader2, Check, Asterisk, Plus, Cpu, Cloud, Settings2, Info, LayoutGrid, List, Smartphone, Database, Zap, Sparkles, Box, Globe, ShieldCheck, ArrowRightLeft, Search, Copy, LogIn, LogOut, User, Download, Star, MessageCircle, Store, Plug, ExternalLink, AlertTriangle, Eye, EyeOff, ChevronRight, Wind, Brain, Terminal, Code, BookOpen, Target, Trophy, Palette, Image as ImageIcon, Volume2, Play, Mic, Bot, Puzzle, Trash2, FolderInput, Webhook, Minimize2, Layers, Blocks, SlidersHorizontal } from 'lucide-react'
 import { URI } from '../../../../../../../base/common/uri.js'
 import { VSBuffer } from '../../../../../../../base/common/buffer.js'
 import { generateUuid } from '../../../../../../../base/common/uuid.js'
@@ -31,7 +31,7 @@ import { StorageScope, StorageTarget } from '../../../../../../../platform/stora
 import '../styles.css'
 
 type Tab =
-	| 'models' | 'localProviders' | 'providers' | 'featureOptions' | 'mediaGeneration' | 'general' | 'mcp' | 'acp' | 'composio' | 'skills' | 'plugins' | 'hooks' | 'mobileApi' | 'about' | 'all';
+	| 'models' | 'localProviders' | 'providers' | 'featureOptions' | 'mediaGeneration' | 'general' | 'mcp' | 'acp' | 'composio' | 'skills' | 'plugins' | 'hooks' | 'mobileApi' | 'voice' | 'about' | 'all';
 
 const TTS_RESPONSE_FORMATS = ['mp3', 'opus', 'aac', 'flac', 'wav', 'pcm'] as const;
 type TTSResponseFormat = typeof TTS_RESPONSE_FORMATS[number];
@@ -3391,6 +3391,47 @@ const HooksList = () => {
 	);
 };
 
+// ─── collapsible sidebar nav structure ──────────────────
+type NavItem = { tab: Tab; label: string; icon: any }
+type NavGroup = { id: string; label: string; icon: any; items: NavItem[] }
+
+const NAV_GROUPS: NavGroup[] = [
+	{ id: 'models', label: 'Models', icon: Layers, items: [
+		{ tab: 'models', label: 'Manage Models', icon: Box },
+		{ tab: 'localProviders', label: 'Local Models', icon: Cpu },
+		{ tab: 'providers', label: 'Cloud Providers', icon: Globe },
+		{ tab: 'mediaGeneration', label: 'Images & Media', icon: ImageIcon },
+	]},
+	{ id: 'agents', label: 'AI & Agents', icon: Brain, items: [
+		{ tab: 'featureOptions', label: 'Features', icon: Sparkles },
+		{ tab: 'skills', label: 'AI Skills', icon: Zap },
+		{ tab: 'acp', label: 'ACP Agents', icon: Bot },
+	]},
+	{ id: 'extensions', label: 'Extensions & Tools', icon: Blocks, items: [
+		{ tab: 'mcp', label: 'MCP Tools', icon: Plug },
+		{ tab: 'composio', label: 'App Integrations', icon: Store },
+		{ tab: 'plugins', label: 'Plugins', icon: Puzzle },
+		{ tab: 'hooks', label: 'Hooks', icon: Webhook },
+	]},
+	{ id: 'system', label: 'System', icon: SlidersHorizontal, items: [
+		{ tab: 'general', label: 'System', icon: Settings2 },
+		{ tab: 'mobileApi', label: 'API & Mobile', icon: Smartphone },
+		{ tab: 'voice', label: 'Voice & Audio', icon: Mic },
+	]},
+];
+
+const STANDALONE_NAV_ITEMS: NavItem[] = [
+	{ tab: 'about', label: 'About A-Coder', icon: Info },
+	{ tab: 'all', label: 'View All Settings', icon: LayoutGrid },
+];
+
+const groupOfTab = (tab: Tab): string | undefined => {
+	for (const g of NAV_GROUPS) {
+		if (g.items.some(i => i.tab === tab)) return g.id;
+	}
+	return undefined;
+};
+
 export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 	const isDark = useIsDark()
 	const clipboardService = useClipboardService()
@@ -3398,30 +3439,24 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 	const [selectedSection, setSelectedSection] =
 		useState<Tab>(initialTab || 'models');
 
+	// ─── collapsible nav groups ──────────────
+	const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
+		() => { const g = groupOfTab(initialTab || 'models'); return new Set(g ? [g] : []) }
+	);
+	const toggleGroup = (id: string) =>
+		setExpandedGroups(prev => { const n = new Set(prev); if (n.has(id)) { n.delete(id) } else { n.add(id) } return n })
+
 	useEffect(() => {
 		if (initialTab) {
 			setSelectedSection(initialTab);
+			const g = groupOfTab(initialTab);
+			if (g) setExpandedGroups(prev => prev.has(g) ? prev : new Set(prev).add(g));
 		}
 	}, [initialTab]);
 
-	const navItems: { tab: Tab; label: string; icon: any }[] = [
-		{ tab: 'models', label: 'Manage Models', icon: Box },
-		{ tab: 'localProviders', label: 'Local Models', icon: Cpu },
-		{ tab: 'providers', label: 'Cloud Providers', icon: Globe },
-		{ tab: 'featureOptions', label: 'Features', icon: Sparkles },
-		{ tab: 'mediaGeneration', label: 'Images & Media', icon: ImageIcon },
-		{ tab: 'general', label: 'System', icon: Settings2 },
-		{ tab: 'mcp', label: 'MCP Tools', icon: Plug },
-		{ tab: 'acp', label: 'ACP Agents', icon: Bot },
-		{ tab: 'composio', label: 'App Integrations', icon: Store },
-		{ tab: 'skills', label: 'AI Skills', icon: Zap },
-		{ tab: 'plugins', label: 'Plugins', icon: Puzzle },
-		{ tab: 'hooks', label: 'Hooks', icon: Webhook },
-		{ tab: 'mobileApi', label: 'API & Mobile', icon: Smartphone },
-		{ tab: 'voice', label: 'Voice & Audio', icon: Mic },
-		{ tab: 'about', label: 'About A-Coder', icon: Info },
-		{ tab: 'all', label: 'View All Settings', icon: LayoutGrid },
-	];
+	const navGroups = NAV_GROUPS;
+	const standaloneNavItems = STANDALONE_NAV_ITEMS;
+
 	const shouldShowTab = (tab: Tab) => selectedSection === 'all' || selectedSection === tab;
 	const accessor = useAccessor()
 	const commandService = accessor.get('ICommandService')
@@ -3533,34 +3568,109 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 
 					{/* Navigation with staggered animation */}
 					<nav className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
-						{navItems.map(({ tab, label, icon: Icon }, index) => {
-							const isActive = selectedSection === tab;
+						{(() => {
+							let staggerIndex = 0;
 							return (
-								<button
-									key={tab}
-									onClick={() => setSelectedSection(tab)}
-									className={`
-										group relative w-full flex items-center gap-3 px-4 py-2.5 text-[13px] font-medium rounded-xl
-										transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]
-										${isActive
-											? 'bg-void-accent/10 text-void-accent shadow-sm'
-											: 'text-void-fg-3 hover:bg-void-depth-floating/60 hover:text-void-fg-1'
-										}
-									`}
-									style={{ animationDelay: `${index * 30}ms` }}
-								>
-									<Icon
-										size={16}
-										strokeWidth={isActive ? 2.5 : 2}
-										className={`transition-transform duration-300 ${isActive ? 'scale-110' : 'group-hover:scale-105'}`}
-									/>
-									<span>{label}</span>
-									{isActive && (
-										<div className="ml-auto w-1.5 h-1.5 rounded-full bg-void-accent animate-pulse" />
-									)}
-								</button>
+								<>
+									{navGroups.map((group) => {
+										const GroupIcon = group.icon;
+										const groupActive = group.items.some(i => i.tab === selectedSection);
+										const expanded = expandedGroups.has(group.id);
+										return (
+											<div key={group.id} className="space-y-0.5">
+												<button
+													onClick={() => toggleGroup(group.id)}
+													className={`
+														group relative w-full flex items-center gap-3 px-4 py-2.5 text-[13px] font-medium rounded-xl
+														transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]
+														${groupActive
+															? 'text-void-accent'
+															: 'text-void-fg-2 hover:bg-void-depth-floating/60 hover:text-void-fg-1'
+														}
+													`}
+													style={{ animationDelay: `${staggerIndex++ * 30}ms` }}
+												>
+													<GroupIcon
+														size={16}
+														strokeWidth={groupActive ? 2.5 : 2}
+														className={`transition-transform duration-300 ${groupActive ? 'scale-110' : 'group-hover:scale-105'}`}
+													/>
+													<span>{group.label}</span>
+													<ChevronRight
+														size={14}
+														className={`ml-auto transition-transform duration-300 ${expanded ? 'rotate-90' : ''} ${groupActive ? 'text-void-accent' : 'text-void-fg-4'}`}
+													/>
+												</button>
+												{expanded && (
+													<div className="mt-0.5 mb-1 space-y-0.5">
+														{group.items.map((item) => {
+															const isActive = selectedSection === item.tab;
+															const ItemIcon = item.icon;
+															return (
+																<button
+																	key={item.tab}
+																	onClick={() => setSelectedSection(item.tab)}
+																	className={`
+																		group relative w-full flex items-center gap-3 pl-10 pr-4 py-2 text-[12.5px] font-medium rounded-lg
+																		transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]
+																		${isActive
+																			? 'bg-void-accent/10 text-void-accent'
+																			: 'text-void-fg-3 hover:bg-void-depth-floating/60 hover:text-void-fg-1'
+																		}
+																	`}
+																	style={{ animationDelay: `${staggerIndex++ * 30}ms` }}
+																>
+																	<ItemIcon
+																		size={15}
+																		strokeWidth={isActive ? 2.5 : 2}
+																		className={`transition-transform duration-300 ${isActive ? 'scale-110' : 'group-hover:scale-105'}`}
+																	/>
+																	<span>{item.label}</span>
+																	{isActive && (
+																		<div className="ml-auto w-1.5 h-1.5 rounded-full bg-void-accent animate-pulse" />
+																	)}
+																</button>
+															);
+														})}
+													</div>
+												)}
+											</div>
+										);
+									})}
+
+									<div className="my-2 border-t border-void-border-2/20" />
+
+									{standaloneNavItems.map(({ tab, label, icon: Icon }) => {
+										const isActive = selectedSection === tab;
+										return (
+											<button
+												key={tab}
+												onClick={() => setSelectedSection(tab)}
+												className={`
+													group relative w-full flex items-center gap-3 px-4 py-2.5 text-[13px] font-medium rounded-xl
+													transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]
+													${isActive
+														? 'bg-void-accent/10 text-void-accent shadow-sm'
+														: 'text-void-fg-3 hover:bg-void-depth-floating/60 hover:text-void-fg-1'
+													}
+												`}
+												style={{ animationDelay: `${staggerIndex++ * 30}ms` }}
+											>
+												<Icon
+													size={16}
+													strokeWidth={isActive ? 2.5 : 2}
+													className={`transition-transform duration-300 ${isActive ? 'scale-110' : 'group-hover:scale-105'}`}
+												/>
+												<span>{label}</span>
+												{isActive && (
+													<div className="ml-auto w-1.5 h-1.5 rounded-full bg-void-accent animate-pulse" />
+												)}
+											</button>
+										);
+									})}
+								</>
 							);
-						})}
+						})()}
 					</nav>
 
 					{/* Premium footer with version */}
@@ -4943,10 +5053,10 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 										</a>
 									</div>
 
-									{/* Book CTA — Featured, full width, more prominent */}
+									{/* Book CTA — The AI Dictionary (latest release) */}
 									<div className="mt-3">
 										<a
-											href="https://bepracticalbook.com"
+											href="https://amzn.asia/d/03d4CFj1"
 											target="_blank"
 											rel="noreferrer"
 											className="group flex items-center justify-between gap-4 px-6 py-4 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] no-underline"
@@ -4961,11 +5071,32 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 													<BookOpen size={20} />
 												</div>
 												<div className="text-left">
-													<p className="text-sm font-bold">Own Your AI</p>
-													<p className="text-xs opacity-80">Read the book on mastering AI</p>
+													<p className="text-sm font-bold">The AI Dictionary</p>
+													<p className="text-xs opacity-80">The plain-English guide to AI terms &amp; concepts</p>
 												</div>
 											</div>
 											<ChevronRight size={18} className="opacity-70 group-hover:translate-x-1 transition-transform" />
+										</a>
+									</div>
+
+									{/* Book CTA — Own Your AI (secondary) */}
+									<div className="mt-3">
+										<a
+											href="https://bepracticalbook.com"
+											target="_blank"
+											rel="noreferrer"
+											className="group flex items-center justify-between gap-4 px-6 py-4 rounded-xl bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2/60 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] no-underline"
+										>
+											<div className="flex items-center gap-3">
+												<div className="w-10 h-10 rounded-lg bg-void-bg-3 flex items-center justify-center">
+													<BookOpen size={20} className="text-void-fg-3" />
+												</div>
+												<div className="text-left">
+													<p className="text-sm font-bold text-void-fg-1">Own Your AI</p>
+													<p className="text-xs text-void-fg-3">Read the book on mastering AI</p>
+												</div>
+											</div>
+											<ChevronRight size={18} className="text-void-fg-4 opacity-70 group-hover:translate-x-1 transition-transform" />
 										</a>
 									</div>
 
