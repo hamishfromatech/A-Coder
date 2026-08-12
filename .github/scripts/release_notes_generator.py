@@ -21,61 +21,87 @@ headers = {
 }
 
 
-def fetch_commits_since_tag(tag: str) -> list[dict]:
-    """Fetch all commits since the given tag."""
-    commits, page = [], 1
-    while True:
-        url = (
-            f"https://api.github.com/repos/{REPO}/commits"
-            f"?sha=dev&since={tag}&per_page=100&page={page}"
-        )
-        resp = requests.get(url, headers=headers)
-        if resp.status_code != 200:
-            print(f"Failed to fetch commits: {resp.status_code} {resp.text}", file=sys.stderr)
-            break
-        chunk = resp.json()
-        if not chunk:
-            break
-        commits.extend(chunk)
-        page += 1
-    return commits
+def fetch_compare(base: str, head: str) -> dict:
+    """Fetch the diff between two refs (tags/SHAs) in a single API call.
+
+    Returns the commits between base and head plus the aggregate list of files
+    changed across the whole range — only the changes in this release, not the
+    full repository history.
+    """
+    url = f"https://api.github.com/repos/{REPO}/compare/{base}...{head}"
+    resp = requests.get(url, headers=headers)
+    if resp.status_code != 200:
+        print(f"Failed to fetch compare: {resp.status_code} {resp.text}", file=sys.stderr)
+        return {}
+    return resp.json()
 
 
-def get_commit_details(commits: list[dict]) -> list[dict]:
-    """Get detailed commit info including files changed."""
-    details = []
-    for commit in commits[:100]:  # Limit to 100 commits for context
-        sha = commit["sha"]
-        # Get the commit details with changed files
-        url = f"https://api.github.com/repos/{REPO}/commits/{sha}"
-        resp = requests.get(url, headers=headers)
-        if resp.status_code == 200:
-            detail = resp.json()
-            details.append({
-                "sha": sha[:8],
-                "message": detail["commit"]["message"].split("\n")[0],
-                "author": detail["commit"]["author"]["name"],
-                "date": detail["commit"]["committer"]["date"][:10],
-                "files": [f["filename"] for f in detail.get("files", [])],
-            })
-    return details
+def build_commit_details(compare: dict, limit: int = 50) -> tuple[list[dict], list[str]]:
+    """Extract the most recent commits and the full changed-files list from a compare response.
+
+    The compare API returns commits oldest→newest, so we keep the tail (the latest).
+    Per-commit file lists aren't available from compare; the aggregate files list is
+    returned instead.
+    """
+    commits = compare.get("commits", [])
+    latest = commits[-limit:] if len(commits) > limit else commits
+    details = [
+        {
+            "sha": c["sha"][:8],
+            "message": c["commit"]["message"].split("\n")[0],
+            "author": c["commit"]["author"]["name"],
+            "date": c["commit"]["committer"]["date"][:10],
+        }
+        for c in latest
+    ]
+    files = [f["filename"] for f in compare.get("files", [])]
+    return details, files
 
 
-def generate_release_notes(commits: list[dict], previous_tag: str, new_tag: str) -> str:
+def fetch_latest_commits(limit: int = 50) -> tuple[list[dict], list[str]]:
+    """Fallback when there is no previous tag to compare against."""
+    url = f"https://api.github.com/repos/{REPO}/commits?sha=dev&per_page={limit}"
+    resp = requests.get(url, headers=headers)
+    if resp.status_code != 200:
+        print(f"Failed to fetch commits: {resp.status_code} {resp.text}", file=sys.stderr)
+        return [], []
+    details = [
+        {
+            "sha": c["sha"][:8],
+            "message": c["commit"]["message"].split("\n")[0],
+            "author": c["commit"]["author"]["name"],
+            "date": c["commit"]["committer"]["date"][:10],
+        }
+        for c in resp.json()
+    ]
+    return details, []
+
+
+def generate_release_notes(commits: list[dict], previous_tag: str | None, new_tag: str, changed_files: list[str]) -> str:
     """Generate release notes using Ollama."""
-    # Build a summary of commits
+    # Build a summary of commits (most recent first up to 50)
     commit_summary = "\n".join(
-        f"- {c['sha']}: {c['message']} ({c['author']})\n  Files: {', '.join(c['files'][:5])}{'...' if len(c['files']) > 5 else ''}"
+        f"- {c['sha']}: {c['message']} ({c['author']}, {c['date']})"
         for c in commits[:50]
     )
 
+    files_section = ""
+    if changed_files:
+        shown = changed_files[:60]
+        files_section = "\n\nFiles changed across this release:\n" + "\n".join(
+            f"- {f}" for f in shown
+        )
+        if len(changed_files) > 60:
+            files_section += f"\n- ... and {len(changed_files) - 60} more"
+
+    since_label = previous_tag or "the previous release"
     prompt = textwrap.dedent(f"""\
 You are generating release notes for a VS Code extension called A-Coder, an AI-powered coding assistant.
 
-Release: {new_tag} (since {previous_tag})
+Release: {new_tag} (since {since_label})
 
-Here are the commits since the previous release:
-{commit_summary}
+Here are the most recent commits in this release:
+{commit_summary}{files_section}
 
 Generate professional, user-facing release notes following this format:
 
@@ -110,17 +136,6 @@ Use clear, professional language. Only include categories that have actual chang
     return resp.choices[0].message.content
 
 
-def update_release_notes(release_id: int, notes: str):
-    """Update the GitHub release with new notes."""
-    url = f"https://api.github.com/repos/{REPO}/releases/{release_id}"
-    data = {"body": notes}
-    resp = requests.patch(url, headers=headers, json=data)
-    if resp.status_code == 200:
-        print("✅ Release notes updated successfully!", file=sys.stderr)
-    else:
-        print(f"Failed to update release: {resp.status_code} {resp.text}", file=sys.stderr)
-
-
 def main():
     # Get release information from environment (provided by release event)
     event_path = os.environ.get("GITHUB_EVENT_PATH")
@@ -145,24 +160,28 @@ def main():
     current_idx = tag_names.index(release_tag) if release_tag in tag_names else -1
 
     if current_idx <= 0:
-        print(f"First release or tag not found ({release_tag}), using last 50 commits.", file=sys.stderr)
-        previous_tag = "1970-01-01T00:00:00Z"
+        print(f"First release or previous tag not found ({release_tag}); using latest commits on dev.", file=sys.stderr)
+        previous_tag = None
     else:
-        previous_tag = all_tags[current_idx - 1]["commit"]["sha"]
+        previous_tag = all_tags[current_idx - 1]["name"]
 
-    print(f"Generating notes for {release_tag} (since {previous_tag})", file=sys.stderr)
+    print(f"Generating notes for {release_tag} (since {previous_tag or 'start'})", file=sys.stderr)
 
-    # Fetch commits
-    commits = fetch_commits_since_tag(previous_tag)
+    # Fetch only the changes in this release — one Compare API call instead of
+    # paginating every commit since the last release and fetching each one's details.
+    if previous_tag:
+        compare = fetch_compare(previous_tag, release_tag)
+        commit_details, changed_files = build_commit_details(compare, limit=50)
+        if not commit_details:
+            print("Compare returned no commits.", file=sys.stderr)
+    else:
+        commit_details, changed_files = fetch_latest_commits(limit=50)
 
-    if not commits:
-        print("No commits found since previous release.", file=sys.stderr)
+    if not commit_details:
         notes = f"# A-Coder {release_tag}\n\nNo changes in this release."
     else:
-        print(f"Found {len(commits)} commits. Getting details...", file=sys.stderr)
-        commit_details = get_commit_details(commits)
-        print(f"Generating release notes...", file=sys.stderr)
-        notes = generate_release_notes(commit_details, previous_tag, release_tag)
+        print(f"Found {len(commit_details)} commits and {len(changed_files)} changed files. Generating release notes...", file=sys.stderr)
+        notes = generate_release_notes(commit_details, previous_tag, release_tag, changed_files)
 
     # Print the notes for output
     print(notes, end="")
