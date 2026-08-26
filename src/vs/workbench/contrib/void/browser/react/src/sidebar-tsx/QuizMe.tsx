@@ -113,7 +113,7 @@ export const QuizMe: React.FC<QuizMeProps> = ({ threadId, onClose, onSelectTopic
 				{/* Header */}
 				<div className="px-8 py-6 border-b border-void-border-2 flex items-center justify-between bg-void-bg-2">
 					<div className="flex items-center gap-4">
-						<div className="p-3 rounded-[20px] bg-gradient-to-br from-purple-500 to-blue-500 shadow-lg shadow-purple-500/20 text-white">
+						<div className="p-3 rounded-[20px] bg-void-accent shadow-lg shadow-void-accent/20 text-white">
 							<Brain size={24} />
 						</div>
 						<div>
@@ -129,17 +129,17 @@ export const QuizMe: React.FC<QuizMeProps> = ({ threadId, onClose, onSelectTopic
 				{/* Content */}
 				<div className="flex-1 overflow-y-auto p-8 space-y-8">
 					{items.length === 0 ? (
-						<div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-10">
-							<Sparkles size={48} className="mb-4 text-void-fg-4" />
-							<h3 className="text-lg font-bold text-void-fg-1 mb-1">Your Knowledge is Growing</h3>
+						<div className="h-full flex flex-col items-center justify-center text-center py-10">
+							<Sparkles size={48} className="mb-4 text-void-fg-4 opacity-30" />
+							<h3 className="text-lg font-bold text-void-fg-2 mb-1">Your Knowledge is Growing</h3>
 							<p className="text-xs text-void-fg-3 max-w-[200px]">Complete more lessons to unlock your personalized review queue.</p>
 						</div>
 					) : (
 						<div className="space-y-8">
 							{/* Stats */}
 							<div className="grid grid-cols-2 gap-4">
-								<div className="p-6 bg-red-500/5 border border-red-500/20 rounded-[24px]">
-									<div className="text-3xl font-black text-red-500">{nowItems.length}</div>
+								<div className="p-6 bg-void-error/5 border border-void-error/20 rounded-[24px]">
+									<div className="text-3xl font-black text-void-error">{nowItems.length}</div>
 									<div className="text-[10px] font-bold text-void-fg-4 uppercase tracking-widest mt-1">Due Now</div>
 								</div>
 								<div className="p-6 bg-void-bg-2 border border-void-border-2 rounded-[24px]">
@@ -151,7 +151,7 @@ export const QuizMe: React.FC<QuizMeProps> = ({ threadId, onClose, onSelectTopic
 							{/* Due Now */}
 							<div className="space-y-4">
 								<h4 className="text-xs font-black text-void-fg-3 uppercase tracking-[0.2em] px-2 flex items-center gap-2">
-									<Zap size={14} className="text-red-500 fill-current" />
+									<Zap size={14} className="text-void-error fill-current" />
 									Recommended for You
 								</h4>
 								<div className="space-y-3">
@@ -179,7 +179,7 @@ export const QuizMe: React.FC<QuizMeProps> = ({ threadId, onClose, onSelectTopic
 											</div>
 											<div className="h-1.5 w-full bg-void-bg-3 rounded-full overflow-hidden relative z-10">
 												<div 
-													className="h-full bg-void-accent shadow-[0_0_10px_rgba(var(--void-accent-rgb),0.5)] transition-all duration-1000"
+													className="h-full bg-void-accent transition-all duration-1000"
 													style={{ width: `${item.masteryLevel}%` }}
 												/>
 											</div>

@@ -6,9 +6,9 @@ export const WarningBox = ({ text, onClick, className }: { text: string; onClick
 		<div
 			className={`
 				flex items-center gap-2 px-3 py-1.5
-				bg-orange-500/10 border border-orange-500/20 rounded-lg
-				text-orange-500 text-xs font-medium
-				${onClick ? 'hover:bg-orange-500/20 transition-all duration-200 cursor-pointer active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-orange-500/50 min-h-[44px]' : ''}
+				bg-void-orange/10 border border-void-orange/20 rounded-lg
+				text-void-orange text-xs font-medium
+				${onClick ? 'hover:bg-void-orange/20 transition-all duration-200 cursor-pointer active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-void-orange/50 min-h-[44px]' : ''}
 				${className}
 			`}
 			onClick={onClick}

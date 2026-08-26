@@ -227,3 +227,12 @@ export class PlanningService {
 		}
 	}
 }
+
+
+/**
+ * Shared singleton instance — the same instance ToolsService uses for the
+ * todo tools, so other browser-layer code (e.g. the implementation-plan
+ * approve flow in AgentManagerService) can promote a reviewed plan into
+ * todos that the agent then executes via update_todo.
+ */
+export const planningService = new PlanningService();

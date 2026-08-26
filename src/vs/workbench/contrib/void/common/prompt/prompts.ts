@@ -917,31 +917,6 @@ Example: [
 		params: {}
 	},
 
-	execute_implementation_plan: {
-		name: 'execute_implementation_plan',
-		description: `Executes an approved implementation plan step by step.
-
-**When to use:** ONLY after the user has reviewed and approved the implementation plan.
-
-**What happens:**
-1. Executes each step in the correct order (respecting dependencies)
-2. Updates step status as you progress
-3. Handles errors and provides recovery options
-4. Provides progress updates to the user
-
-**Execution process:**
-- Mark step as 'in_progress' when starting
-- Complete the step using appropriate tools
-- Mark step as 'complete' when done
-- Continue with next step
-- Handle any failures gracefully
-
-**Important:** Only call this after user approval. Do not execute plans automatically without user review.`,
-		params: {
-			step_id: { description: 'Optional. Execute a specific step by ID. If not provided, executes the next pending step in order.' }
-		}
-	},
-
 	update_implementation_step: {
 		name: 'update_implementation_step',
 		description: `Updates the status of a step in the current implementation plan.
@@ -1080,54 +1055,23 @@ Example: [
 
 	create_exercise: {
 		name: 'create_exercise',
-		description: `Creates a practice exercise for the student to reinforce learning.
+		description: `Creates an interactive practice exercise that renders a live code editor inline in the chat. The student can write code, submit it for instant validation against the expected solution, and reveal progressive hints — all without a follow-up tool call.
 
 **When to use:**
-- After teaching a concept to let the student practice
+- After teaching a concept to let the student practice hands-on
 - When a student asks for practice problems
 - To check understanding before moving on
 
-**What you'll receive:** An exercise ID (for tracking) and a template to fill in with the exercise details.`,
+You must provide the FULL exercise content: a title, clear instructions, starter code, the expected solution (used for instant client-side validation), and 1-3 progressive hints. The student interacts with it directly — do NOT also call display_lesson for the same exercise.`,
 		params: {
-			topic: { description: 'What concept to practice (e.g., "for loops", "string methods")' },
-			difficulty: { description: '"easy", "medium", or "hard"' },
-			language: { description: 'Programming language for the exercise' },
-			type: { description: 'Exercise type: "fill_blank", "fix_bug", "write_function", or "extend_code"' }
-		}
-	},
-
-	check_answer: {
-		name: 'check_answer',
-		description: `Validates a student's solution to an exercise.
-
-**When to use:**
-- When a student submits their solution attempt
-- To provide feedback on their code
-
-**Important:** Do NOT give the answer if wrong. Provide encouraging feedback and hints instead.`,
-		params: {
-			exercise_id: { description: 'The exercise ID from create_exercise' },
-			student_code: { description: 'The student\'s code attempt' }
-		}
-	},
-
-	give_hint: {
-		name: 'give_hint',
-		description: `Provides a progressive hint for an exercise (level 1 → 2 → 3 → solution).
-
-**When to use:**
-- When a student says "I'm stuck" or asks for help
-- After a failed attempt at an exercise
-
-**Hint levels:**
-- Level 1: Vague direction ("Think about what data structure...")
-- Level 2: More specific ("You'll need a loop that...")
-- Level 3: Nearly there ("Use a for loop with an if inside...")
-- Level 4: Full solution with explanation
-
-Each call advances to the next hint level automatically.`,
-		params: {
-			exercise_id: { description: 'The exercise ID to get a hint for' }
+			title: { description: 'A short, engaging title for the exercise (e.g., "Reverse a String")' },
+			instructions: { description: 'Clear instructions describing what the student must do. Include any requirements, constraints, and expected behavior.' },
+			type: { description: 'Exercise type: "fill_blank", "fix_bug", "write_function", or "extend_code"' },
+			language: { description: 'Programming language for the exercise (e.g., "python", "javascript", "typescript")' },
+			initial_code: { description: 'The starter code shown in the editor when the exercise opens. For fill_blank, include ___ markers; for fix_bug, include the buggy code; for extend_code, include the working code to extend.' },
+			expected_solution: { description: 'A correct solution. Used for instant validation: the student\'s submitted code is compared (whitespace-normalized) against this. Provide a canonical correct answer.' },
+			hints: { description: 'Optional array of 1-3 progressive hints, from most vague to most specific. Revealed one at a time when the student clicks Hint.' },
+			difficulty: { description: 'Optional: "easy", "medium", or "hard"' }
 		}
 	},
 
@@ -1691,8 +1635,6 @@ const studentModeTools: BuiltinToolName[] = [
 	'explain_code',
 	'teach_concept',
 	'create_exercise',
-	'check_answer',
-	'give_hint',
 	'create_lesson_plan',
 	'display_lesson',
 	// Limited editing - for exercises and demos
@@ -2090,13 +2032,11 @@ TEACHING APPROACH:
 2. Use the teaching tools to structure your responses:
    - Use \`teach_concept\` when introducing new ideas
    - Use \`explain_code\` when reviewing code
-   - Use \`create_exercise\` to reinforce learning
-   - Use \`give_hint\` when student is stuck (progressive hints)
-   - Use \`check_answer\` to validate their attempts
+   - Use \`create_exercise\` to give the student a hands-on interactive code challenge (it renders a live editor with instant validation + progressive hints inline — pass the full exercise content, no follow-up call needed)
    - Use \`create_lesson_plan\` for multi-step learning paths
 3. Ask questions to check understanding
 4. Celebrate progress and normalize mistakes
-5. Give hints before answers when students are stuck
+5. Give hints before answers when students are stuck (the interactive exercise already reveals hints on demand)
 
 VISUALIZATION IN MARKDOWN:
 Enhance your explanations with visual representations:
@@ -2239,11 +2179,10 @@ Triggering the plan:
 
 Approved Implementation Plans:
 When the user approves an implementation plan (you'll see a message like "implementation plan has been approved for execution"):
-1. IMMEDIATELY call 'create_todo' to create a task plan based on the implementation plan steps
-2. Convert each implementation step into a task with clear dependencies
-3. Begin executing tasks in order, using 'update_todo' to track progress
-4. For each task: read files, make changes, verify they work, then mark complete
-5. Continue until all tasks are done - do NOT stop and ask for confirmation between steps
+1. The plan's steps have ALREADY been converted into a todo list for you — do NOT call 'create_todo' again (call 'get_todos' if you want to see them)
+2. Begin executing tasks in order, using 'update_todo' to track progress (mark 'in_progress' when starting, 'complete' when done)
+3. For each task: read files, make changes, verify they work, then mark complete
+4. Continue until all tasks are done - do NOT stop and ask for confirmation between steps
 
 CRITICAL: After the initial numbered plan (when needed), do NOT keep re-explaining what you will do. TAKE ACTION by calling tools to execute the current step. Natural-language explanations should be brief and mainly summarize what you just did or are about to do.
 

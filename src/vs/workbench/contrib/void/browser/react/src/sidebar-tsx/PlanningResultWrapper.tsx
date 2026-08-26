@@ -69,7 +69,7 @@ const parseMarkdownTasks = (markdown: string): { tasks: TaskItem[], goal: string
 const StatusIcon: React.FC<{ status: TaskItem['status'], index?: number }> = ({ status, index }) => {
 	if (status === 'complete') {
 		return (
-			<div className="w-4 h-4 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
+			<div className="w-4 h-4 rounded-full bg-void-success flex items-center justify-center flex-shrink-0">
 				<svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
 				</svg>
@@ -79,7 +79,7 @@ const StatusIcon: React.FC<{ status: TaskItem['status'], index?: number }> = ({ 
 
 	if (status === 'in_progress') {
 		return (
-			<div className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
+			<div className="w-4 h-4 rounded-full bg-void-info flex items-center justify-center flex-shrink-0">
 				<span className="text-white text-[10px] font-bold">{(index ?? 0) + 1}</span>
 			</div>
 		)
@@ -88,7 +88,7 @@ const StatusIcon: React.FC<{ status: TaskItem['status'], index?: number }> = ({ 
 	if (status === 'failed') {
 		// Failed - red circle with X (distinct from pending's empty circle)
 		return (
-			<div className="w-4 h-4 rounded-full bg-red-500 flex items-center justify-center flex-shrink-0">
+			<div className="w-4 h-4 rounded-full bg-void-error flex items-center justify-center flex-shrink-0">
 				<svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 6l12 12M18 6L6 18" />
 				</svg>
@@ -113,7 +113,7 @@ const TaskRow: React.FC<{ task: TaskItem, index: number }> = ({ task, index }) =
 				task.status === 'complete'
 					? 'text-void-fg-3'
 					: task.status === 'failed'
-						? 'text-red-400'
+						? 'text-void-error'
 						: 'text-void-fg-2'
 			}`}>
 				{task.text}

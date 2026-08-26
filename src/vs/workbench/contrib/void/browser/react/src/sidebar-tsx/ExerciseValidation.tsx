@@ -10,7 +10,6 @@ import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js';
 import {
 	ToolHeaderWrapper,
 	ToolChildrenWrapper,
-	ResultWrapper,
 	ToolHeaderParams,
 	getTitle,
 } from './ToolResultHelpers.js';
@@ -244,7 +243,7 @@ export const ExerciseValidation: React.FC<{
 						{/* Exercise Header */}
 						<div className="flex items-start justify-between">
 							<div className="flex items-center gap-2">
-								<span className="p-1.5 rounded-lg bg-purple-500/20 text-purple-400">
+								<span className="p-1.5 rounded-lg bg-void-accent/20 text-void-accent">
 									{getExerciseIcon()}
 								</span>
 								<div>
@@ -324,16 +323,16 @@ export const ExerciseValidation: React.FC<{
 						{validationResult && (
 							<div className={`
 								p-3 rounded-lg border
-								${validationResult.isCorrect ? 'bg-green-500/10 border-green-500/30' : 'bg-yellow-500/10 border-yellow-500/30'}
+								${validationResult.isCorrect ? 'bg-void-success/10 border-void-success/30' : 'bg-void-warning/10 border-void-warning/30'}
 							`}>
 								<div className="flex items-start gap-2 mb-2">
 									{validationResult.isCorrect ? (
-										<Check size={16} className="text-green-500 flex-shrink-0" />
+										<Check size={16} className="text-void-success flex-shrink-0" />
 									) : (
-										<X size={16} className="text-yellow-500 flex-shrink-0" />
+										<X size={16} className="text-void-warning flex-shrink-0" />
 									)}
 									<div>
-										<div className={`text-sm font-semibold ${validationResult.isCorrect ? 'text-green-500' : 'text-yellow-500'}`}>
+										<div className={`text-sm font-semibold ${validationResult.isCorrect ? 'text-void-success' : 'text-void-warning'}`}>
 											{validationResult.isCorrect ? 'Correct!' : 'Not quite right'}
 										</div>
 										<div className="text-xs text-void-fg-2 mt-1">{validationResult.feedback}</div>
@@ -355,8 +354,8 @@ export const ExerciseValidation: React.FC<{
 											<div
 												key={idx}
 												className={`flex items-start gap-2 text-xs ${
-													issue.severity === 'error' ? 'text-red-400' :
-													issue.severity === 'warning' ? 'text-yellow-400' :
+													issue.severity === 'error' ? 'text-void-error' :
+													issue.severity === 'warning' ? 'text-void-warning' :
 													'text-void-fg-3'
 												}`}
 											>
@@ -374,7 +373,7 @@ export const ExerciseValidation: React.FC<{
 										<ul className="space-y-1">
 											{validationResult.suggestions.map((suggestion, idx) => (
 												<li key={idx} className="flex items-start gap-2 text-xs text-void-fg-3">
-													<span className="text-purple-400">{idx + 1}.</span>
+													<span className="text-void-accent">{idx + 1}.</span>
 													<span>{suggestion}</span>
 												</li>
 											))}
@@ -386,16 +385,16 @@ export const ExerciseValidation: React.FC<{
 
 						{/* Hints */}
 						{showHints && (
-							<div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+							<div className="bg-void-info/10 border border-void-info/30 rounded-lg p-3">
 								<div className="flex items-center justify-between mb-2">
-									<div className="flex items-center gap-2 text-xs font-medium text-blue-400">
+									<div className="flex items-center gap-2 text-xs font-medium text-void-info">
 										<Lightbulb size={12} />
 										Hints
 									</div>
 									<button
 										onClick={handleGetHint}
 										disabled={isHintLoading}
-										className="text-xs text-blue-400 hover:text-blue-300 disabled:text-blue-500/50 flex items-center gap-1"
+										className="text-xs text-void-info hover:text-void-info/80 disabled:text-void-info/50 flex items-center gap-1"
 									>
 										{isHintLoading ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
 										Get Another Hint ({4 - currentHintIndex} left)
@@ -407,7 +406,7 @@ export const ExerciseValidation: React.FC<{
 									<ul className="space-y-2">
 										{hints.map((hint, idx) => (
 											<li key={idx} className="flex items-start gap-2 text-xs text-void-fg-2">
-												<span className="text-blue-400 flex-shrink-0 mt-0.5">{idx + 1}.</span>
+												<span className="text-void-info flex-shrink-0 mt-0.5">{idx + 1}.</span>
 												<span>{hint}</span>
 											</li>
 										))}
@@ -443,8 +442,3 @@ const Plus = ({ size }: { size: number }) => (
 		<line x1="5" y1="12" x2="19" y2="12" />
 	</svg>
 );
-
-// Export as result wrapper for check_answer tool
-export const CheckAnswerResultWrapper: ResultWrapper<'check_answer'> = ({ toolMessage, threadId }) => {
-	return <ExerciseValidation toolMessage={toolMessage} threadId={threadId} />;
-};

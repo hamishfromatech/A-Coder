@@ -28,6 +28,7 @@ product.overrides.json
 .tmp2/
 .tool-versions
 .plans/
+.a-coder-cli/
 src/vs/workbench/contrib/void/browser/react/out/**
 src/vs/workbench/contrib/void/browser/react/src2/**
 *.dmg

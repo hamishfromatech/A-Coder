@@ -23,10 +23,10 @@ import { ResultProgressBar } from './ResultWrapperDesign.js';
 
 // Get mastery level display info
 function getMasteryInfo(mastery: number) {
-	if (mastery >= 80) return { label: 'Mastered', color: 'text-green-500', barColor: 'bg-green-500', bgColor: 'bg-green-500/10', borderColor: 'border-green-500/30', icon: <Trophy size={14} /> }
-	if (mastery >= 60) return { label: 'Proficient', color: 'text-blue-500', barColor: 'bg-blue-500', bgColor: 'bg-blue-500/10', borderColor: 'border-blue-500/30', icon: <Star size={14} /> }
-	if (mastery >= 40) return { label: 'Learning', color: 'text-yellow-500', barColor: 'bg-yellow-500', bgColor: 'bg-yellow-500/10', borderColor: 'border-yellow-500/30', icon: <TrendingUp size={14} /> }
-	if (mastery >= 20) return { label: 'Beginner', color: 'text-orange-500', barColor: 'bg-orange-500', bgColor: 'bg-orange-500/10', borderColor: 'border-orange-500/30', icon: <Flame size={14} /> }
+	if (mastery >= 80) return { label: 'Mastered', color: 'text-void-success', barColor: 'bg-void-success', bgColor: 'bg-void-success/10', borderColor: 'border-void-success/30', icon: <Trophy size={14} /> }
+	if (mastery >= 60) return { label: 'Proficient', color: 'text-void-info', barColor: 'bg-void-info', bgColor: 'bg-void-info/10', borderColor: 'border-void-info/30', icon: <Star size={14} /> }
+	if (mastery >= 40) return { label: 'Learning', color: 'text-void-warning', barColor: 'bg-void-warning', bgColor: 'bg-void-warning/10', borderColor: 'border-void-warning/30', icon: <TrendingUp size={14} /> }
+	if (mastery >= 20) return { label: 'Beginner', color: 'text-void-orange', barColor: 'bg-void-orange', bgColor: 'bg-void-orange/10', borderColor: 'border-void-orange/30', icon: <Flame size={14} /> }
 	return { label: 'Novice', color: 'text-void-fg-3', barColor: 'bg-void-fg-3', bgColor: 'bg-void-bg-2', borderColor: 'border-void-border-2', icon: <Lock size={14} /> }
 }
 
@@ -99,7 +99,7 @@ export const SkillsResultWrapper: ResultWrapper<'load_skill' | 'list_skills' | '
 				<ToolChildrenWrapper>
 					<div className="space-y-3">
 						<div className="flex items-center gap-2 text-void-fg-1 font-medium">
-							{success ? <Check size={14} className="text-green-500" /> : <Info size={14} className="text-void-warning" />}
+							{success ? <Check size={14} className="text-void-success" /> : <Info size={14} className="text-void-warning" />}
 							<span>{success ? `Skill "${skill_name}" successfully loaded` : `Failed to load skill "${skill_name}"`}</span>
 						</div>
 						{success && (
@@ -214,10 +214,10 @@ export const SkillsResultWrapper: ResultWrapper<'load_skill' | 'list_skills' | '
 								<div className="flex flex-wrap gap-2">
 									{[
 										{ label: 'Novice', value: 0, color: 'text-void-fg-3' },
-										{ label: 'Beginner', value: 20, color: 'text-orange-500' },
-										{ label: 'Learning', value: 40, color: 'text-yellow-500' },
-										{ label: 'Proficient', value: 60, color: 'text-blue-500' },
-										{ label: 'Mastered', value: 80, color: 'text-green-500' },
+										{ label: 'Beginner', value: 20, color: 'text-void-orange' },
+										{ label: 'Learning', value: 40, color: 'text-void-warning' },
+										{ label: 'Proficient', value: 60, color: 'text-void-info' },
+										{ label: 'Mastered', value: 80, color: 'text-void-success' },
 									].map(level => (
 										<div key={level.label} className={`flex items-center gap-1 text-[10px] ${level.color}`}>
 											<div className={`w-2 h-2 rounded-full bg-current opacity-60`} />
@@ -236,16 +236,16 @@ export const SkillsResultWrapper: ResultWrapper<'load_skill' | 'list_skills' | '
 				<ToolChildrenWrapper>
 					<div className="space-y-2">
 						<div className="flex items-center gap-2">
-							{success ? <Check size={14} className="text-green-500" /> : <Info size={14} className="text-red-500" />}
+							{success ? <Check size={14} className="text-void-success" /> : <Info size={14} className="text-void-error" />}
 							<span className="text-xs font-medium text-void-fg-1">
 								{success ? `Script "${script_name}" executed successfully` : `Script "${script_name}" failed`}
 							</span>
 							<span className="text-[10px] text-void-fg-4">({duration}ms)</span>
 						</div>
 						{!success && error && (
-							<div className="bg-red-500/10 rounded-md p-2 border border-red-500/30">
-								<div className="text-[10px] text-red-400 font-medium mb-1">Error:</div>
-								<pre className="text-xs text-red-300 whitespace-pre-wrap">{error}</pre>
+							<div className="bg-void-error/10 rounded-md p-2 border border-void-error/30">
+								<div className="text-[10px] text-void-error font-medium mb-1">Error:</div>
+								<pre className="text-xs text-void-error whitespace-pre-wrap">{error}</pre>
 							</div>
 						)}
 						{output && (
@@ -263,7 +263,7 @@ export const SkillsResultWrapper: ResultWrapper<'load_skill' | 'list_skills' | '
 				<ToolChildrenWrapper>
 					<div className="space-y-2">
 						<div className="flex items-center gap-2">
-							{success ? <Check size={14} className="text-green-500" /> : <Info size={14} className="text-red-500" />}
+							{success ? <Check size={14} className="text-void-success" /> : <Info size={14} className="text-void-error" />}
 							<span className="text-xs font-medium text-void-fg-1">
 								{success ? `Reference "${reference_name}" loaded` : `Failed to load reference "${reference_name}"`}
 							</span>
@@ -289,7 +289,7 @@ export const SkillsResultWrapper: ResultWrapper<'load_skill' | 'list_skills' | '
 				<ToolChildrenWrapper>
 					<div className="space-y-2">
 						<div className="flex items-center gap-2">
-							{success ? <Check size={14} className="text-green-500" /> : <Info size={14} className="text-red-500" />}
+							{success ? <Check size={14} className="text-void-success" /> : <Info size={14} className="text-void-error" />}
 							<span className="text-xs font-medium text-void-fg-1">
 								{success ? `Asset "${asset_name}" retrieved` : `Failed to get asset "${asset_name}"`}
 							</span>
@@ -308,7 +308,7 @@ export const SkillsResultWrapper: ResultWrapper<'load_skill' | 'list_skills' | '
 			componentParams.children = (
 				<ToolChildrenWrapper>
 					<div className="flex items-center gap-2">
-						{success ? <Check size={14} className="text-green-500" /> : <Info size={14} className="text-red-500" />}
+						{success ? <Check size={14} className="text-void-success" /> : <Info size={14} className="text-void-error" />}
 						<span className="text-xs font-medium text-void-fg-1">
 							{success ? `Skill "${skill_name}" installed` : `Installation failed`}
 						</span>
@@ -321,7 +321,7 @@ export const SkillsResultWrapper: ResultWrapper<'load_skill' | 'list_skills' | '
 			componentParams.children = (
 				<ToolChildrenWrapper>
 					<div className="flex items-center gap-2">
-						{success ? <Check size={14} className="text-green-500" /> : <Info size={14} className="text-red-500" />}
+						{success ? <Check size={14} className="text-void-success" /> : <Info size={14} className="text-void-error" />}
 						<span className="text-xs font-medium text-void-fg-1">
 							{success ? `Skill "${skill_name}" uninstalled` : `Uninstallation failed`}
 						</span>
@@ -335,7 +335,7 @@ export const SkillsResultWrapper: ResultWrapper<'load_skill' | 'list_skills' | '
 				<ToolChildrenWrapper>
 					<div className="space-y-3">
 						<div className="flex items-center gap-2">
-							{success ? <Check size={14} className="text-green-500" /> : <Info size={14} className="text-red-500" />}
+							{success ? <Check size={14} className="text-void-success" /> : <Info size={14} className="text-void-error" />}
 							<span className="text-xs font-medium text-void-fg-1">
 								Benchmark for "{skill_name}"
 							</span>
@@ -347,7 +347,7 @@ export const SkillsResultWrapper: ResultWrapper<'load_skill' | 'list_skills' | '
 							<div className="space-y-1">
 								{results.map((r: any, i: number) => (
 									<div key={i} className="flex items-center gap-2 text-xs">
-										{r.passed ? <Check size={12} className="text-green-500" /> : <Info size={12} className="text-red-500" />}
+										{r.passed ? <Check size={12} className="text-void-success" /> : <Info size={12} className="text-void-error" />}
 										<span className="text-void-fg-2">{r.test_name}</span>
 										{r.message && <span className="text-void-fg-4 truncate max-w-[200px]">{r.message}</span>}
 									</div>
@@ -404,9 +404,9 @@ export const SkillsResultWrapper: ResultWrapper<'load_skill' | 'list_skills' | '
 								{benchmarks.map((b: any, i: number) => (
 									<div key={i} className="flex items-center gap-2 text-xs">
 										<span className={`text-[10px] px-1.5 py-0.5 rounded ${
-											b.type === 'test' ? 'bg-blue-500/20 text-blue-400' :
-											b.type === 'evaluation' ? 'bg-purple-500/20 text-purple-400' :
-											'bg-orange-500/20 text-orange-400'
+											b.type === 'test' ? 'bg-void-info/20 text-void-info' :
+											b.type === 'evaluation' ? 'bg-void-accent/20 text-void-accent' :
+											'bg-void-orange/20 text-void-orange'
 										}`}>
 											{b.type}
 										</span>

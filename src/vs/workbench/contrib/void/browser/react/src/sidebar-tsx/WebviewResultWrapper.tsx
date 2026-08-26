@@ -242,23 +242,23 @@ export const WebviewResultWrapper: ResultWrapper<WebviewToolName> = ({ toolMessa
 							{isError ? (
 								<div className={`
 									p-3 rounded-lg border
-									${showHelpfulMessage ? 'bg-orange-500/10 border-orange-500/30' : 'bg-red-500/10 border-red-500/30'}
+									${showHelpfulMessage ? 'bg-void-orange/10 border-void-orange/30' : 'bg-void-error/10 border-void-error/30'}
 								`}>
 									<div className="flex items-start gap-2 mb-2">
 										{showHelpfulMessage ? (
-											<ImageIcon size={16} className="text-orange-500 flex-shrink-0" />
+											<ImageIcon size={16} className="text-void-orange flex-shrink-0" />
 										) : (
 											<Database size={16} className="text-red-500 flex-shrink-0" />
 										)}
 										<div className="flex-1">
-											<div className={`text-sm font-semibold ${showHelpfulMessage ? 'text-orange-500' : 'text-red-500'}`}>
+											<div className={`text-sm font-semibold ${showHelpfulMessage ? 'text-void-orange' : 'text-void-error'}`}>
 												{showHelpfulMessage ? 'Webview Required' : 'Action Failed'}
 											</div>
 											<div className="text-xs text-void-fg-2 mt-1">{result.message}</div>
 										</div>
 									</div>
 									{showHelpfulMessage && (
-										<div className="mt-3 pt-3 border-t border-orange-500/20">
+										<div className="mt-3 pt-3 border-t border-void-orange/20">
 											<div className="text-[10px] text-void-fg-3 mb-1">To fix this:</div>
 											<ol className="text-xs text-void-fg-2 space-y-1 ml-3 list-decimal">
 												<li>Use the "Open URL" command first to create a webview</li>

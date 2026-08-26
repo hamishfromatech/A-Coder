@@ -162,16 +162,13 @@ export const titleOfBuiltinToolName = {
 	'add_todos': { done: 'Added todos', proposed: 'Add todos', running: loadingTitleWrapper('Adding todos') },
 	'create_implementation_plan': { done: 'Created implementation plan', proposed: 'Create implementation plan', running: loadingTitleWrapper('Creating implementation plan') },
 	'preview_implementation_plan': { done: 'Previewed implementation plan', proposed: 'Preview implementation plan', running: loadingTitleWrapper('Previewing implementation plan') },
-	'execute_implementation_plan': { done: 'Executed implementation plan', proposed: 'Execute implementation plan', running: loadingTitleWrapper('Executing implementation plan') },
 	'update_implementation_step': { done: 'Updated implementation step', proposed: 'Update implementation step', running: loadingTitleWrapper('Updating implementation step') },
 	'get_implementation_status': { done: 'Got implementation status', proposed: 'Get implementation status', running: loadingTitleWrapper('Getting implementation status') },
 	'update_walkthrough': { done: 'Updated walkthrough', proposed: 'Update walkthrough', running: loadingTitleWrapper('Updating walkthrough') },
 	'open_walkthrough_preview': { done: 'Opened walkthrough preview', proposed: 'Open walkthrough preview', running: loadingTitleWrapper('Opening walkthrough preview') },
 	'explain_code': { done: 'Explained code', proposed: 'Explain code', running: loadingTitleWrapper('Explaining code') },
 	'teach_concept': { done: 'Taught concept', proposed: 'Teach concept', running: loadingTitleWrapper('Teaching concept') },
-	'create_exercise': { done: 'Created exercise', proposed: 'Create exercise', running: loadingTitleWrapper('Creating exercise') },
-	'check_answer': { done: 'Checked answer', proposed: 'Check answer', running: loadingTitleWrapper('Checking answer') },
-	'give_hint': { done: 'Gave hint', proposed: 'Give hint', running: loadingTitleWrapper('Giving hint') },
+	'create_exercise': { done: 'Exercise ready', proposed: 'Create exercise', running: loadingTitleWrapper('Creating exercise') },
 	'create_lesson_plan': { done: 'Created lesson plan', proposed: 'Create lesson plan', running: loadingTitleWrapper('Creating lesson plan') },
 	'load_skill': { done: 'Skill loaded', proposed: 'Load skill', running: loadingTitleWrapper('Loading skill') },
 	'list_skills': { done: 'Skills listed', proposed: 'List skills', running: loadingTitleWrapper('Listing skills') },
@@ -368,10 +365,6 @@ export const toolNameToDesc = (toolName: BuiltinToolName, _toolParams: BuiltinTo
 			return { desc1: `"${toolParams.goal}"` }
 		},
 		'preview_implementation_plan': () => { return { desc1: 'Preview implementation plan' } },
-		'execute_implementation_plan': () => {
-			const toolParams = _toolParams as BuiltinToolCallParams['execute_implementation_plan']
-			return { desc1: toolParams.step_id ? `Step: ${toolParams.step_id}` : 'Execute all steps' }
-		},
 		'update_implementation_step': () => {
 			const toolParams = _toolParams as BuiltinToolCallParams['update_implementation_step']
 			return { desc1: `Step: ${toolParams.step_id} → ${toolParams.status}` }
@@ -395,15 +388,7 @@ export const toolNameToDesc = (toolName: BuiltinToolName, _toolParams: BuiltinTo
 		},
 		'create_exercise': () => {
 			const toolParams = _toolParams as BuiltinToolCallParams['create_exercise']
-			return { desc1: `${toolParams.topic} (${toolParams.difficulty})` }
-		},
-		'check_answer': () => {
-			const toolParams = _toolParams as BuiltinToolCallParams['check_answer']
-			return { desc1: toolParams.exercise_id }
-		},
-		'give_hint': () => {
-			const toolParams = _toolParams as BuiltinToolCallParams['give_hint']
-			return { desc1: toolParams.exercise_id }
+			return { desc1: toolParams.title || toolParams.type }
 		},
 		'create_lesson_plan': () => {
 			const toolParams = _toolParams as BuiltinToolCallParams['create_lesson_plan']

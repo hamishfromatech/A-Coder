@@ -141,10 +141,9 @@ export const EnhancedVoidPreview: React.FC<EnhancedVoidPreviewProps> = ({
 		setError(null);
 
 		try {
-			// For implementation plans, flip the plan's `approved` flag on the
-			// shared planning service so execute_implementation_plan's gate
-			// passes. (Walkthroughs have no plan; skip.) Throws if no plan
-			// exists for the thread — surfaced via setError below.
+			// For implementation plans, approve the plan (which also auto-promotes
+			// its steps into a todo list). (Walkthroughs have no plan; skip.)
+			// Throws if no plan exists for the thread — surfaced via setError.
 			if (isImplementationPlan) {
 				agentManagerService?.approveImplementationPlan(threadId);
 			}

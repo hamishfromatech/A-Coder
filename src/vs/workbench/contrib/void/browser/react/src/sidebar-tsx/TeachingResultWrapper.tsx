@@ -4,29 +4,53 @@
  *--------------------------------------------------------------------------------------*/
 
 import React from 'react';
-import { Brain } from 'lucide-react';
+import { Brain, BookOpen, Code, ClipboardList } from 'lucide-react';
 import { useAccessor, useChatThreadsStreamState } from '../util/services.js';
-import { BuiltinToolName } from '../../../../common/toolsServiceTypes.js';
 import {
 	ToolHeaderWrapper,
 	ToolChildrenWrapper,
 	getTitle,
+	toolNameToDesc,
 	ResultWrapper,
 	ToolHeaderParams,
 } from './ToolResultHelpers.js';
-import { TeachingContent } from './TeachingContent.js';
 
-export const TeachingResultWrapper: ResultWrapper<'explain_code' | 'teach_concept' | 'create_exercise' | 'check_answer' | 'give_hint' | 'create_lesson_plan'> = ({ toolMessage, threadId }) => {
+/**
+ * Renders the prompt-scaffolding teaching tools (teach_concept, explain_code,
+ * create_lesson_plan).
+ *
+ * These tools don't carry student-facing content themselves — they return a
+ * structure template that guides the LLM, which then writes the real lesson and
+ * shows it via `display_lesson`. So inline we only show a compact "preparing
+ * your lesson" state (plus any live tool activity) rather than rendering the
+ * empty template scaffold, which previously showed up as meaningless placeholder
+ * headings like "(Clear definition for beginner level)".
+ */
+const ICON_FOR: Record<string, React.ReactNode> = {
+	explain_code: <Code size={12} className="text-void-accent" />,
+	teach_concept: <BookOpen size={12} className="text-void-accent" />,
+	create_lesson_plan: <ClipboardList size={12} className="text-void-accent" />,
+};
+
+const LABEL_FOR: Record<string, string> = {
+	explain_code: 'Preparing your code explanation',
+	teach_concept: 'Preparing your lesson',
+	create_lesson_plan: 'Preparing your lesson plan',
+};
+
+export const TeachingResultWrapper: ResultWrapper<'explain_code' | 'teach_concept' | 'create_lesson_plan'> = ({ toolMessage, threadId }) => {
 	const accessor = useAccessor();
 	const streamState = useChatThreadsStreamState(threadId);
 
 	const title = getTitle(toolMessage);
+	const { desc1 } = toolNameToDesc(toolMessage.name, toolMessage.params, accessor);
 	const isRejected = toolMessage.type === 'rejected';
+
 	const componentParams: ToolHeaderParams = {
 		title,
-		desc1: '',
+		desc1,
 		isError: false,
-		icon: <Brain size={12} className="text-void-accent" />,
+		icon: ICON_FOR[toolMessage.name] ?? <Brain size={12} className="text-void-accent" />,
 		isRejected,
 	};
 
@@ -46,16 +70,14 @@ export const TeachingResultWrapper: ResultWrapper<'explain_code' | 'teach_concep
 			componentParams.isOpen = true;
 		}
 	} else if (toolMessage.type === 'success' || toolMessage.type === 'tool_request') {
-		const result = toolMessage.result as any;
-		const resultContent = result?.template || (typeof result === 'string' ? result : '');
-
+		// The real lesson content is delivered separately via display_lesson.
+		// Keep this inline state compact and honest — no empty scaffold.
 		componentParams.children = (
 			<ToolChildrenWrapper>
-				<TeachingContent
-					toolName={toolMessage.name as BuiltinToolName}
-					resultContent={resultContent}
-					threadId={threadId}
-				/>
+				<div className="flex items-center gap-2 py-1.5 px-1">
+					<BookOpen size={13} className="text-void-fg-3 flex-shrink-0" />
+					<span className="text-xs text-void-fg-3">{LABEL_FOR[toolMessage.name] ?? 'Preparing your lesson'} — it will open in a dedicated tab.</span>
+				</div>
 			</ToolChildrenWrapper>
 		);
 		componentParams.isOpen = true;

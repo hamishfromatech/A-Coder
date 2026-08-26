@@ -24,7 +24,7 @@ import { IMainProcessService } from '../../../../platform/ipc/common/mainProcess
 import { generateUuid } from '../../../../base/common/uuid.js'
 import { IMorphService } from './morphService.js'
 import { ToonService } from '../common/toonService.js'
-import { PlanningService, TaskStatus as PlanTaskStatus } from '../common/planningService.js'
+import { PlanningService, planningService, TaskStatus as PlanTaskStatus } from '../common/planningService.js'
 import { ImplementationPlanningService, ImplementationPlan, ImplementationStep, StepStatus as ImplStepStatus, implementationPlanningService } from '../common/implementationPlanningService.js'
 import { IAgentManagerService } from './agentManager.contribution.js'
 import { ISubagentService } from './subagentService.js'
@@ -32,7 +32,7 @@ import { SubagentTypeName, subagentTypeNames } from '../common/subagentTypes.js'
 import { IPathService } from '../../../services/path/common/pathService.js'
 import { parseSkillFile, detectScriptLanguage, detectAssetType } from '../common/skillParser.js'
 import { ISkillService } from '../common/skillService.js'
-import { generateLessonHtml, LessonData, LessonSection } from '../common/lessonHtmlGenerator.js'
+import { generateLessonHtml, LessonData, LessonSection, LessonExercise, LessonQuiz, QuizQuestion } from '../common/lessonHtmlGenerator.js'
 import { IOpenerService } from '../../../../platform/opener/common/opener.js'
 import { INotificationService } from '../../../../platform/notification/common/notification.js'
 import { IMPLEMENT_PLANS_STORAGE_KEY } from '../common/storageKeys.js'
@@ -41,6 +41,38 @@ import { shellQuote, validateSkillArgKeys } from '../common/skillScriptUtils.js'
 /**
  * Parse markdown lesson content into structured sections
  */
+// Shared instructions injected into teaching-tool templates so the model emits
+// interactive exercises & quizzes as fenced JSON blocks, which
+// `extractInteractiveBlocks` turns into live widgets in the generated lesson.
+const LESSON_INTERACTIVE_FORMAT = `
+
+**Make the lesson interactive — include a real exercise and a self-grading quiz, not just prose.**
+The lesson renderer turns these fenced JSON blocks into live widgets: a code editor with Run/Submit and progressive hints, and a quiz that scores itself and reveals explanations. Emit at least one lesson-exercise and one lesson-quiz block. Replace the example content with your own; keep the fence names and JSON keys exactly.
+
+\`\`\`lesson-exercise
+{
+  "title": "Reverse a String",
+  "type": "write_function",
+  "language": "javascript",
+  "instructions": "Write a function reverse(str) that returns the reversed string.",
+  "initialCode": "function reverse(str) { /* TODO: implement */ }",
+  "expectedSolution": "function reverse(str) { return str.split('').reverse().join(''); }",
+  "hints": ["Strings can be split into arrays of characters.", "Arrays have a .reverse() method.", "join('') turns an array back into a string."]
+}
+\`\`\`
+
+\`\`\`lesson-quiz
+{
+  "title": "Check Your Understanding",
+  "questions": [
+    { "type": "multiple_choice", "question": "What does Array.prototype.reverse() do?", "options": ["Reverses the array in place", "Returns a new sorted array", "Removes the last element"], "correctAnswer": "Reverses the array in place", "explanation": "reverse() mutates and returns the same array." },
+    { "type": "fill_blank", "question": "To turn a string into an array of characters, call str.____('').", "correctAnswer": "split", "explanation": "split('') splits the string at every character." },
+    { "type": "true_false", "question": "Strings are mutable in JavaScript.", "correctAnswer": "False", "explanation": "Strings are immutable." }
+  ]
+}
+\`\`\`
+`
+
 function parseLessonContent(content: string): LessonSection[] {
 	const sections: LessonSection[] = [];
 
@@ -132,6 +164,118 @@ function parseLessonContent(content: string): LessonSection[] {
 	sections.forEach((s, i) => s.order = i);
 
 	return sections;
+}
+
+// --- Interactive exercise & quiz extraction ---
+// The lesson HTML generator can render live code exercises (editor + run/submit
+// + hints) and self-grading quizzes, but only if a section carries structured
+// `exercises` / `quiz` data. Teaching-tool prompts instruct the model to embed
+// these as fenced JSON blocks (```lesson-exercise / ```lesson-quiz) inside the
+// markdown. This pass pulls them out into structured objects and strips the raw
+// JSON from the prose so it doesn't render as text. Without it, lessons are
+// static prose even though the generator supports full interactivity.
+const asStr = (v: unknown, fallback = ''): string => typeof v === 'string' ? v : fallback
+const asStrArr = (v: unknown): string[] | undefined => {
+	if (!Array.isArray(v)) return undefined
+	const out: string[] = []
+	for (const x of v) if (typeof x === 'string') out.push(x)
+	return out.length > 0 ? out : undefined
+}
+
+function parseLessonExercise(json: string): LessonExercise | null {
+	let obj: Record<string, unknown>
+	try { obj = JSON.parse(json) as Record<string, unknown> } catch { return null }
+	if (typeof obj !== 'object' || !obj) return null
+	const validTypes = ['fill_blank', 'fix_bug', 'write_function', 'extend_code']
+	const t = asStr(obj.type)
+	const type = (validTypes.includes(t) ? t : 'write_function') as LessonExercise['type']
+	const initialCode = asStr(obj.initialCode) || asStr(obj.initial_code)
+	const expectedSolution = asStr(obj.expectedSolution, '') || asStr(obj.expected_solution, '')
+	return {
+		id: `ex_${Math.random().toString(36).slice(2, 10)}`,
+		type,
+		title: asStr(obj.title, 'Exercise'),
+		instructions: asStr(obj.instructions),
+		initialCode,
+		language: asStr(obj.language, '') || undefined,
+		expectedSolution: expectedSolution || undefined,
+		hints: asStrArr(obj.hints),
+	}
+}
+
+function parseLessonQuiz(json: string): LessonQuiz | null {
+	let obj: Record<string, unknown>
+	try { obj = JSON.parse(json) as Record<string, unknown> } catch { return null }
+	if (typeof obj !== 'object' || !obj) return null
+	const rawQuestions = obj.questions
+	if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) return null
+	const validTypes = ['multiple_choice', 'fill_blank', 'code_output', 'true_false']
+	const questions: QuizQuestion[] = []
+	for (let i = 0; i < rawQuestions.length; i++) {
+		const q = rawQuestions[i]
+		if (typeof q !== 'object' || !q) continue
+		const rec = q as Record<string, unknown>
+		const t = asStr(rec.type)
+		const type = (validTypes.includes(t) ? t : 'multiple_choice') as QuizQuestion['type']
+		const ca = rec.correctAnswer ?? rec.correct_answer
+		let correctAnswer: string | string[]
+		if (Array.isArray(ca)) {
+			const arr = asStrArr(ca)
+			if (!arr || arr.length === 0) continue
+			correctAnswer = arr
+		} else {
+			const s = asStr(ca, '')
+			if (!s) continue
+			correctAnswer = s
+		}
+		questions.push({
+			id: `q_${i}_${Math.random().toString(36).slice(2, 6)}`,
+			type,
+			question: asStr(rec.question),
+			options: asStrArr(rec.options),
+			correctAnswer,
+			explanation: asStr(rec.explanation, '') || undefined,
+			code: asStr(rec.code, '') || undefined,
+			points: typeof rec.points === 'number' ? rec.points : 1,
+		})
+	}
+	if (questions.length === 0) return null
+	return {
+		id: `quiz_${Math.random().toString(36).slice(2, 10)}`,
+		title: asStr(obj.title, '') || undefined,
+		questions,
+		passingScore: typeof obj.passingScore === 'number' ? obj.passingScore : undefined,
+	}
+}
+
+function extractInteractiveBlocks(sections: LessonSection[]): LessonSection[] {
+	for (const section of sections) {
+		if (!section.content) continue
+		// Pull out every ```lesson-exercise block in this section.
+		section.content = section.content.replace(
+			/^[ \t]*```lesson-exercise\s*\n([\s\S]*?)\n[ \t]*```/gim,
+			(_m, json: string) => {
+				const ex = parseLessonExercise(json)
+				if (ex) {
+					const list = section.exercises
+					if (list) list.push(ex)
+					else section.exercises = [ex]
+				}
+				return ''
+			}
+		)
+		// Pull out ```lesson-quiz blocks (one quiz per section; last wins).
+		section.content = section.content.replace(
+			/^[ \t]*```lesson-quiz\s*\n([\s\S]*?)\n[ \t]*```/gim,
+			(_m, json: string) => {
+				const quiz = parseLessonQuiz(json)
+				if (quiz) section.quiz = quiz
+				return ''
+			}
+		)
+		section.content = section.content.replace(/\n{3,}/g, '\n\n').trim()
+	}
+	return sections
 }
 
 
@@ -315,7 +459,7 @@ export class ToolsService implements IToolsService {
 	) {
 		const queryBuilder = this._instantiationService.createInstance(QueryBuilder);
 		this._toonService = new ToonService();
-		this._planningService = new PlanningService();
+		this._planningService = planningService;
 		// Use the shared singleton instance — AgentManagerService.approveImplementationPlan
 		// delegates to the same singleton, so the approve flow (React preview) and
 		// the tool handlers (create/execute/update) share one set of plans.
@@ -849,12 +993,6 @@ export class ToolsService implements IToolsService {
 				return {};
 			},
 
-			execute_implementation_plan: (params: RawToolParamsObj) => {
-				const { step_id: stepIdUnknown } = params;
-				const step_id = stepIdUnknown !== undefined && stepIdUnknown !== null ? validateStr('step_id', stepIdUnknown) : undefined;
-				return { step_id };
-			},
-
 			update_implementation_step: (params: RawToolParamsObj) => {
 				const { step_id: stepIdUnknown, status: statusUnknown, notes: notesUnknown } = params;
 				const step_id = validateStr('step_id', stepIdUnknown);
@@ -896,27 +1034,19 @@ export class ToolsService implements IToolsService {
 			},
 
 			create_exercise: (params: RawToolParamsObj) => {
-				const { topic, difficulty, language, type } = params;
+				const { title, instructions, type, language, initial_code, expected_solution, hints, difficulty } = params;
+				const validatedHints = Array.isArray(hints)
+					? hints.filter((h: unknown): h is string => typeof h === 'string').slice(0, 3)
+					: undefined;
 				return {
-					topic: validateStr('topic', topic),
-					difficulty: validateStr('difficulty', difficulty) as 'easy' | 'medium' | 'hard',
+					title: validateStr('title', title),
+					instructions: validateStr('instructions', instructions),
+					type: validateStr('type', type) as 'fill_blank' | 'fix_bug' | 'write_function' | 'extend_code',
 					language: validateStr('language', language),
-					type: validateStr('type', type) as 'fill_blank' | 'fix_bug' | 'write_function' | 'extend_code'
-				};
-			},
-
-			check_answer: (params: RawToolParamsObj) => {
-				const { exercise_id, student_code } = params;
-				return {
-					exercise_id: validateStr('exercise_id', exercise_id),
-					student_code: validateStr('student_code', student_code)
-				};
-			},
-
-			give_hint: (params: RawToolParamsObj) => {
-				const { exercise_id } = params;
-				return {
-					exercise_id: validateStr('exercise_id', exercise_id)
+					initial_code: validateStr('initial_code', initial_code),
+					expected_solution: validateStr('expected_solution', expected_solution),
+					hints: validatedHints && validatedHints.length > 0 ? validatedHints : undefined,
+					difficulty: typeof difficulty === 'string' ? difficulty as 'easy' | 'medium' | 'hard' : undefined,
 				};
 			},
 
@@ -1876,46 +2006,6 @@ export class ToolsService implements IToolsService {
 				return { result: { planId: plan.id, goal: plan.goal, steps: plan.steps, summary } };
 			},
 
-			execute_implementation_plan: async ({ step_id }, opts) => {
-				const tid = opts?.threadId
-				const plan = this._implementationPlanningService.getCurrentPlan(tid);
-				if (!plan) {
-					throw new Error('No active implementation plan. Create one using create_implementation_plan.');
-				}
-
-				if (!plan.approved) {
-					throw new Error('Implementation plan must be approved before execution. Use preview_implementation_plan to review and approve the plan.');
-				}
-
-				// If step_id is provided, execute that specific step
-				if (step_id) {
-					const step = plan.steps.find(s => s.id === step_id);
-					if (!step) {
-						throw new Error(`Step with ID '${step_id}' not found in current plan.`);
-					}
-
-					// Mark step as in progress
-					this._implementationPlanningService.updateStepStatus(step_id, 'in_progress', undefined, tid);
-					const updatedPlan = this._implementationPlanningService.getCurrentPlan(tid)!;
-					const summary = this.formatImplementationPlanSummary(updatedPlan);
-
-					return { result: { stepId: step_id, status: 'in_progress', summary } };
-				} else {
-					// Execute next available step
-					const nextStep = this._implementationPlanningService.getNextExecutableStep(tid);
-					if (!nextStep) {
-						throw new Error('No executable steps found. All steps are either complete, in progress, or have unmet dependencies.');
-					}
-
-					// Mark step as in progress
-					this._implementationPlanningService.updateStepStatus(nextStep.id, 'in_progress', undefined, tid);
-					const updatedPlan = this._implementationPlanningService.getCurrentPlan(tid)!;
-					const summary = this.formatImplementationPlanSummary(updatedPlan);
-
-					return { result: { stepId: nextStep.id, status: 'in_progress', summary } };
-				}
-			},
-
 			update_implementation_step: async ({ step_id, status, notes }, opts) => {
 				const step = this._implementationPlanningService.updateStepStatus(step_id, status as ImplStepStatus, notes ?? undefined, opts?.threadId);
 				if (!step) {
@@ -1971,7 +2061,11 @@ ${focus ? `**Focus on:** ${focus}` : ''}
 (What do students often get wrong with this pattern?)
 
 ### \u{1F3AF} Try It Yourself
-(Suggest a small modification the student could try)`;
+(Include an interactive exercise based on the code above — see the interactive format below.)
+
+${LESSON_INTERACTIVE_FORMAT}
+
+Include at least one lesson-exercise block (type "extend_code" or "fix_bug" fits well here) so the student can edit and run code.`;
 
 				return { result: { template } };
 			},
@@ -2013,117 +2107,27 @@ ${context ? `**Context:** Relate to: ${context}` : ''}
 (What to learn next)
 
 ### \u{1F3AF} Quick Exercise
-(Simple practice problem to reinforce understanding)`;
+(Include a hands-on exercise AND a short quiz the student can actually do — see the interactive format below.)
+
+${LESSON_INTERACTIVE_FORMAT}
+
+Include at least one lesson-exercise block and one lesson-quiz block (2-3 questions) so the student can practice and self-check.`;
 
 				return { result: { template } };
 			},
 
-			create_exercise: async ({ topic, difficulty, language, type }) => {
-				const exerciseId = `ex_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-				// Store exercise in thread state (we'll track this via the exercise ID in responses)
-				const typeDescriptions = {
-					fill_blank: 'Code with blanks (___) for student to fill in',
-					fix_bug: 'Code with intentional bugs for student to find and fix',
-					write_function: 'Function signature with description, student writes implementation',
-					extend_code: 'Working code that student needs to extend with new features'
-				};
-
-				const template = `## Create Exercise Task
-
-**Exercise ID:** ${exerciseId}
-**Topic:** ${topic}
-**Difficulty:** ${difficulty}
-**Language:** ${language}
-**Type:** ${type} - ${typeDescriptions[type]}
-
-**Generate an exercise with this structure:**
-
-### \u{1F3AF} Challenge: [Creative Title Related to ${topic}]
-
-**Problem:**
-(Clear description of what the student needs to do)
-
-**Starter Code:**
-\`\`\`${language}
-// Provide ${type} starter code for practicing ${topic}
-\`\`\`
-
-**Expected Output/Behavior:**
-(What the correct solution should produce)
-
-**Hints Available:** 3 (use give_hint tool if stuck)
-
----
-*Exercise ID: ${exerciseId} - Student can use this with check_answer or give_hint*`;
-
-				return { result: { exerciseId, template } };
-			},
-
-			check_answer: async ({ exercise_id, student_code }) => {
-				const template = `## Validate Student Solution
-
-**Exercise ID:** ${exercise_id}
-
-**Student's Code:**
-\`\`\`
-${student_code}
-\`\`\`
-
-**Your task:**
-1. Analyze if this solution is correct
-2. Do NOT give the answer if wrong - guide them instead
-3. Be encouraging regardless of result
-
-**Response format:**
-
-### Result: \u{2705} Correct! / \u{274C} Not quite...
-
-### What Works Well
-(Positive feedback on their approach - find something good even if wrong)
-
-### Feedback
-(If correct: explain why it works and suggest optimizations. If wrong: give ONE specific hint without revealing the answer)
-
-### Next Step
-(If correct: suggest an extension challenge. If wrong: encourage retry or offer to use give_hint)`;
-
-				return { result: { template } };
-			},
-
-			give_hint: async ({ exercise_id }) => {
-				// For now, we'll track hint level in the response and let the LLM manage it
-				// In a full implementation, we'd track this in thread state
-				const hintLevel = 1; // Default to level 1, LLM should track progression
-
-				const hintInstructions: { [key: number]: string } = {
-					1: 'VAGUE hint - just point in the right direction, no specifics. Example: "Think about what data structure would help here..."',
-					2: 'MODERATE hint - mention the specific concept/method needed. Example: "You\'ll need to use a loop that checks each element..."',
-					3: 'STRONG hint - show the structure/pseudocode without exact syntax. Example: "The pattern is: for each item, if condition, then action..."',
-					4: 'SOLUTION - show the complete answer with full explanation of why it works.'
-				};
-
-				const template = `## Hint for Exercise: ${exercise_id}
-
-**Hint Level:** Check previous hints given for this exercise and advance to next level (1→2→3→4)
-
-**Hint Instructions by Level:**
-- Level 1: ${hintInstructions[1]}
-- Level 2: ${hintInstructions[2]}
-- Level 3: ${hintInstructions[3]}
-- Level 4: ${hintInstructions[4]}
-
-**Provide the appropriate level hint now.** Track which level you're on based on previous hints given in this conversation.`;
-
-				return { result: { hintLevel, template } };
+			create_exercise: async () => {
+				// The interactive exercise is rendered inline in the chat by the UI
+				// (ExerciseResultWrapper) directly from the validated tool params —
+				// a live code editor with instant validation + progressive hints.
+				// No template or follow-up display_lesson call is needed.
+				const exerciseId = `ex_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+				return { result: { exerciseId } };
 			},
 
 			create_lesson_plan: async ({ goal, level, time_available }) => {
-				const planId = `lesson_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
 				const template = `## Create Lesson Plan
 
-**Plan ID:** ${planId}
 **Goal:** ${goal}
 **Student Level:** ${level}
 ${time_available ? `**Time Available:** ${time_available} minutes` : ''}
@@ -2144,24 +2148,25 @@ For each module include:
 1. **Module Title** (estimated time)
    - Concepts covered
    - Hands-on exercise (describe briefly)
-   - Checkpoint question to verify understanding
+   - Checkpoint: a lesson-quiz block (1-2 questions) to verify understanding
 
 ### \u{1F3C6} Final Project
 (Capstone exercise that combines all learned concepts)
 
-### 📈 Success Criteria
+### \u{1F4F8} Success Criteria
 (How student knows they've mastered this topic)
 
----
-*Lesson Plan ID: ${planId}*`;
+${LESSON_INTERACTIVE_FORMAT}
 
-				return { result: { planId, template } };
+Include a lesson-quiz checkpoint in each module and a lesson-exercise for the Final Project so the plan is interactive, not just an outline.`;
+
+				return { result: { template } };
 			},
 
 			display_lesson: async ({ title, content }) => {
 				// Parse markdown content into structured lesson data
 				const lessonId = `lesson-${Date.now()}`;
-				const sections = parseLessonContent(content);
+				const sections = extractInteractiveBlocks(parseLessonContent(content));
 
 				const lessonData: LessonData = {
 					id: lessonId,
@@ -3464,12 +3469,7 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 				if (!result.planId) {
 					return `\u{274C} No active implementation plan to preview.\n\n\u{1F4A1} Create a plan first using create_implementation_plan.`;
 				}
-				return `\u{1F4CB} Implementation Plan Preview\n\n${result.summary}\n\n\u{1F4A1} To approve this plan for execution, use execute_implementation_plan.`;
-			},
-
-			execute_implementation_plan: (params, result) => {
-				const statusEmoji = result.status === 'in_progress' ? '\u{1F504}' : result.status === 'complete' ? '\u{2705}' : '\u{23F3}';
-				return `${statusEmoji} Step execution started!\n\nStep ID: ${result.stepId}\nStatus: ${result.status}\n\n${result.summary}`;
+				return `\u{1F4CB} Implementation Plan Preview\n\n${result.summary}\n\n\u{1F4A1} The user can approve this plan from the preview to begin execution.`;
 			},
 
 			update_implementation_step: (params, result) => {
@@ -3495,15 +3495,7 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 			},
 
 			create_exercise: (params, result) => {
-				return `\u{1F3AF} Exercise Created!\n\nExercise ID: ${result.exerciseId}\n\n${result.template}`;
-			},
-
-			check_answer: (params, result) => {
-				return `\u{1F4DD} Answer Check\n\n${result.template}`;
-			},
-
-			give_hint: (params, result) => {
-				return `\u{1F4A1} Hint (Level ${result.hintLevel})\n\n${result.template}`;
+				return `\u{1F3AF} Interactive exercise ready: "${params.title}". The student can write, submit, and reveal hints inline — no further action needed.`;
 			},
 
 			display_lesson: (params, result) => {
@@ -3513,7 +3505,7 @@ Please answer the questions in the quiz below. Your answers will be graded and r
 			},
 
 			create_lesson_plan: (params, result) => {
-				return `\u{1F4DA} Lesson Plan Created!\n\nPlan ID: ${result.planId}\n\n${result.template}`;
+				return `\u{1F4DA} Lesson Plan\n\n${result.template}`;
 			},
 
 			load_skill: (params, result) => {

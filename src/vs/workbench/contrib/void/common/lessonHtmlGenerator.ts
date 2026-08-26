@@ -10,6 +10,8 @@
  * and full interactivity. Opens in browser instead of VS Code webview.
  */
 
+import { SANDBOX_PAGE_SCRIPT, SANDBOX_RUN_JS } from './jsSandbox.js';
+
 export interface LessonSection {
 	id: string;
 	title: string;
@@ -184,18 +186,36 @@ function sanitizeLessonUrl(url: string): string | null {
 }
 
 // Apply inline formatting (bold, italic, code, links) to a plain-text block.
+// IMPORTANT: escape the raw text FIRST, then insert the formatting tags. This
+// keeps author content safe while emitting valid, unescaped HTML tags. The
+// previous approach (insert tags, escape the whole string, then partially
+// un-escape only <…> around known tags) left &quot; inside attribute values,
+// producing malformed tags like <strong class=&quot;…&quot;> that browsers
+// rendered as literal text.
 function applyInlineFormatting(text: string): string {
+	if (!text) return '';
 	// Inline code first so it doesn't get caught by bold/italic regexes.
-	let html = text
+	return escapeHtml(text)
 		.replace(/`([^`]+)`/g, '<code class="px-1.5 py-0.5 rounded bg-slate-700/50 text-pink-400 font-mono text-sm">$1</code>')
 		.replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold text-white">$1</strong>')
-		.replace(/\*(.+?)\*/g, '<em class="italic">$1</em>')
+		.replace(/\*([^*\n]+?)\*/g, '<em class="italic">$1</em>')
 		.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label: string, url: string) => {
 			const safeUrl = sanitizeLessonUrl(url);
 			if (!safeUrl) return String(label); // drop unsafe link, keep the text
 			return `<a href="${safeUrl}" class="text-[var(--primary)] hover:underline" target="_blank" rel="noopener noreferrer">${label}</a>`;
 		});
-	return escapeHtml(html).replace(/&lt;(strong|em|code|a)(\s[^>]*)?&gt;/g, '<$1$2>').replace(/&lt;\/(strong|em|code|a)&gt;/g, '</$1>');
+}
+
+// Convert a GFM table block (header row + delimiter row + body rows) into HTML.
+function convertTable(table: string): string {
+	const rows = table.trim().split('\n').map(r => r.trim()).filter(Boolean);
+	if (rows.length < 2) return table;
+	const splitRow = (r: string) => r.replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+	const header = splitRow(rows[0]);
+	const body = rows.slice(2).map(splitRow);
+	const thead = `<thead><tr>${header.map(h => `<th class="px-4 py-2.5 text-left font-semibold text-white border-b-2 border-[var(--border)]">${applyInlineFormatting(h)}</th>`).join('')}</tr></thead>`;
+	const tbody = `<tbody>${body.map(row => `<tr class="border-b border-[var(--border)]/50">${row.map(c => `<td class="px-4 py-2.5 text-gray-300">${applyInlineFormatting(c)}</td>`).join('')}</tr>`).join('')}</tbody>`;
+	return `\n<div class="my-4 overflow-x-auto rounded-lg border border-[var(--border)]"><table class="w-full text-sm border-collapse">${thead}${tbody}</table></div>\n`;
 }
 
 // Convert markdown to HTML. Keeps code blocks intact and avoids corrupting them
@@ -204,50 +224,66 @@ function markdownToHtml(markdown: string): string {
 	if (!markdown) return '';
 
 	// Pull out fenced code blocks first so later transforms never touch them.
+	// Capture the inner code directly (group 4) and use [ \t]* instead of \s*
+	// for indentation: \s* would swallow the preceding blank line's newline,
+	// so match.split('\n').slice(1, -1) would then keep the ``` fence delimiters
+	// inside the code. The language class is also added to <pre> so Prism's
+	// theme applies its background/padding consistently.
 	const codeBlocks: { placeholder: string; html: string }[] = [];
-	let html = markdown.replace(/^(\s*)(`{3,}|~{3,})(\w+)?\s*[\s\S]*?^(\s*)\2\s*$/gm, (match, _indent, fence, lang) => {
-		const lines = match.split('\n');
-		// Remove the fence lines.
-		const code = lines.slice(1, -1).join('\n').trim();
-		const language = lang || 'plaintext';
+	let html = markdown.replace(/^([ \t]*)(`{3,}|~{3,})(\w+)?[^\n]*\n([\s\S]*?)^[ \t]*\2[ \t]*$/gm, (_match, _indent, _fence, lang, code) => {
+		const language = (lang || 'plaintext').toLowerCase();
 		const placeholder = `__VOID_CODE_BLOCK_${codeBlocks.length}__`;
 		codeBlocks.push({
 			placeholder,
-			html: `<pre class="rounded-lg overflow-hidden"><code class="language-${language}">${escapeHtml(code)}</code></pre>`,
+			html: `<pre class="language-${language} rounded-lg overflow-x-auto my-4 p-4 text-sm leading-relaxed"><code class="language-${language}">${escapeHtml(code.replace(/\n$/, ''))}</code></pre>`,
 		});
-		return placeholder;
+		return `\n${placeholder}\n`;
 	});
 
+	// GFM tables — a header row followed by a delimiter row, then body rows.
+	html = html.replace(/(^\|[^\n]+\|\s*\n\|[\s:|-]+\|\s*\n(?:\|[^\n]+\|\s*\n?)+)/gm, convertTable);
+
 	// Headers
+	html = html.replace(/^#### (.+)$/gm, (_, title) => `<h4 class="text-base font-semibold text-white mt-6 mb-2">${applyInlineFormatting(title)}</h4>`);
 	html = html.replace(/^### (.+)$/gm, (_, title) => `<h3 class="text-lg font-semibold text-white mt-6 mb-3">${applyInlineFormatting(title)}</h3>`);
 	html = html.replace(/^## (.+)$/gm, (_, title) => `<h2 class="text-xl font-bold text-white mt-8 mb-4">${applyInlineFormatting(title)}</h2>`);
-	html = html.replace(/^# (.+)$/gm, (_, title) => `<h1 class="text-2xl font-bold text-white mb-4">${applyInlineFormatting(title)}</h1>`);
+	html = html.replace(/^# (.+)$/gm, (_, title) => `<h1 class="text-2xl font-bold text-white mt-2 mb-4">${applyInlineFormatting(title)}</h1>`);
 
-	// Blockquotes
-	html = html.replace(/^> (.+)$/gm, (_, quote) =>
-		`<blockquote class="border-l-4 border-[var(--primary)] pl-4 my-4 text-gray-400 italic">${applyInlineFormatting(quote)}</blockquote>`);
+	// Blockquotes — group consecutive lines that start with '>'.
+	html = html.replace(/^(?:> ?.*(?:\n|$))+/gm, (block) => {
+		const text = block.trim().split('\n').map(l => l.replace(/^> ?/, '')).join('<br>').trim();
+		return `\n<blockquote class="border-l-4 border-[var(--primary)] pl-4 my-4 text-gray-400 italic">${applyInlineFormatting(text)}</blockquote>\n`;
+	});
 
 	// Horizontal rules
 	html = html.replace(/^---$/gm, '<hr class="border-t border-gray-700 my-6">');
 
-	// Lists – wrap ordered and unordered items in their own containers.
-	html = html.replace(/^- (.+)$/gm, (_, item) =>
-		`<li class="void-list-unordered ml-4 text-gray-300">${applyInlineFormatting(item)}</li>`);
-	html = html.replace(/^(\d+)\. (.+)$/gm, (_, num, item) =>
-		`<li class="void-list-ordered ml-4 text-gray-300" value="${num}">${applyInlineFormatting(item)}</li>`);
+	// Lists — single pass that groups consecutive unordered (- or *) or ordered
+	// (N.) items and wraps them in <ul>/<ol>. Replaces the previous approach
+	// which emitted <li> with a marker class that the wrapping regex never
+	// matched (it looked for <li class="void-list-unordered" but the tag was
+	// <li class="void-list-unordered ml-4 …">), leaving items orphaned without
+	// bullets/numbers or a list container.
+	html = html.replace(/^(?:(?:[-*]|\d+\.)\s+.+(?:\n|$))+/gm, (block) => {
+		const lines = block.trim().split('\n').filter(l => l.trim());
+		const isOrdered = /^\d+\.\s/.test(lines[0]);
+		const items = lines
+			.map(line => `<li class="leading-relaxed">${applyInlineFormatting(line.replace(/^([-*]|\d+\.)\s+/, '').trim())}</li>`)
+			.join('');
+		const tag = isOrdered ? 'ol' : 'ul';
+		const listClass = isOrdered ? 'list-decimal' : 'list-disc';
+		return `\n<${tag} class="${listClass} pl-6 my-4 space-y-2 text-gray-300 marker:text-[var(--primary)]">${items}</${tag}>\n`;
+	});
 
-	html = html.replace(/(<li class="void-list-unordered"[^>]*>[\s\S]*?<\/li>\n?)+/g, '<ul class="space-y-2 my-4">$&</ul>');
-	html = html.replace(/(<li class="void-list-ordered"[^>]*>[\s\S]*?<\/li>\n?)+/g, '<ol class="space-y-2 my-4 list-decimal ml-4 text-gray-300">$&</ol>');
-
-	// Paragraphs: apply inline formatting, but don't wrap headers, lists, blockquotes or code placeholders.
+	// Paragraphs: apply inline formatting, but don't wrap block elements.
 	html = html
 		.split(/\n\n+/)
 		.map(paragraph => {
 			const trimmed = paragraph.trim();
 			if (!trimmed) return '';
-			if (/^<(h[1-6]|pre|blockquote|ul|ol|hr|li)/.test(trimmed)) return trimmed;
+			if (/^<(h[1-6]|pre|blockquote|ul|ol|hr|table|div|li)/.test(trimmed)) return trimmed;
 			if (/^__VOID_CODE_BLOCK_\d+__$/.test(trimmed)) return trimmed;
-			return `<p class="text-gray-300 mb-4">${applyInlineFormatting(trimmed)}</p>`;
+			return `<p class="text-gray-300 mb-4 leading-relaxed">${applyInlineFormatting(trimmed)}</p>`;
 		})
 		.filter(Boolean)
 		.join('\n');
@@ -258,6 +294,20 @@ function markdownToHtml(markdown: string): string {
 	}
 
 	return html;
+}
+
+// Friendly label for a section's type, shown under the section title. Returns
+// '' for generic 'content' sections so the header isn't cluttered with a
+// meaningless "CONTENT" tag under every section.
+function sectionTypeLabel(type: string): string {
+	const labels: Record<string, string> = {
+		objectives: 'Objectives',
+		prerequisites: 'Prerequisites',
+		module: 'Module',
+		project: 'Project',
+		summary: 'Summary',
+	};
+	return labels[type] || '';
 }
 
 // Get section icon SVG
@@ -618,6 +668,26 @@ export function generateLessonHtml(data: LessonData, course?: CourseData): strin
 			font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
 		}
 
+		/* Content typography safety net. The Tailwind Play CDN does NOT include
+		   @tailwindcss/typography, so the prose / prose-invert classes are no-ops.
+		   The markdown renderer adds explicit utility classes to most elements, but
+		   these rules cover the gaps (notably: stop the inline-code pill style
+		   from leaking into fenced code blocks if Prism fails to load offline,
+		   and give fenced blocks a consistent dark background). */
+		.content pre {
+			background: #2d2d2d;
+		}
+		.content pre code {
+			background: transparent;
+			padding: 0;
+			color: inherit;
+			font-size: inherit;
+			border-radius: 0;
+		}
+		.content :not(pre) > code {
+			white-space: nowrap;
+		}
+
 		/* Section animations */
 		.section-content {
 			max-height: 0;
@@ -807,7 +877,7 @@ export function generateLessonHtml(data: LessonData, course?: CourseData): strin
 					</div>
 					<div class="flex-1 min-w-0">
 						<h2 class="text-lg font-semibold text-white truncate">${escapeHtml(section.title)}</h2>
-						<span class="text-xs text-[var(--text-muted)] uppercase tracking-wider">${section.type}</span>
+						${sectionTypeLabel(section.type) ? `<span class="text-xs text-[var(--text-muted)] uppercase tracking-wider">${sectionTypeLabel(section.type)}</span>` : ''}
 					</div>
 					<div class="flex items-center gap-3">
 						<span class="section-status hidden">
@@ -895,6 +965,9 @@ export function generateLessonHtml(data: LessonData, course?: CourseData): strin
 			<p class="text-sm text-gray-500">Generated by A-Coder • ${new Date().toLocaleDateString()}</p>
 		</div>
 	</footer>
+
+	<!-- In-browser JavaScript sandbox for exercise Run buttons (Web Worker) -->
+	<script>${SANDBOX_PAGE_SCRIPT}</script>
 
 	<script>
 		// Lesson state management
@@ -1109,14 +1182,7 @@ export function generateLessonHtml(data: LessonData, course?: CourseData): strin
 			}
 		}
 
-		function runExercise(exerciseId) {
-			// In a real implementation, this would execute code
-			// For now, just show feedback
-			const feedbackContainer = document.getElementById(\`feedback-\${exerciseId}\`);
-			feedbackContainer.classList.remove('hidden');
-			feedbackContainer.className = 'feedback-container mt-4 p-3 rounded-lg bg-blue-500/10 border border-blue-500/30';
-			feedbackContainer.innerHTML = '<p class="text-sm text-blue-400">Code executed successfully. Click Submit to check your answer.</p>';
-		}
+		${SANDBOX_RUN_JS}
 
 		function submitExercise(exerciseId) {
 			const textarea = document.getElementById(\`editor-\${exerciseId}\`);

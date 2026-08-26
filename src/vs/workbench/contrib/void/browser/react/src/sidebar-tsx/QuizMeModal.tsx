@@ -219,27 +219,27 @@ export const QuizMeModal: React.FC<QuizMeModalProps> = ({ threadId, onClose, onQ
 		switch (type) {
 			case 'urgent':
 				return {
-					borderColor: 'border-red-500/50',
-					bgColor: 'bg-red-500/10',
-					iconColor: 'text-red-500',
+					borderColor: 'border-void-error/50',
+					bgColor: 'bg-void-error/10',
+					iconColor: 'text-void-error',
 					label: 'Review Now',
-					badgeColor: 'bg-red-500/20 text-red-500',
+					badgeColor: 'bg-void-error/20 text-void-error',
 				};
 			case 'due':
 				return {
-					borderColor: 'border-orange-500/50',
-					bgColor: 'bg-orange-500/10',
-					iconColor: 'text-orange-500',
+					borderColor: 'border-void-warning/50',
+					bgColor: 'bg-void-warning/10',
+					iconColor: 'text-void-warning',
 					label: 'Due Today',
-					badgeColor: 'bg-orange-500/20 text-orange-500',
+					badgeColor: 'bg-void-warning/20 text-void-warning',
 				};
 			case 'upcoming':
 				return {
-					borderColor: 'border-yellow-500/50',
-					bgColor: 'bg-yellow-500/10',
-					iconColor: 'text-yellow-500',
+					borderColor: 'border-void-info/50',
+					bgColor: 'bg-void-info/10',
+					iconColor: 'text-void-info',
 					label: 'Upcoming',
-					badgeColor: 'bg-yellow-500/20 text-yellow-500',
+					badgeColor: 'bg-void-info/20 text-void-info',
 				};
 			default:
 				return {

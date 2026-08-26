@@ -1296,7 +1296,7 @@ type OllamaCloudShowResponse = {
 	model_info?: Record<string, number>;
 }
 
-const _fetchOllamaCloudContext = async (endpoint: string, modelName: string): Promise<number | undefined> => {
+const _fetchOllamaShowContext = async (endpoint: string, modelName: string): Promise<number | undefined> => {
 	const res = await fetch(`${endpoint}/api/show`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
@@ -1336,7 +1336,7 @@ const _ollamaCloudList = async ({ onSuccess: onSuccess_, onError: onError_, sett
 		const tagModels = data.models ?? []
 		const models: OpenAIModel[] = []
 		for (const tagModel of tagModels) {
-			const n_ctx = await _fetchOllamaCloudContext(endpoint, tagModel.name)
+			const n_ctx = await _fetchOllamaShowContext(endpoint, tagModel.name)
 			models.push({
 				id: tagModel.name,
 				created: Math.floor(new Date(tagModel.modified_at).getTime() / 1000),
@@ -1612,15 +1612,28 @@ const ollamaList = async ({ onSuccess: onSuccess_, onError: onError_, settingsOf
 	}
 	try {
 		const thisConfig = settingsOfProvider.ollama
+		const endpoint = (thisConfig.endpoint || '').replace(/\/+$/, '')
 		const ollama = newOllamaSDK({ endpoint: thisConfig.endpoint })
-		ollama.list()
-			.then((response) => {
-				const { models } = response
-				onSuccess({ models })
-			})
-			.catch((error) => {
-				onError({ error: error + '' })
-			})
+		const response = await ollama.list()
+		const { models } = response
+
+		// Two-step flow (mirrors the Ollama Cloud path): /api/tags gives model names,
+		// /api/show gives context_length in model_info.<arch>.context_length. We reuse
+		// the same raw-fetch helper rather than the SDK's show() so local and cloud
+		// autodetect context windows identically. /api/show is a lightweight metadata
+		// lookup, so fire all calls in parallel.
+		await Promise.all(models.map(async (model) => {
+			try {
+				const ctxLen = await _fetchOllamaShowContext(endpoint, model.name)
+				if (typeof ctxLen === 'number' && ctxLen > 0 && model.details) {
+					;(model.details as any).context_length = ctxLen
+				}
+			} catch {
+				// Silently skip models that fail /api/show (e.g. running model with no Modelfile)
+			}
+		}))
+
+		onSuccess({ models })
 	}
 	catch (error) {
 		onError({ error: error + '' })

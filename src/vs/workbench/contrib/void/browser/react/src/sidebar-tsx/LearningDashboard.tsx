@@ -70,7 +70,7 @@ export const LearningDashboard: React.FC<LearningDashboardProps> = ({ threadId, 
 			level: Math.min(5, Math.ceil(data.score / 20)),
 			score: data.score,
 			attempts: data.attempts,
-			color: data.score >= 80 ? 'border-green-500' : data.score >= 50 ? 'border-void-accent' : 'border-yellow-500',
+			color: data.score >= 80 ? 'border-void-success' : data.score >= 50 ? 'border-void-accent' : 'border-void-warning',
 			isLocked: data.score === 0 && data.attempts === 0,
 		}));
 
@@ -137,7 +137,7 @@ export const LearningDashboard: React.FC<LearningDashboardProps> = ({ threadId, 
 						</nav>
 						<div className="mt-auto p-4 bg-void-bg-3/50 rounded-2xl border border-void-border-2">
 							<div className="flex items-center gap-2 mb-2">
-								<Flame size={16} className="text-orange-500" />
+								<Flame size={16} className="text-void-warning" />
 								<span className="text-[10px] font-black uppercase text-void-fg-3 tracking-tighter">Current Streak</span>
 							</div>
 							<div className="text-xl font-black text-void-fg-1">{global?.currentStreak || 0} Days</div>
@@ -196,7 +196,7 @@ export const LearningDashboard: React.FC<LearningDashboardProps> = ({ threadId, 
 													{quizzes.slice(-2).reverse().map((quiz: any, i: number) => (
 														<div key={`quiz-${i}`} className="px-8 py-5 flex items-center justify-between border-b border-void-border-2 last:border-0 hover:bg-void-bg-3/30 transition-colors">
 															<div className="flex items-center gap-4">
-																<div className="w-10 h-10 rounded-2xl bg-green-500/10 flex items-center justify-center text-green-500">
+																<div className="w-10 h-10 rounded-2xl bg-void-success/10 flex items-center justify-center text-void-success">
 																	<CheckCircle2 size={18} />
 																</div>
 																<div>
@@ -231,10 +231,10 @@ export const LearningDashboard: React.FC<LearningDashboardProps> = ({ threadId, 
 												<div key={idx} className="bg-void-bg-2 rounded-2xl border border-void-border-2 p-5 hover:border-void-accent transition-all">
 													<div className="flex items-center justify-between mb-3">
 														<span className="text-sm font-bold text-void-fg-1">{concept.name}</span>
-														<span className={`text-xs font-bold ${concept.score >= 80 ? 'text-green-500' : concept.score >= 50 ? 'text-void-accent' : 'text-yellow-500'}`}>{concept.score}%</span>
+														<span className={`text-xs font-bold ${concept.score >= 80 ? 'text-void-success' : concept.score >= 50 ? 'text-void-accent' : 'text-void-warning'}`}>{concept.score}%</span>
 													</div>
 													<div className="h-2 w-full bg-void-bg-3 rounded-full overflow-hidden mb-2">
-														<div className="h-full rounded-full transition-all duration-500" style={{ width: `${concept.score}%`, backgroundColor: concept.score >= 80 ? 'var(--void-green)' : concept.score >= 50 ? 'var(--void-accent)' : '#eab308' }} />
+														<div className="h-full rounded-full transition-all duration-500" style={{ width: `${concept.score}%`, backgroundColor: concept.score >= 80 ? 'var(--void-success)' : concept.score >= 50 ? 'var(--void-accent-start)' : 'var(--void-warning)' }} />
 													</div>
 													<div className="flex items-center justify-between text-[10px] text-void-fg-4">
 														<span>{concept.attempts} attempt{concept.attempts !== 1 ? 's' : ''}</span>
@@ -261,15 +261,15 @@ export const LearningDashboard: React.FC<LearningDashboardProps> = ({ threadId, 
 											{quizzes.slice().reverse().map((quiz: any, i: number) => (
 												<div key={i} className="p-6 bg-void-bg-2 rounded-[24px] border border-void-border-2 flex items-center justify-between hover:border-void-accent transition-all">
 													<div className="flex items-center gap-4">
-														<div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-lg ${quiz.score >= 80 ? 'bg-green-500' : quiz.score >= 50 ? 'bg-void-accent' : 'bg-yellow-500'}`}>{quiz.score}</div>
+														<div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-lg ${quiz.score >= 80 ? 'bg-void-success' : quiz.score >= 50 ? 'bg-void-accent' : 'bg-void-warning'}`}>{quiz.score}</div>
 														<div>
 															<p className="text-sm font-bold text-void-fg-1">Quiz {quizzes.length - i}</p>
 															<p className="text-xs text-void-fg-4">{new Date(quiz.completedAt).toLocaleDateString()} · {formatTime(quiz.timeSpent || 0)}</p>
 														</div>
 													</div>
 													<div className="flex items-center gap-2">
-														<Zap size={16} className={quiz.score >= 80 ? 'text-green-500' : quiz.score >= 50 ? 'text-void-accent' : 'text-yellow-500'} />
-														<span className={`text-xs font-bold ${quiz.score >= 80 ? 'text-green-500' : quiz.score >= 50 ? 'text-void-accent' : 'text-yellow-500'}`}>{quiz.score >= 80 ? 'Excellent' : quiz.score >= 50 ? 'Good' : 'Needs Practice'}</span>
+														<Zap size={16} className={quiz.score >= 80 ? 'text-void-success' : quiz.score >= 50 ? 'text-void-accent' : 'text-void-warning'} />
+														<span className={`text-xs font-bold ${quiz.score >= 80 ? 'text-void-success' : quiz.score >= 50 ? 'text-void-accent' : 'text-void-warning'}`}>{quiz.score >= 80 ? 'Excellent' : quiz.score >= 50 ? 'Good' : 'Needs Practice'}</span>
 													</div>
 												</div>
 											))}

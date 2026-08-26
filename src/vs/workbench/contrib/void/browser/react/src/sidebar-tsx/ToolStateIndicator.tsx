@@ -309,8 +309,8 @@ export const CancellationDialog: React.FC<{
 	return (
 		<div className="p-4 bg-void-bg-2 border border-void-border-2 rounded-lg">
 			<div className="flex items-start gap-3 mb-4">
-				<div className="p-2 bg-orange-500/20 rounded-lg">
-					<AlertCircle size={20} className="text-orange-500" />
+				<div className="p-2 bg-void-orange/20 rounded-lg">
+					<AlertCircle size={20} className="text-void-orange" />
 				</div>
 				<div>
 					<h3 className="text-sm font-semibold text-void-fg-1">Cancel Tool?</h3>

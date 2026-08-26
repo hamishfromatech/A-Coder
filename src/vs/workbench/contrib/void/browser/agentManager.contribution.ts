@@ -40,12 +40,11 @@ export interface IAgentManagerService {
 
 	/**
 	 * Marks the current implementation plan for the given thread as approved
-	 * for execution. Delegates to the shared ImplementationPlanningService
-	 * singleton (the same instance the tool handlers populate), so the
-	 * `execute_implementation_plan` tool's `plan.approved` gate passes. Throws
-	 * if no plan exists for the thread. The React preview UI lives in a
-	 * separate bundle and can't reach the singleton directly, so it goes
-	 * through this service.
+	 * for execution, and auto-promotes its steps into a todo list on the
+	 * shared PlanningService singleton so the agent can execute them via
+	 * update_todo without re-creating the steps. Throws if no plan exists
+	 * for the thread. The React preview UI lives in a separate bundle and
+	 * can't reach the singletons directly, so it goes through this service.
 	 */
 	approveImplementationPlan(threadId: string): void;
 

@@ -458,9 +458,9 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
 					</div>
 					<div
 						className={`text-sm font-semibold ${
-							percentage >= 80 ? 'text-green-500' :
-							percentage >= 50 ? 'text-amber-500' :
-							'text-red-500'
+							percentage >= 80 ? 'text-void-success' :
+							percentage >= 50 ? 'text-void-warning' :
+							'text-void-error'
 						}`}
 					>
 						{Math.round(percentage)}%

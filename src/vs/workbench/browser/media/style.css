@@ -323,13 +323,19 @@ body {
    PREMIUM IDE STYLING ENHANCEMENTS
    ============================================ */
 
-/* Smooth transitions on interactive elements */
+/* Smooth transitions on interactive elements.
+   NOTE: do NOT add `transform`/`filter`/`backdrop-filter` to `.action-item`
+   states (:active, :hover). Action items host fixed-positioned descendants
+   (dropdown menus, context menus, hover widgets) via shadow DOM; a transform
+   or filter on the host makes it the containing block for `position: fixed`,
+   which mispositions the menu — and for transient states like :active the
+   containing block disappears on mouseup, so the menu jumps off-target and the
+   click misses (this is what broke the terminal profile selector on Windows).
+   `opacity` is also unsafe here: it creates a stacking context that renders the
+   menu behind adjacent panel content while pressed. Use background/box-shadow
+   for press feedback if needed. */
 .monaco-workbench .monaco-action-bar .action-item {
-	transition: transform 150ms ease-out, opacity 150ms ease-out;
-}
-
-.monaco-workbench .monaco-action-bar .action-item:active {
-	transform: scale(0.97);
+	transition: background-color 150ms ease-out, opacity 150ms ease-out;
 }
 
 /* Editor tabs - premium styling */
@@ -463,10 +469,13 @@ body {
 	outline-offset: -1px;
 }
 
-/* Button hover lift effect */
+/* Button hover — no `transform` lift: buttons can host fixed-positioned
+   dropdown descendants, and a transient :hover transform makes the containing
+   block disappear when the pointer moves to the menu, causing the same jump.
+   box-shadow is safe (no containing block, no stacking context). */
 .monaco-workbench button:not(.disabled):hover,
 .monaco-workbench .monaco-button:hover {
-	transform: translateY(-0.5px);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
 }
 
 /* Tab premium styling */

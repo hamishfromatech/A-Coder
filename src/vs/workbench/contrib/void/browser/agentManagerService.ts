@@ -23,6 +23,7 @@ import { IWorkspaceRemoteControlService } from './workspaceRemoteControlService.
 import { IFileService } from '../../../../platform/files/common/files.js';
 import { IHostService } from '../../../services/host/browser/host.js';
 import { implementationPlanningService } from '../common/implementationPlanningService.js';
+import { planningService } from '../common/planningService.js';
 import { voidDevLog } from '../common/devLog.js';
 
 const AGENT_MANAGER_STATE_KEY = 'void.agentManager.state';
@@ -291,10 +292,28 @@ export class AgentManagerService extends Disposable implements IAgentManagerServ
 	}
 
 	approveImplementationPlan(threadId: string): void {
-		// Delegates to the shared singleton (same instance the create/preview
-		// tool handlers use), so the approved flag is visible to
-		// execute_implementation_plan. Throws if no plan exists for the thread.
-		implementationPlanningService.approvePlan(threadId);
+		// Marks the current implementation plan approved, then auto-promotes its
+		// steps into a todo list on the shared PlanningService singleton (the
+		// same instance the create_todo/update_todo tool handlers use). This
+		// means the agent can start executing via update_todo right away — it
+		// does NOT need to re-emit the steps with create_todo (saving a large
+		// tool call + tokens, and preserving step ids/dependencies/files).
+		// Throws if no plan exists for the thread.
+		implementationPlanningService.approvePlan(threadId); // throws if no plan
+		const plan = implementationPlanningService.getCurrentPlan(threadId)!;
+		try {
+			planningService.createPlan(
+				plan.goal,
+				plan.steps.map(s => ({
+					id: s.id,
+					description: `${s.title} — ${s.description}${s.files.length ? ` (files: ${s.files.join(', ')})` : ''}`,
+					dependencies: s.dependencies,
+				})),
+				threadId
+			);
+		} catch (e) {
+			console.warn('[AgentManagerService] auto-promote implementation plan to todos failed (non-blocking):', e);
+		}
 	}
 
 	closeAgentManager(): void {

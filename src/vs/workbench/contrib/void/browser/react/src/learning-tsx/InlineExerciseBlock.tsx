@@ -5,9 +5,8 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Check, X, Lightbulb, Play, RefreshCw, ChevronDown, ChevronUp, Save, FileText } from 'lucide-react';
-import { useLessonTheme } from '../util/LessonThemeProvider.js';
 import { generateCodeBlockDecoration } from '../util/proceduralUtils.js';
-import { useAccessor, useChatThreadsStreamState } from '../util/services.js';
+import { useAccessor } from '../util/services.js';
 import { BlockCode } from '../util/inputs.js';
 
 export type ExerciseType = 'fill_blank' | 'fix_bug' | 'write_function' | 'extend_code';
@@ -23,6 +22,7 @@ export interface InlineExerciseBlockProps {
 	expectedSolution?: string;
 	onSubmit?: (studentCode: string) => Promise<{ isCorrect: boolean; feedback: string }>;
 	onRequestHint?: () => Promise<string>;
+	hints?: string[];
 	threadId: string;
 }
 
@@ -38,8 +38,11 @@ const CodeExerciseEditor: React.FC<{
 	hintText: string;
 	result: { isCorrect: boolean; feedback: string } | null;
 	isSubmitting: boolean;
+	runResult: { logs: string[]; error: string | null } | null;
+	isRunning: boolean;
+	onRun: () => void;
 	placeholder?: string;
-}> = ({ code, language = 'typescript', onChange, onSubmit, onRequestHint, onReset, showHint, hintText, result, isSubmitting, placeholder }) => {
+}> = ({ code, language = 'typescript', onChange, onSubmit, onRequestHint, onReset, showHint, hintText, result, isSubmitting, runResult, isRunning, onRun, placeholder }) => {
 
 	// Custom simple editor for exercise inputs
 	const accessor = useAccessor();
@@ -48,10 +51,10 @@ const CodeExerciseEditor: React.FC<{
 	return (
 		<div className="space-y-4">
 			{result && (
-				<div className={`p-3 rounded-lg animate-in slide-in-from-top-2 duration-200 ${result.isCorrect ? 'bg-green-500/10 border border-green-500/30' : 'bg-amber-500/10 border border-amber-500/30'}`}>
+				<div className={`p-3 rounded-lg animate-in slide-in-from-top-2 duration-200 ${result.isCorrect ? 'bg-void-success/10 border border-void-success/30' : 'bg-void-warning/10 border border-void-warning/30'}`}>
 					<div className="flex items-center gap-2">
-						{result.isCorrect ? <Check className="w-4 h-4 text-green-500" /> : <X className="w-4 h-4 text-amber-500" />}
-						<span className={`text-sm ${result.isCorrect ? 'text-green-400' : 'text-amber-400'}`}>{result.feedback}</span>
+						{result.isCorrect ? <Check className="w-4 h-4 text-void-success" /> : <X className="w-4 h-4 text-void-warning" />}
+						<span className={`text-sm ${result.isCorrect ? 'text-void-success' : 'text-void-warning'}`}>{result.feedback}</span>
 					</div>
 				</div>
 			)}
@@ -72,25 +75,43 @@ const CodeExerciseEditor: React.FC<{
 				/>
 			</div>
 
+			{runResult && (
+				<pre className={`mt-3 p-3 rounded-xl text-xs font-mono whitespace-pre-wrap break-words ${runResult.error ? 'bg-void-error/10 border border-void-error/30 text-void-error' : 'bg-void-bg-1/50 border border-void-border-2 text-void-fg-2'}`}>
+					{runResult.error ? ('[Error] ' + runResult.error + '\n') : ''}{runResult.logs.length ? runResult.logs.join('\n') : (runResult.error ? '' : '(no output)')}
+				</pre>
+			)}
+
 			<div className="flex items-center justify-between gap-2">
 				<div className="flex gap-2">
 					<button
+						onClick={onRun}
+						disabled={isRunning}
+						className="flex items-center gap-2 px-4 py-2 bg-void-bg-2 hover:bg-void-bg-3 border border-void-border-2 text-void-fg-2 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+					>
+						{isRunning ? (
+							<RefreshCw className="w-4 h-4 animate-spin" />
+						) : (
+							<Play className="w-4 h-4 fill-current" />
+						)}
+						Run
+					</button>
+					<button
 						onClick={onSubmit}
 						disabled={isSubmitting}
-						className="flex items-center gap-2 px-5 py-2 bg-void-accent hover:bg-void-accent/90 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-void-accent/20 active:scale-[0.98]"
+						className="flex items-center gap-2 px-5 py-2 bg-void-accent hover:bg-void-accent/90 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow_void-accent/20 active:scale-[0.98]"
 					>
 						{isSubmitting ? (
 							<RefreshCw className="w-4 h-4 animate-spin" />
 						) : (
 							<Play className="w-4 h-4 fill-current" />
 						)}
-						Run Solution
+						Submit
 					</button>
 					<button
 						onClick={onRequestHint}
 						className="flex items-center gap-2 px-4 py-2 bg-void-bg-2 hover:bg-void-bg-3 text-void-fg-2 rounded-xl text-sm font-medium transition-all border border-void-border-2 hover:border-void-border-1"
 					>
-						<Lightbulb className="w-4 h-4 text-amber-400" />
+						<Lightbulb className="w-4 h-4 text-void-warning" />
 						Hint
 					</button>
 				</div>
@@ -105,10 +126,10 @@ const CodeExerciseEditor: React.FC<{
 			</div>
 
 			{showHint && (
-				<div className="p-4 bg-void-bg-2/50 border border-amber-500/20 rounded-xl animate-in fade-in zoom-in-95 duration-200">
+				<div className="p-4 bg-void-bg-2/50 border border-void-warning/20 rounded-xl animate-in fade-in zoom-in-95 duration-200">
 					<div className="flex items-start gap-3">
-						<div className="p-1.5 bg-amber-500/10 rounded-lg shrink-0">
-							<Lightbulb className="w-4 h-4 text-amber-500" />
+						<div className="p-1.5 bg-void-warning/10 rounded-lg shrink-0">
+							<Lightbulb className="w-4 h-4 text-void-warning" />
 						</div>
 						<span className="text-sm text-void-fg-2 leading-relaxed">{hintText}</span>
 					</div>
@@ -130,15 +151,15 @@ export const InlineExerciseBlock: React.FC<InlineExerciseBlockProps> = ({
 	expectedSolution,
 	onSubmit,
 	onRequestHint,
+	hints,
 	threadId,
 }) => {
-	const { theme } = useLessonTheme();
 	const accessor = useAccessor();
-	const learningProgressService = accessor.get('ILearningProgressService');
-
 	const [studentCode, setStudentCode] = useState(initialCode);
 	const [result, setResult] = useState<{ isCorrect: boolean; feedback: string } | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [runResult, setRunResult] = useState<{ logs: string[]; error: string | null } | null>(null);
+	const [isRunning, setIsRunning] = useState(false);
 	const [showHint, setShowHint] = useState(false);
 	const [hintText, setHintText] = useState('');
 	const [hintLevel, setHintLevel] = useState(1);
@@ -146,6 +167,32 @@ export const InlineExerciseBlock: React.FC<InlineExerciseBlockProps> = ({
 	const [startTime] = useState(Date.now());
 
 	const decoration = generateCodeBlockDecoration(exerciseId);
+
+	// Run the student's code via the main-process QuickJS sandbox.
+	// The sidebar webview CSP enforces Trusted Types Policy which blocks
+	// new Function() / eval(), so we route through ToolsService.callTool.run_code()
+	// which uses an IPC channel to execute in electron-main (no TTP issues).
+	const handleRun = async () => {
+		setIsRunning(true);
+		setRunResult(null);
+		try {
+			const toolsService = accessor.get('IToolsService');
+			const res = await toolsService.callTool.run_code({ code: studentCode, timeout: 5000 });
+			// Result shape from QuickJS: { success, result?, error?, logs? }
+			const r = (res.result as any) || {};
+			if (!r.success) {
+				setRunResult({ logs: [], error: r.error || 'Execution failed' });
+			} else {
+				// QuickJS captures console output in r.logs
+				const logs = (r.logs as string[]) || [];
+				setRunResult({ logs, error: null });
+			}
+		} catch (error) {
+			setRunResult({ logs: [], error: String(error) });
+		} finally {
+			setIsRunning(false);
+		}
+	};
 
 	const handleSubmit = async () => {
 		setIsSubmitting(true);
@@ -211,7 +258,8 @@ export const InlineExerciseBlock: React.FC<InlineExerciseBlockProps> = ({
 			if (onRequestHint) {
 				hint = await onRequestHint();
 			} else {
-				const defaultHints: string[] = [
+				const providedHints = hints && hints.length > 0 ? hints : null;
+				const defaultHints: string[] = providedHints ?? [
 					'Take a close look at the requirements in the instructions.',
 					'Think about the core concept being practiced here.',
 					'Check the syntax - sometimes a small typo is the culprit.',
@@ -260,9 +308,9 @@ export const InlineExerciseBlock: React.FC<InlineExerciseBlockProps> = ({
 
 	return (
 		<div
-			className={`inline-exercise-block rounded-2xl border-2 overflow-hidden transition-all duration-300 ${decoration.showGlow ? 'shadow-[0_0_20px_rgba(var(--void-accent-rgb),0.15)]' : 'shadow-lg'}`}
+			className={`inline-exercise-block rounded-2xl border-2 overflow-hidden transition-all duration-300 ${decoration.showGlow ? 'ring-1 ring-void-accent/25 shadow-lg' : 'shadow-lg'}`}
 			style={{
-				borderColor: result?.isCorrect ? 'rgba(34, 197, 94, 0.3)' : theme.colors.border,
+				borderColor: result?.isCorrect ? 'rgba(34, 197, 94, 0.3)' : 'var(--void-border-1)',
 				borderStyle: 'solid',
 				borderWidth: '1px',
 			}}
@@ -273,8 +321,8 @@ export const InlineExerciseBlock: React.FC<InlineExerciseBlockProps> = ({
 				className={`w-full px-5 py-4 flex items-center justify-between transition-colors ${isExpanded ? 'bg-void-bg-2' : 'bg-void-bg-1 hover:bg-void-bg-2'}`}
 			>
 				<div className="flex items-center gap-4">
-					<div className={`p-2 rounded-xl ${result?.isCorrect ? 'bg-green-500/20' : 'bg-void-bg-3'}`}>
-						{result?.isCorrect ? <Check className="w-5 h-5 text-green-500" /> : typeIcons[type]}
+					<div className={`p-2 rounded-xl ${result?.isCorrect ? 'bg-void-success/20' : 'bg-void-bg-3'}`}>
+						{result?.isCorrect ? <Check className="w-5 h-5 text-void-success" /> : typeIcons[type]}
 					</div>
 					<div className="text-left">
 						<div className="flex items-center gap-2">
@@ -282,7 +330,7 @@ export const InlineExerciseBlock: React.FC<InlineExerciseBlockProps> = ({
 								{title || typeLabels[type]}
 							</h3>
 							{result?.isCorrect && (
-								<span className="px-2 py-0.5 bg-green-500/10 text-green-500 text-[10px] font-bold rounded-full border border-green-500/20">
+								<span className="px-2 py-0.5 bg-void-success/10 text-void-success text-[10px] font-bold rounded-full border border-void-success/20">
 									COMPLETED
 								</span>
 							)}
@@ -314,6 +362,9 @@ export const InlineExerciseBlock: React.FC<InlineExerciseBlockProps> = ({
 						language={language}
 						onChange={setStudentCode}
 						onSubmit={handleSubmit}
+						onRun={handleRun}
+						isRunning={isRunning}
+						runResult={runResult}
 						onRequestHint={handleRequestHint}
 						onReset={handleReset}
 						showHint={showHint}

@@ -4,6 +4,15 @@
  *--------------------------------------------------------------------------------------*/
 
 /** @type {import('tailwindcss').Config} */
+
+// Wrap a CSS-variable color so Tailwind opacity modifiers (e.g. `bg-foo/10`,
+// `text-foo/60`, `border-foo/30`) emit a valid alpha-aware value. Tailwind
+// substitutes <alpha-value> with a 0–1 float; color-mix() requires a
+// percentage, so we route through calc(). At 100% (no modifier) this is
+// visually identical to the raw variable. Chromium (Electron) supports both
+// color-mix() and calc()-percentages, which the stylesheets already rely on.
+const alphaVar = (v) => `color-mix(in srgb, ${v} calc(<alpha-value> * 100%), transparent)`
+
 module.exports = {
 	darkMode: 'selector', // '{prefix-}dark' className is used to identify `dark:`
 	content: ['./src2/**/*.{jsx,tsx}'], // uses these files to decide how to transform the css file
@@ -110,54 +119,55 @@ module.exports = {
 
 			colors: {
 				// Core backgrounds
-				'void-bg-1': 'var(--void-bg-1)',
-				'void-bg-1-alt': 'var(--void-bg-1-alt)',
-				'void-bg-2': 'var(--void-bg-2)',
-				'void-bg-2-alt': 'var(--void-bg-2-alt)',
-				'void-bg-2-hover': 'var(--void-bg-2-hover)',
-				'void-bg-3': 'var(--void-bg-3)',
-				'void-bg-4': 'var(--void-bg-4)',
-				'void-bg-4-hover': 'var(--void-bg-4-hover)',
+				'void-bg-1': alphaVar('var(--void-bg-1)'),
+				'void-bg-1-alt': alphaVar('var(--void-bg-1-alt)'),
+				'void-bg-2': alphaVar('var(--void-bg-2)'),
+				'void-bg-2-alt': alphaVar('var(--void-bg-2-alt)'),
+				'void-bg-2-hover': alphaVar('var(--void-bg-2-hover)'),
+				'void-bg-3': alphaVar('var(--void-bg-3)'),
+				'void-bg-4': alphaVar('var(--void-bg-4)'),
+				'void-bg-4-hover': alphaVar('var(--void-bg-4-hover)'),
 
 				// Depth system (elevation layers)
-				'void-depth-base': 'var(--void-depth-base)',
-				'void-depth-elevated': 'var(--void-depth-elevated)',
-				'void-depth-floating': 'var(--void-depth-floating)',
-				'void-depth-modal': 'var(--void-depth-modal)',
+				'void-depth-base': alphaVar('var(--void-depth-base)'),
+				'void-depth-elevated': alphaVar('var(--void-depth-elevated)'),
+				'void-depth-floating': alphaVar('var(--void-depth-floating)'),
+				'void-depth-modal': alphaVar('var(--void-depth-modal)'),
 
 				// Foregrounds
-				'void-fg-0': 'var(--void-fg-0)',
-				'void-fg-1': 'var(--void-fg-1)',
-				'void-fg-2': 'var(--void-fg-2)',
-				'void-fg-3': 'var(--void-fg-3)',
-				'void-fg-4': 'var(--void-fg-4)',
+				'void-fg-0': alphaVar('var(--void-fg-0)'),
+				'void-fg-1': alphaVar('var(--void-fg-1)'),
+				'void-fg-2': alphaVar('var(--void-fg-2)'),
+				'void-fg-3': alphaVar('var(--void-fg-3)'),
+				'void-fg-4': alphaVar('var(--void-fg-4)'),
 
 				// Warning
-				'void-warning': 'var(--void-warning)',
+				'void-warning': alphaVar('var(--void-warning)'),
 
 				// Borders
-				'void-border-1': 'var(--void-border-1)',
-				'void-border-2': 'var(--void-border-2)',
-				'void-border-3': 'var(--void-border-3)',
-				'void-border-4': 'var(--void-border-4)',
+				'void-border-1': alphaVar('var(--void-border-1)'),
+				'void-border-2': alphaVar('var(--void-border-2)'),
+				'void-border-3': alphaVar('var(--void-border-3)'),
+				'void-border-4': alphaVar('var(--void-border-4)'),
 
 				// Ring and links
-				'void-ring-color': 'var(--void-ring-color)',
-				'void-link-color': 'var(--void-link-color)',
+				'void-ring-color': alphaVar('var(--void-ring-color)'),
+				'void-link-color': alphaVar('var(--void-link-color)'),
 
 				// Accent colors (premium brand colors)
 				'void-accent': {
-					DEFAULT: 'var(--void-accent-start)',
-					start: 'var(--void-accent-start)',
-					end: 'var(--void-accent-end)',
-					hover: 'var(--void-accent-hover)',
-					active: 'var(--void-accent-active)',
+					DEFAULT: alphaVar('var(--void-accent-start)'),
+					start: alphaVar('var(--void-accent-start)'),
+					end: alphaVar('var(--void-accent-end)'),
+					hover: alphaVar('var(--void-accent-hover)'),
+					active: alphaVar('var(--void-accent-active)'),
 				},
 
 				// Status colors
-				'void-success': 'var(--void-success)',
-				'void-error': 'var(--void-error)',
-				'void-info': 'var(--void-info)',
+				'void-success': alphaVar('var(--void-success)'),
+				'void-error': alphaVar('var(--void-error)'),
+				'void-info': alphaVar('var(--void-info)'),
+				'void-orange': alphaVar('var(--void-orange)'),
 
 				vscode: {
 					// see: https://code.visualstudio.com/api/extension-guides/webview#theming-webview-content
@@ -278,6 +288,10 @@ module.exports = {
 	},
 	plugins: [
 		require('@tailwindcss/typography'),
+		// Enables the `animate-in`/`animate-out`, `fade-in`/`fade-out`,
+		// `slide-in-from-*`, `zoom-in-*`, `duration-*` (animation) and `delay-*`
+		// utilities used across the React UI. Prefixed to `void-*` by scope-tailwind.
+		require('tailwindcss-animate'),
 		({ addUtilities }) => {
 			addUtilities({
 				'.text-shimmer': {
@@ -287,6 +301,19 @@ module.exports = {
 					'background-clip': 'text',
 					'display': 'inline-block',
 					'color': 'transparent',
+				},
+				// Reusable entrance animation for landing-page suggestion chips.
+				// References the void-fade-in-up keyframe defined in styles.css.
+				'.animate-fade-in-up': {
+					'animation': 'void-fade-in-up 0.4s cubic-bezier(0.32, 0.72, 0, 1) both',
+				},
+				// Pure opacity fade (modal/overlay backdrops).
+				'.animate-fade-in': {
+					'animation': 'void-fade-in 0.2s ease-out both',
+				},
+				// Fade + subtle scale-up (modal panels, popovers).
+				'.animate-fade-in-scale': {
+					'animation': 'void-fade-in-scale 0.2s cubic-bezier(0.32, 0.72, 0, 1) both',
 				},
 			})
 		}

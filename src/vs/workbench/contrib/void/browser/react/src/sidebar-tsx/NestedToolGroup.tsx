@@ -40,7 +40,7 @@ export const NestedToolGroup: React.FC<NestedToolGroupProps> = ({
 		<div className="my-2">
 			{/* Collapsible header */}
 			<div
-				className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-void-bg-2 border border-void-border-2 cursor-pointer hover:bg-void-bg-3 transition-colors select-none"
+				className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-void-bg-2 cursor-pointer hover:bg-void-bg-3 transition-colors select-none"
 				onClick={() => setIsOpen(o => !o)}
 			>
 				<ChevronRight size={14} className={`text-void-fg-3 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />

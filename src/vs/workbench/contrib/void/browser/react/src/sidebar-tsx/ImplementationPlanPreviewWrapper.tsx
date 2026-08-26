@@ -53,11 +53,10 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 
 			const messages = thread.messages || []
 			// Filter for tool messages with implementation plan names
-			const planMessages = messages.filter((m): m is ToolMessage<ToolName> & { name: 'create_implementation_plan' | 'preview_implementation_plan' | 'execute_implementation_plan' | 'update_implementation_step' | 'get_implementation_status' } =>
+			const planMessages = messages.filter((m): m is ToolMessage<ToolName> & { name: 'create_implementation_plan' | 'preview_implementation_plan' | 'update_implementation_step' | 'get_implementation_status' } =>
 				isToolMessage(m) && (
 					m.name === 'create_implementation_plan' ||
 					m.name === 'preview_implementation_plan' ||
-					m.name === 'execute_implementation_plan' ||
 					m.name === 'update_implementation_step' ||
 					m.name === 'get_implementation_status'
 				)
@@ -109,13 +108,6 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 					planId: planResult.planId,
 					canApprove: planResult.planId && planResult.planId !== ''
 				}
-			case 'execute_implementation_plan':
-				return {
-					title: 'Executing Implementation Plan',
-					summary: planResult.summary || 'Step execution started',
-					planId: planResult.planId || '',
-					canApprove: false
-				}
 			case 'update_implementation_step':
 				return {
 					title: 'Implementation Step Updated',
@@ -147,7 +139,6 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 		switch (toolMessage.name) {
 			case 'create_implementation_plan': return '\u{1F4CB}'
 			case 'preview_implementation_plan': return '👁️'
-			case 'execute_implementation_plan': return '▶️'
 			case 'update_implementation_step': return '\u{2705}'
 			case 'get_implementation_status': return '\u{1F4CA}'
 			default: return '\u{1F3AF}'
@@ -156,11 +147,10 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 
 	const getActionColor = () => {
 		switch (toolMessage.name) {
-			case 'create_implementation_plan': return 'text-blue-400'
-			case 'preview_implementation_plan': return 'text-purple-400'
-			case 'execute_implementation_plan': return 'text-green-400'
-			case 'update_implementation_step': return 'text-yellow-400'
-			case 'get_implementation_status': return 'text-orange-400'
+			case 'create_implementation_plan': return 'text-void-info'
+			case 'preview_implementation_plan': return 'text-void-accent'
+			case 'update_implementation_step': return 'text-void-warning'
+			case 'get_implementation_status': return 'text-void-orange'
 			default: return 'text-void-fg-1'
 		}
 	}
@@ -174,13 +164,11 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 
 		setIsApproving(true)
 		try {
-			// Flip the plan's `approved` flag on the shared planning service so
-			// execute_implementation_plan's `plan.approved` gate passes. This
-			// wrapper's approval message routes the agent through the todo
-			// system, but marking the plan approved keeps the two paths
-			// consistent and lets execute_implementation_plan work too.
-			// Non-blocking: a missing plan (e.g. after restart) must not break
-			// the existing approve-and-send flow.
+			// Approve the plan. The service marks it approved AND auto-promotes
+			// its steps into a todo list on the shared PlanningService, so the
+			// agent can execute via update_todo without re-creating the steps.
+			// Non-blocking on failure: a missing plan (e.g. after restart) must
+			// not break the approve-and-send flow.
 			if (agentManagerService?.approveImplementationPlan && threadId) {
 				try {
 					agentManagerService.approveImplementationPlan(threadId)
@@ -194,14 +182,13 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 				voidSettingsService.setGlobalSetting('chatMode', 'code')
 			}
 
-			// Send approval message that instructs AI to create a task plan and execute
-			const approvalMessage = `The implementation plan (ID: ${planInfo.planId}) has been approved for execution.
+			// The plan steps were auto-converted to a todo list on approval, so tell
+			const approvalMessage = `The implementation plan (ID: ${planInfo.planId}) has been approved for execution. Its steps have already been converted into a todo list — do NOT call create_todo again (call get_todos to see the queued tasks).
 
 **Instructions:**
-1. First, use the \`create_todo\` tool to create a task plan based on the approved implementation plan steps
-2. Then execute each task in order, using \`update_todo\` to track progress
-3. For each step: read relevant files, make the necessary changes, and verify they work
-4. Mark each task complete as you finish it
+1. Execute each task in order, using \`update_todo\` to track progress: mark the task \`in_progress\` when you start it and \`complete\` when it's done
+2. For each task: read the relevant files, make the necessary changes, and verify they work
+3. Continue until all tasks are complete — do not stop to ask for confirmation between steps
 
 Please begin execution now.`
 
@@ -365,7 +352,7 @@ My requested changes:`
 				</div>
 				<div className="flex items-center gap-2 flex-shrink-0">
 					{isSuccess && (
-						<div className="px-2 py-1 bg-green-500/20 text-green-400 border border-green-500/30 rounded-md text-xs font-medium">
+						<div className="px-2 py-1 bg-void-success/15 text-void-success border border-void-success/30 rounded-md text-xs font-medium">
 							Success
 						</div>
 					)}
@@ -398,7 +385,7 @@ My requested changes:`
 									{planResult.steps.map((step, index: number) => {
 										const status = step.status || 'pending'
 										const statusIcon = status === 'completed' ? '\u{2705}' : status === 'in_progress' ? '\u{1F504}' : status === 'failed' ? '\u{274C}' : '\u{2B1C}'
-										const statusColor = status === 'completed' ? 'text-green-400' : status === 'in_progress' ? 'text-blue-400' : status === 'failed' ? 'text-red-400' : 'text-void-fg-3'
+										const statusColor = status === 'completed' ? 'text-void-success' : status === 'in_progress' ? 'text-void-info' : status === 'failed' ? 'text-void-error' : 'text-void-fg-3'
 
 										return (
 											<div key={index} className="flex items-start gap-3 p-2 bg-void-bg-3 rounded-md border border-void-border-2">
@@ -410,9 +397,9 @@ My requested changes:`
 														<span className="text-xs text-void-fg-4 font-mono">Step {index + 1}</span>
 														{status !== 'pending' && (
 															<span className={`text-xs px-1.5 py-0.5 rounded ${
-																status === 'completed' ? 'bg-green-500/20 text-green-400' :
-																status === 'in_progress' ? 'bg-blue-500/20 text-blue-400' :
-																status === 'failed' ? 'bg-red-500/20 text-red-400' :
+																status === 'completed' ? 'bg-void-success/15 text-void-success' :
+																status === 'in_progress' ? 'bg-void-info/15 text-void-info' :
+																status === 'failed' ? 'bg-void-error/15 text-void-error' :
 																'bg-void-bg-2 text-void-fg-4'
 															}`}>
 																{status}
@@ -437,7 +424,7 @@ My requested changes:`
 
 						{/* Render summary with markdown */}
 						{planInfo.summary && (
-							<div className="mb-3 prose prose-sm prose-invert max-w-none">
+							<div className="mb-3 max-w-none">
 								<ChatMarkdownRender
 									string={planInfo.summary}
 									chatMessageLocation={{ threadId, messageIdx }}

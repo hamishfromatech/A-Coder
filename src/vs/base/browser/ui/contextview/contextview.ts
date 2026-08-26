@@ -351,16 +351,19 @@ export class ContextView extends Disposable {
 		this.view.classList.toggle('fixed', this.useFixedPosition);
 
 		const containerPosition = DOM.getDomNodePagePosition(this.container!);
-		if (this.useFixedPosition) {
-			// For fixed positioning, use viewport coordinates directly
-			// The view is positioned relative to the viewport, not the container
-			this.view.style.top = `${top}px`;
-			this.view.style.left = `${left}px`;
-		} else {
-			// For absolute positioning, subtract container offset
-			this.view.style.top = `${top - containerPosition.top}px`;
-			this.view.style.left = `${left - containerPosition.left}px`;
-		}
+		// For fixed positioning, the view's CSS `position: fixed` may be relative
+		// to the viewport OR to a transformed/filtered ancestor (transform, filter,
+		// backdrop-filter, will-change, contain, etc. all establish a containing
+		// block for fixed). Measuring the view's actual page position at top:0/
+		// left:0 and subtracting it converts the page-coordinate `top`/`left` into
+		// the correct coordinate for whichever containing block `fixed` resolves
+		// to. For absolute positioning, subtract the container's page offset.
+		// NOTE: do not replace this with `${top}px` / `${left}px` — that assumes
+		// fixed is always viewport-relative and breaks dropdowns/menus that open
+		// from a pressed (transformed) action item (e.g. the terminal profile
+		// selector), which mispositions the menu so clicks never reach an item.
+		this.view.style.top = `${top - (this.useFixedPosition ? DOM.getDomNodePagePosition(this.view).top : containerPosition.top)}px`;
+		this.view.style.left = `${left - (this.useFixedPosition ? DOM.getDomNodePagePosition(this.view).left : containerPosition.left)}px`;
 		this.view.style.width = 'initial';
 	}
 

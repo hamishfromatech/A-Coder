@@ -5,7 +5,7 @@
 
 import { Color, RGBA } from '../../../../base/common/color.js';
 import { localize } from '../../../../nls.js';
-import { badgeBackground, badgeForeground, contrastBorder, editorBackground, editorWidgetBackground, foreground, registerColor, transparent } from '../../../../platform/theme/common/colorRegistry.js';
+import { badgeBackground, badgeForeground, contrastBorder, editorBackground, editorWidgetBackground, errorForeground, foreground, registerColor, transparent } from '../../../../platform/theme/common/colorRegistry.js';
 
 export const chatRequestBorder = registerColor(
 	'chat.requestBorder',
@@ -52,4 +52,10 @@ export const chatEditedFileForeground = registerColor(
 		hcLight: '#895503'
 	},
 	localize('chat.editedFileForeground', 'The foreground color of a chat edited file in the edited file list.')
+);
+
+export const chatStopButtonForeground = registerColor(
+	'chat.stopButtonForeground',
+	{ dark: errorForeground, light: errorForeground, hcDark: errorForeground, hcLight: errorForeground },
+	localize('chatStopButtonForeground', 'The foreground color of the stop button in the chat input toolbar.')
 );

@@ -24,7 +24,7 @@ import { ChatMode, displayInfoOfProviderName, FeatureName, isFeatureNameDisabled
 import { ICommandService } from '../../../../../../../platform/commands/common/commands.js';
 import { WarningBox } from '../void-settings-tsx/WarningBox.js';
 import { getModelCapabilities, getIsReasoningEnabledState } from '../../../../common/modelCapabilities.js';
-import { AlertTriangle, ChevronRight, ChevronDown, X, Copy as CopyIcon, CircleEllipsis, Play, Settings, ArrowUp, ArrowDown, Trash2, Send, Circle, Loader2, Brain, Check, Pencil, CirclePlus, File as FileIcon, Folder as FolderIcon, Text as TextIcon, SkipForward, MessageCircle, RotateCw, FileText, FileCode, FileJson, Target, CheckCircle, Lightbulb, Trophy, Mic, Clock, Ban, Cpu, UserRound, GraduationCap, HelpCircle, Zap } from 'lucide-react';
+import { AlertTriangle, ChevronRight, ChevronDown, X, Copy as CopyIcon, CircleEllipsis, Play, Settings, ArrowUp, ArrowDown, Trash2, Send, Circle, Loader2, Brain, Check, Pencil, CirclePlus, File as FileIcon, Folder as FolderIcon, Text as TextIcon, SkipForward, MessageCircle, RotateCw, FileText, FileCode, FileJson, Target, CheckCircle, Lightbulb, Trophy, Mic, Clock, Ban, Cpu, GraduationCap, HelpCircle, Zap } from 'lucide-react';
 import { ChatMessage, CheckpointEntry, StagingSelectionItem, ToolMessage, ImageAttachment, isToolMessage, hasParallelBatchId } from '../../../../common/chatThreadServiceTypes.js';
 import { BuiltinToolName, ToolName, approvalTypeOfBuiltinToolName, LintErrorItem } from '../../../../common/toolsServiceTypes.js';
 import { IsRunningType } from '../../../chatThreadService.js';
@@ -77,6 +77,7 @@ import { WebviewResultWrapper } from './WebviewResultWrapper.js';
 import { SkillsResultWrapper } from './SkillsResultWrapper.js';
 import { FormResultWrapper } from './FormResultWrapper.js';
 import { QuizResultWrapper } from './QuizResultWrapper.js';
+import { ExerciseResultWrapper } from './ExerciseResultWrapper.js';
 import WalkthroughResultWrapper from './WalkthroughResultWrapper.js';
 import { TeachingResultWrapper } from './TeachingResultWrapper.js';
 import { LearningDashboard } from './LearningDashboard.js';
@@ -112,11 +113,11 @@ const ImagePreview = ({ images, onRemove }: { images: ImageAttachment[], onRemov
 		<>
 			<div className="flex flex-wrap gap-2 mb-2 p-2 card">
 				{images.map((image, index) => (
-					<div key={index} className="relative group">
+					<div key={index} className="relative group/attachment">
 						<img
 							src={`data:${image.mimeType};base64,${image.base64}`}
 							alt={image.name || `Attached image ${index + 1}`}
-							className="w-20 h-20 object-cover rounded border border-void-border-2 cursor-pointer hover:opacity-80 transition-opacity"
+							className="w-20 h-20 object-cover rounded-2xl border border-void-border-2 cursor-pointer hover:opacity-80 transition-opacity shadow-[inset_0_1px_0_color-mix(in_srgb,var(--vscode-foreground)_6%,transparent)]"
 							onClick={() => setLightboxIndex(index)}
 							onError={(e) => {
 								const target = e.target as HTMLImageElement;
@@ -125,15 +126,15 @@ const ImagePreview = ({ images, onRemove }: { images: ImageAttachment[], onRemov
 						/>
 						<button
 							onClick={() => onRemove(index)}
-							className="absolute -top-1 -right-1 bg-void-bg-1 border border-void-border-2 rounded-full p-2 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-void-accent focus:ring-offset-1"
+							className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full border border-void-border-1 bg-void-bg-1 text-void-fg-3 shadow-sm opacity-0 transition hover:bg-void-bg-2-hover hover:text-void-fg-1 group-hover/attachment:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-void-accent"
 							data-tooltip-id="void-tooltip"
 							data-tooltip-content="Remove image"
 							aria-label={`Remove ${image.name || `image ${index + 1}`}`}
 						>
-							<X size={12} className="text-void-fg-3" />
+							<X size={12} />
 						</button>
 						{image.name && (
-							<div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] px-1 py-0.5 truncate rounded-b" title={image.name}>
+							<div className="absolute bottom-0 left-0 right-0 rounded-b-2xl bg-black/55 text-white/90 text-[10px] px-1.5 py-0.5 truncate backdrop-blur-sm" title={image.name}>
 								{image.name}
 							</div>
 							)}
@@ -863,6 +864,54 @@ const detailOfChatMode: Record<ChatMode, string> = {
 	'learn': '\u{1F4DA} Learn to code with a tutor',
 }
 
+// Mode-aware starter prompts shown on the landing (empty) state. Each prompt
+// is paired with a leading icon that gets accent-colored on hover.
+const landingPrompts: Record<ChatMode, { text: string, icon: React.ElementType }[]> = {
+	'chat': [
+		{ text: 'Summarize my codebase', icon: MessageCircle },
+		{ text: 'Explain how this project is structured', icon: FileText },
+		{ text: 'What does this function do?', icon: HelpCircle },
+	],
+	'plan': [
+		{ text: 'Plan a refactor of this module', icon: Target },
+		{ text: 'Research how authentication works here', icon: FileText },
+		{ text: 'Draft an implementation plan for a new feature', icon: Lightbulb },
+	],
+	'code': [
+		{ text: 'Create a .a-coder-rules file for me', icon: FileCode },
+		{ text: 'Fix the lint errors in my project', icon: CheckCircle },
+		{ text: 'Add unit tests for the open file', icon: FileJson },
+	],
+	'learn': [
+		{ text: 'What is a function?', icon: GraduationCap },
+		{ text: 'Explain async/await with an example', icon: Lightbulb },
+		{ text: 'Give me a practice exercise on loops', icon: Zap },
+	],
+}
+
+/** Rotating landing copy per mode — a single headline + body pair, picked at
+ *  random on mount / mode change (Hermes-Intro style). Replaces the static
+ *  tagline so the empty state feels like a calm invitation, not a menu. */
+const landingHeadlines: Record<ChatMode, { headline: string, body: string }[]> = {
+	'chat': [
+		{ headline: 'What are we working on?', body: 'Ask a question, drop a file, or describe a bug. I\u2019ll read the room before answering.' },
+		{ headline: 'Where should we start?', body: 'Bring the stuck part or the half-formed idea. I\u2019ll keep the next step concrete.' },
+		{ headline: 'What needs attention?', body: 'Send the context you have. I\u2019ll help sort it into an answer or a fix.' },
+	],
+	'plan': [
+		{ headline: 'What should we plan?', body: 'Describe the change or feature. I\u2019ll inspect the codebase and draft a plan for review.' },
+		{ headline: 'Where\u2019s the complexity?', body: 'Point me at the module or flow. I\u2019ll map it out and propose an implementation path.' },
+	],
+	'code': [
+		{ headline: 'What are we building?', body: 'Send the task, file, or rough idea. I\u2019ll make changes across the codebase.' },
+		{ headline: 'What needs fixing?', body: 'Bring the lint errors, the failing test, or the bug. I\u2019ll dig in and correct it.' },
+	],
+	'learn': [
+		{ headline: 'What do you want to learn?', body: 'Ask for a concept, an example, or a practice exercise. Your tutor is ready.' },
+		{ headline: 'Stuck on something?', body: 'Share the code or concept. I\u2019ll explain it and give you something to try.' },
+	],
+}
+
 const nameOfStudentLevel = {
 	'beginner': '🌱 Beginner',
 	'intermediate': '🌿 Intermediate',
@@ -941,14 +990,14 @@ const StudentOnboardingModal = ({ isOpen, onClose, onSelectLevel }: {
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in"
 			role="dialog"
 			aria-modal="true"
 			aria-labelledby="student-modal-title"
 		>
 			<div
 				ref={modalRef}
-				className="bg-void-bg-1 border border-void-border-1 rounded-xl shadow-2xl max-w-[500px] w-full max-h-[90vh] overflow-y-auto flex flex-col focus:outline-none"
+				className="bg-void-bg-1 border border-void-border-1 rounded-xl shadow-2xl max-w-[500px] w-full max-h-[90vh] overflow-y-auto flex flex-col focus:outline-none animate-fade-in-scale"
 				tabIndex={-1}
 			>
 				{/* Header */}
@@ -1171,7 +1220,7 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 							{featureName === 'Chat' && (
 								<ChatModeDropdown className='text-xs text-void-fg-3 bg-void-bg-2 hover:bg-void-bg-2-hover border border-void-border-2 rounded-lg py-1 px-2 shadow-sm' />
 							)}
-							<div className='relative z-[200]'>
+							<div className='relative' style={{ zIndex: 'var(--void-z-popover)' }}>
 								<ModelDropdown featureName={featureName} className='text-xs text-void-fg-3 bg-void-bg-2 hover:bg-void-bg-2-hover border border-void-border-2 rounded-lg px-2 py-1 shadow-sm' />
 							</div>
 							<TokenCounter tokenUsage={tokenUsage} cachedTokens={cachedTokens} />
@@ -1203,20 +1252,12 @@ export const VoidChatArea: React.FC<VoidChatAreaProps> = ({
 
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement>
-const DEFAULT_BUTTON_SIZE = 28; // Increased from 22 to meet 44x44px touch target minimum
+const DEFAULT_BUTTON_SIZE = 28; // compact composer button (icon-led, matches ButtonStop)
 export const ButtonSubmit = ({ className, disabled, isQueueMode, ...props }: ButtonProps & Required<Pick<ButtonProps, 'disabled'>> & { isQueueMode?: boolean }) => {
-	const isDark = useIsDark()
-
 	return <button
 		type='button'
-		className={`
-			rounded-xl flex-shrink-0 flex-grow-0 flex items-center justify-center
-			transition-all duration-200 ease-out
+		className={`send-circle flex-shrink-0 flex-grow-0 flex items-center justify-center
 			focus:outline-none focus:ring-2 focus:ring-void-accent focus:ring-offset-2 focus:ring-offset-void-bg-1
-			${disabled
-				? 'bg-void-depth-base cursor-not-allowed opacity-50 border border-void-border-2'
-				: 'btn-primary cursor-pointer shadow-void-sm'
-			}
 			${className}
 		`}
 		style={{ width: DEFAULT_BUTTON_SIZE, height: DEFAULT_BUTTON_SIZE, minHeight: 28, minWidth: 28 }}
@@ -1226,28 +1267,23 @@ export const ButtonSubmit = ({ className, disabled, isQueueMode, ...props }: But
 		aria-label={isQueueMode ? 'Queue message' : 'Send message'}
 		{...props}
 	>
-		<div className={`${disabled ? 'text-void-fg-4' : 'text-white'}`}>
-			<ArrowUp size={14} strokeWidth={3} />
-		</div>
+		<ArrowUp size={14} strokeWidth={3} />
 	</button>
 }
 
 export const ButtonStop = ({ className, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) => {
 	return <button
-		className={`
-			rounded-xl flex-shrink-0 flex-grow-0 cursor-pointer flex items-center justify-center
+		className={`rounded-full flex-shrink-0 flex-grow-0 cursor-pointer flex items-center justify-center
 			transition-all duration-200 ease-out
-			btn-secondary
-			focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-void-bg-1
+			bg-void-error/15 text-void-error hover:bg-void-error/25
+			focus:outline-none focus:ring-2 focus:ring-void-error focus:ring-offset-2 focus:ring-offset-void-bg-1
 			${className}
 		`}
 		type='button'
 		aria-label="Stop"
 		{...props}
 	>
-		<div className='text-void-error'>
-			<IconSquare size={DEFAULT_BUTTON_SIZE} className="stroke-[3] p-[5px]" />
-		</div>
+		<IconSquare size={DEFAULT_BUTTON_SIZE} className="stroke-[3] p-[6px]" />
 	</button>
 }
 
@@ -1299,7 +1335,7 @@ const ContinueButton = ({
 			<div className="relative" ref={menuRef}>
 				<button
 					onClick={() => setShowMenu(!showMenu)}
-					className={`p-2 rounded-md bg-void-bg-2 hover:bg-void-bg-3 transition-all duration-150 min-w-[44px] min-h-[44px] flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-void-accent ${autoContinueEnabled ? 'text-void-accent' : 'text-void-fg-3'}`}
+					className={`p-2 rounded-md bg-void-bg-2 hover:bg-void-bg-3 transition-all duration-150 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-void-accent ${autoContinueEnabled ? 'text-void-accent' : 'text-void-fg-3'}`}
 					data-tooltip-id='void-tooltip'
 					data-tooltip-content={autoContinueEnabled ? 'Auto-continue enabled' : 'Auto-continue settings'}
 					data-tooltip-place='top'
@@ -1664,15 +1700,12 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 
 	// Context menu state
 	const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
-	const timeAgo = formatTimeAgo(chatMessage._timestamp)
-
 	const handleContextMenu = (e: React.MouseEvent) => {
 		e.preventDefault()
 		setContextMenu({ x: e.clientX, y: e.clientY })
 	}
 
 	const handleCopy = async () => {
-		const accessor = useAccessor()
 		const clipboardService = accessor.get('IClipboardService')
 		await clipboardService.writeText(chatMessage.displayContent || '')
 	}
@@ -1793,166 +1826,118 @@ const UserMessageComponent = React.memo(({ chatMessage, messageIdx, isCheckpoint
 
 	const isMsgAfterCheckpoint = currCheckpointIdx !== undefined && currCheckpointIdx === messageIdx - 1
 
-	// Collapsible state for display mode
-	const [isExpanded, setIsExpanded] = useState(false)
-
-	// Auto-detect if message is "long" enough to collapse (> 200 chars or has images)
-	const messageLength = (chatMessage.displayContent || '').length
-	const hasAttachments = !!(chatMessage.selections?.length || chatMessage.images?.length)
-	const shouldCollapse = messageLength > 200 || hasAttachments
-
 	const displayContent = chatMessage.displayContent || ''
 
 	return (
-		<div className={`flex gap-3 mb-4 group w-full ${isCheckpointGhost && !isMsgAfterCheckpoint ? 'opacity-40 grayscale' : ''}`}
+		<div className={`flex justify-end group w-full ${isCheckpointGhost && !isMsgAfterCheckpoint ? 'opacity-40 grayscale' : ''}`}
 			onMouseEnter={useCallback(() => setIsHovered(true), [])}
 			onMouseLeave={useCallback(() => setIsHovered(false), [])}
 			onContextMenu={handleContextMenu}
 		>
-			<div className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center bg-void-bg-2 text-void-fg-4">
-				<UserRound size={16} />
-			</div>
-			<div className="flex-1 min-w-0">
-				{mode === 'edit' ? (
-					// Edit mode: use existing chat area, with a visible cancel affordance
-					// (Escape also cancels via onKeyDown, but a button is discoverable)
-					<div className="w-full">
-						<div className="flex items-center justify-between mb-1.5 px-0.5">
-							<span className="text-[10px] font-semibold text-void-fg-3">Editing message</span>
-							<button
-								onClick={onCloseEdit}
-								className="user-message-action-btn"
-								title="Cancel edit (Esc)"
-							>
-								<X size={14} />
-							</button>
-						</div>
-						{chatbubbleContents}
-					</div>
-				) : (
-					// Display mode: premium collapsible card
-					<div className="user-message-card group w-full">
-						{/* Header row - always visible */}
-						<div
-							className={`user-message-header${shouldCollapse ? ' user-message-header-collapsible' : ''}`}
-							onClick={() => {
-								if (shouldCollapse) {
-									setIsExpanded(v => !v)
-								}
-							}}
-							role="button"
-							tabIndex={shouldCollapse ? 0 : -1}
+			<div className="flex flex-col items-end gap-1.5 w-full min-w-0">
+			{mode === 'edit' ? (
+				// Edit mode: use existing chat area, with a visible cancel affordance
+				// (Escape also cancels via onKeyDown, but a button is discoverable)
+				<div className="w-full">
+					<div className="flex items-center justify-between mb-1.5 px-0.5">
+						<span className="text-[10px] font-semibold text-void-fg-3">Editing message</span>
+						<button
+							onClick={onCloseEdit}
+							className="user-message-action-btn"
+							title="Cancel edit (Esc)"
 						>
-							<div className="user-message-header-left">
-								<span className="user-message-label">You</span>
-								{timeAgo && (
-									<span
-										className="text-[10px] text-void-fg-4/50 ml-1.5 cursor-default"
-										data-tooltip-id="void-tooltip"
-										data-tooltip-content={formatFullTimestamp(chatMessage._timestamp)}
-										data-tooltip-place="top"
-										data-tooltip-delay-show={500}
-									>
-										{timeAgo}
-									</span>
-								)}
-								{/* Show a compact preview of the message in the header when collapsed */}
-								{!isExpanded && shouldCollapse && (
-									<span className="text-[11px] text-void-fg-4 truncate flex-1 min-w-0 ml-2">
-										{displayContent.slice(0, 60)}{displayContent.length > 60 ? '...' : ''}
-									</span>
-								)}
-							</div>
-
-							<div className="user-message-header-right">
-								{/* Edit button */}
-								<button
-									onClick={(e) => {
-										e.stopPropagation()
-										onOpenEdit()
-									}}
-									className="user-message-action-btn"
-										title="Update message"
-								>
-											<Pencil size={12} />
-										</button>
-								{/* Collapse toggle */}
-								{shouldCollapse && (
-									<ChevronRight
-										size={14}
-										className={`user-message-toggle ${isExpanded ? 'user-message-toggle-open' : ''}`}
-									/>
-								)}
-							</div>
-						</div>
-
-						{/* Content area - expandable */}
-						<div className={`user-message-content ${!isExpanded && shouldCollapse ? 'user-message-collapsed' : 'user-message-expanded'}`}>
-							<SmoothHeight isVisible={isExpanded || !shouldCollapse} maxHeight="2000px">
-								<div
-									className="user-message-content-inner"
-									onClick={() => onOpenEdit()}
-									style={{ cursor: 'pointer' }}
-								>
-									{/* Show selections */}
-									{chatMessage.selections && chatMessage.selections.length > 0 && (
-										<div className="mb-2">
-											<SelectedFiles type="past" messageIdx={messageIdx} selections={chatMessage.selections} />
-										</div>
-									)}
-									{/* Show image thumbnails */}
-									{chatMessage.images && chatMessage.images.length > 0 && (
-										<div className="flex flex-wrap gap-2 mb-2">
-											{chatMessage.images.map((image, index) => (
-												<img
-													key={index}
-															src={`data:${image.mimeType};base64,${image.base64}`}
-															alt={image.name || `Image ${index + 1}`}
-															className="w-32 h-32 object-cover rounded-xl border border-void-border-1/30 cursor-pointer hover:opacity-90 transition-all duration-300 hover:scale-[1.02] shadow-md"
-															onClick={(e) => {
-																e.stopPropagation()
-																setLightboxImage({
-																	src: `data:${image.mimeType};base64,${image.base64}`,
-																	alt: image.name
-																})
-															}}
-														/>
-											))}
-										</div>
-									)}
-									{/* Message content */}
-									<div className="text-[13px] leading-relaxed text-void-fg-1 font-medium break-words">
-										{displayContent}
-									</div>
-								</div>
-							</SmoothHeight>
-						</div>
+							<X size={14} />
+						</button>
 					</div>
+					{chatbubbleContents}
+				</div>
+			) : (
+					// Display mode: right-aligned bubble, no avatar/no name
+					<>
+						{/* Attachments — above the bubble, right-aligned */}
+						{chatMessage.selections && chatMessage.selections.length > 0 && (
+							<div className="w-full">
+								<SelectedFiles type="past" messageIdx={messageIdx} selections={chatMessage.selections} />
+							</div>
+						)}
+
+						{/* Images — above the bubble, right-aligned, compact */}
+						{chatMessage.images && chatMessage.images.length > 0 && (
+							<div className="flex flex-wrap gap-2 justify-end">
+								{chatMessage.images.map((image, index) => (
+									<img
+										key={index}
+										src={`data:${image.mimeType};base64,${image.base64}`}
+										alt={image.name || `Image ${index + 1}`}
+										className="w-16 h-16 object-cover rounded-lg border border-void-border-2 cursor-pointer hover:opacity-90 transition-all duration-200"
+										onClick={(e) => {
+											e.stopPropagation()
+											setLightboxImage({
+												src: `data:${image.mimeType};base64,${image.base64}`,
+												alt: image.name
+											})
+										}}
+									/>
+								))}
+							</div>
+						)}
+
+						{/* The bubble — click to edit; hover actions docked bottom-right inside */}
+						<div
+							className="user-bubble cursor-pointer"
+							onClick={() => onOpenEdit()}
+						>
+							<div className="message-user-content user-clamp">{displayContent}</div>
+							<div className="message-actions msg-actions-float absolute right-2 bottom-2">
+								<button
+									onClick={(e) => { e.stopPropagation(); handleCopy() }}
+									className="message-action-btn"
+									title="Copy"
+								>
+									<CopyIcon size={12} />
+								</button>
+								<button
+									onClick={(e) => { e.stopPropagation(); onOpenEdit() }}
+									className="message-action-btn"
+									title="Edit"
+								>
+									<Pencil size={12} />
+								</button>
+								<button
+									onClick={(e) => { e.stopPropagation(); handleDelete() }}
+									className="message-action-btn"
+									title="Delete"
+								>
+									<Trash2 size={12} />
+								</button>
+							</div>
+						</div>
+					</>
 				)}
 			</div>
 
-			{/* Context Menu */}
-			{contextMenu && (
-				<MessageContextMenu
-					x={contextMenu.x}
-					y={contextMenu.y}
-					onClose={() => setContextMenu(null)}
-					onCopy={handleCopy}
-					onDelete={handleDelete}
-					onRetry={handleRetry}
-					canRetry={true}
-					canDelete={true}
-				/>
-			)}
-			{lightboxImage && (
-				<ImageLightbox
-					src={lightboxImage.src}
-					alt={lightboxImage.alt}
-					isOpen={true}
-					onClose={() => setLightboxImage(null)}
-				/>
-			)}
-		</div>
+		{/* Context Menu */}
+		{contextMenu && (
+			<MessageContextMenu
+				x={contextMenu.x}
+				y={contextMenu.y}
+				onClose={() => setContextMenu(null)}
+				onCopy={handleCopy}
+				onDelete={handleDelete}
+				onRetry={handleRetry}
+				canRetry={true}
+				canDelete={true}
+			/>
+		)}
+		{lightboxImage && (
+			<ImageLightbox
+				src={lightboxImage.src}
+				alt={lightboxImage.alt}
+				isOpen={true}
+				onClose={() => setLightboxImage(null)}
+			/>
+		)}
+	</div>
 	)
 })
 const AssistantMessageComponent = React.memo(({ chatMessage, isCheckpointGhost, isCommitted, messageIdx }: { chatMessage: ChatMessage & { role: 'assistant' }, isCheckpointGhost: boolean, messageIdx: number, isCommitted: boolean }) => {
@@ -1976,7 +1961,6 @@ const AssistantMessageComponent = React.memo(({ chatMessage, isCheckpointGhost, 
 	}
 
 	const handleCopy = async () => {
-		const accessor = useAccessor()
 		const clipboardService = accessor.get('IClipboardService')
 		await clipboardService.writeText(chatMessage.displayContent || '')
 	}
@@ -2014,28 +1998,11 @@ const AssistantMessageComponent = React.memo(({ chatMessage, isCheckpointGhost, 
 	if (isEmpty) return null
 
 	return (
-		<div className={`flex gap-3 mb-4 group ${isCheckpointGhost ? 'opacity-40 grayscale' : ''}`}
+		<div className={`group w-full flex flex-col ${isCheckpointGhost ? 'opacity-40 grayscale' : ''}`}
 			onContextMenu={handleContextMenu}
 		>
-			<div className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center bg-void-accent/10 text-void-accent">
-				<VoidIcon size={18} opacity={1} />
-			</div>
-			<div className="flex flex-col gap-1.5 min-w-0 flex-1">
-				<div className="flex items-center gap-1.5">
-					<span className="text-xs font-medium text-void-fg-2">A-Coder</span>
-					{timeAgo && (
-						<span
-							className="text-xs text-void-fg-4 cursor-default"
-							data-tooltip-id="void-tooltip"
-							data-tooltip-content={formatFullTimestamp(chatMessage._timestamp)}
-							data-tooltip-place="top"
-							data-tooltip-delay-show={500}
-						>
-							· {timeAgo}
-						</span>
-					)}
-				</div>
-				<div className="flex flex-col gap-3">
+			<div className="message-assistant-modern w-full min-w-0">
+				<div className="flex flex-col gap-2.5">
 					{/* reasoning token */}
 					{hasReasoning &&
 						<div className="w-full">
@@ -2048,14 +2015,14 @@ const AssistantMessageComponent = React.memo(({ chatMessage, isCheckpointGhost, 
 										isLinkDetectionEnabled={true}
 										isStreaming={!isCommitted}
 									/>
-								</SmallProseWrapper>
-							</ReasoningWrapper>
+							</SmallProseWrapper>
+						</ReasoningWrapper>
 						</div>
 					}
 
-					{/* assistant message - using modernized message-assistant class */}
+					{/* assistant message — flows on the transcript surface, no card */}
 					{chatMessage.displayContent &&
-						<div className="message-assistant w-full">
+						<div className="assistant-flow w-full">
 							<ProseWrapper>
 								<ChatMarkdownRender
 									string={chatMessage.displayContent || ''}
@@ -2064,9 +2031,45 @@ const AssistantMessageComponent = React.memo(({ chatMessage, isCheckpointGhost, 
 									isLinkDetectionEnabled={true}
 									isStreaming={!isCommitted}
 								/>
-							</ProseWrapper>
-						</div>
+						</ProseWrapper>
+					</div>
 					}
+				</div>
+
+				{/* Hover actions — always mounted, reveals on hover; no layout shift on stream end */}
+				<div className="message-actions mt-1.5">
+					{timeAgo && (
+						<span
+							className="msg-meta mr-auto"
+							data-tooltip-id="void-tooltip"
+							data-tooltip-content={formatFullTimestamp(chatMessage._timestamp)}
+							data-tooltip-place="top"
+							data-tooltip-delay-show={500}
+						>
+							{timeAgo}
+						</span>
+					)}
+					<button
+						onClick={(e) => { e.stopPropagation(); handleCopy() }}
+						className="message-action-btn"
+						title="Copy"
+					>
+						<CopyIcon size={12} />
+					</button>
+					<button
+						onClick={(e) => { e.stopPropagation(); handleRegenerate() }}
+						className="message-action-btn"
+						title="Regenerate"
+					>
+						<RotateCw size={12} />
+					</button>
+					<button
+						onClick={(e) => { e.stopPropagation(); handleDelete() }}
+						className="message-action-btn"
+						title="Delete"
+					>
+						<Trash2 size={12} />
+					</button>
 				</div>
 
 			{/* Context Menu */}
@@ -2082,8 +2085,8 @@ const AssistantMessageComponent = React.memo(({ chatMessage, isCheckpointGhost, 
 					canDelete={true}
 				/>
 			)}
-			</div>
 		</div>
+	</div>
 	)
 })
 
@@ -2418,15 +2421,12 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 	'update_walkthrough': { resultWrapper: WalkthroughResultWrapper as ResultWrapper<'update_walkthrough'> },
 	'create_implementation_plan': { resultWrapper: (params: WrapperProps<'create_implementation_plan'>) => (<React.Suspense fallback={null}><LazyImplementationPlanPreviewWrapper {...params} /></React.Suspense>) },
 	'preview_implementation_plan': { resultWrapper: (params: WrapperProps<'preview_implementation_plan'>) => (<React.Suspense fallback={null}><LazyImplementationPlanPreviewWrapper {...params} /></React.Suspense>) },
-	'execute_implementation_plan': { resultWrapper: (params: WrapperProps<'execute_implementation_plan'>) => (<React.Suspense fallback={null}><LazyImplementationPlanPreviewWrapper {...params} /></React.Suspense>) },
 	'update_implementation_step': { resultWrapper: (params: WrapperProps<'update_implementation_step'>) => (<React.Suspense fallback={null}><LazyImplementationPlanPreviewWrapper {...params} /></React.Suspense>) },
 	'get_implementation_status': { resultWrapper: (params: WrapperProps<'get_implementation_status'>) => (<React.Suspense fallback={null}><LazyImplementationPlanPreviewWrapper {...params} /></React.Suspense>) },
 	'open_walkthrough_preview': { resultWrapper: WalkthroughResultWrapper as ResultWrapper<'open_walkthrough_preview'> },
 	'explain_code': { resultWrapper: TeachingResultWrapper as ResultWrapper<'explain_code'> },
 	'teach_concept': { resultWrapper: TeachingResultWrapper as ResultWrapper<'teach_concept'> },
-	'create_exercise': { resultWrapper: TeachingResultWrapper as ResultWrapper<'create_exercise'> },
-	'check_answer': { resultWrapper: TeachingResultWrapper as ResultWrapper<'check_answer'> },
-	'give_hint': { resultWrapper: TeachingResultWrapper as ResultWrapper<'give_hint'> },
+	'create_exercise': { resultWrapper: ExerciseResultWrapper as ResultWrapper<'create_exercise'> },
 	'create_lesson_plan': { resultWrapper: TeachingResultWrapper as ResultWrapper<'create_lesson_plan'> },
 	'load_skill': { resultWrapper: SkillsResultWrapper as ResultWrapper<'load_skill'> },
 	'list_skills': { resultWrapper: SkillsResultWrapper as ResultWrapper<'list_skills'> },
@@ -3242,6 +3242,7 @@ export const SidebarChat = () => {
 	const [slashMenuOpen, setSlashMenuOpen] = useState(false)
 	const [slashQuery, setSlashQuery] = useState('')
 	const slashMenuContainerRef = useRef<HTMLDivElement>(null)
+	const justSelectedSlashRef = useRef(false)
 
 	// MCP Server Modal state
 	const [isMCPModalOpen, setIsMCPModalOpen] = useState(false)
@@ -3756,7 +3757,7 @@ export const SidebarChat = () => {
 									elements.push(
 										<div
 											key={originalIdx}
-											className="mb-4 flex flex-col"
+											className="flex flex-col"
 											data-message-idx={originalIdx}
 											// contentVisibility disabled to prevent clipping fixed-position dropdowns
 											// style={{ contentVisibility: 'auto', containIntrinsicSize: '0 200px' }}
@@ -3778,7 +3779,7 @@ export const SidebarChat = () => {
 								elements.push(
 									<div
 											key={originalIdx}
-											className="mb-4 flex flex-col"
+											className="flex flex-col"
 											data-message-idx={originalIdx}
 											// contentVisibility disabled to prevent clipping fixed-position dropdowns
 											// style={{ contentVisibility: 'auto', containIntrinsicSize: '0 200px' }}
@@ -3878,7 +3879,7 @@ export const SidebarChat = () => {
 	) && !lastMessageIsTool && !isQuickTool(activeToolName);
 
 	const generatingTool = shouldShowToolUI && (toolCallsToRender.length > 0 || isReActActionPhase) ? (
-		<div className="flex flex-col gap-2">
+		<div className="tool-ticker">
 			{(toolCallsToRender.length > 0 ? toolCallsToRender : (isReActActionPhase ? [{ name: 'detecting...', rawParams: {}, doneParams: [], id: 'detecting', isDone: false }] : [])).map((tc, idx) => {
 				const tcName = tc.name;
 				const tcParams = tc.rawParams;
@@ -3930,8 +3931,8 @@ export const SidebarChat = () => {
 		scrollContainerRef={scrollContainerRef}
 		onAtBottomChange={(isBottom) => setShowScrollToBottom(!isBottom)}
 		className={`
-			flex flex-col
-			px-4 py-6 space-y-8
+			conv-scroll flex flex-col
+			px-4 py-6
 			w-full h-full
 			overflow-x-hidden
 			overflow-y-auto
@@ -4152,7 +4153,7 @@ export const SidebarChat = () => {
 		onDragLeave={handleDragLeave}
 		onDrop={handleDrop}
 		onPaste={handlePaste}
-		className={isDraggingOver ? 'ring-2 ring-void-accent rounded-md' : ''}
+		className={isDraggingOver ? 'composer-drop' : ''}
 	>
 		{/* Queue pill */}
 		{queuedCount > 0 && (
@@ -4250,7 +4251,7 @@ export const SidebarChat = () => {
 			style={voiceModeActive ? { '--voice-intensity': String(audioLevel) } as React.CSSProperties : undefined}
 			extraActions={
 				<button
-					className={`flex items-center justify-center w-8 h-8 rounded-md transition-all duration-200 cursor-pointer ${voiceModeActive ? 'text-void-accent bg-void-accent/10' : 'text-void-fg-3 hover:text-void-fg-1 hover:bg-void-bg-3'}`}
+					className={`composer-ghost-btn ${voiceModeActive ? 'text-void-accent bg-void-accent/10' : ''}`}
 					onClick={toggleVoiceMode}
 					data-tooltip-id='void-tooltip'
 					data-tooltip-content={voiceModeActive ? (isListening ? 'Listening... (click to stop)' : 'Voice mode active (click to turn off)') : 'Voice mode'}
@@ -4279,6 +4280,7 @@ export const SidebarChat = () => {
 						const currentValue = textAreaRef.current?.value || '';
 						const parsed = parseSlashCommand(currentValue);
 						const rest = parsed.rest;
+						justSelectedSlashRef.current = true;
 						if (textAreaFnsRef.current) {
 							textAreaFnsRef.current.setValue('/' + cmd.label + ' ' + rest);
 						}
@@ -4298,6 +4300,10 @@ export const SidebarChat = () => {
 				onChangeText={(text) => {
 					handleInputChangeWithVoice(text);
 					// Detect slash command typing
+					if (justSelectedSlashRef.current) {
+						justSelectedSlashRef.current = false;
+						return;
+					}
 					if (text.startsWith('/')) {
 						const query = text.slice(1).split(' ')[0] || '';
 						setSlashQuery(query);
@@ -4320,21 +4326,24 @@ export const SidebarChat = () => {
 
 	const isLandingPage = previousMessages.length === 0
 
-	const initiallySuggestedPromptsHTML = useMemo(() => <div className='flex flex-col gap-2 w-full text-nowrap text-void-fg-3 select-none'>
-		{[
-			'Summarize my codebase',
-			'How do types work in Rust?',
-			'Create a .a-coder-rules file for me'
-		].map((text, index) => (
-			<div
-				key={index}
-				className='py-1 px-2 rounded text-sm bg-void-bg-2 hover:bg-void-bg-3 cursor-pointer text-void-fg-3 hover:text-void-fg-1 transition-colors'
-				onClick={() => onSubmit(text)}
-			>
-				{text}
+	const initiallySuggestedPromptsHTML = useMemo(() => {
+		const prompts = landingPrompts[settingsState.globalSettings.chatMode] ?? landingPrompts.chat
+		return (
+			<div className='flex flex-wrap gap-2 w-full select-none animate-fade-in-up justify-center'>
+				{prompts.map(({ text, icon: Icon }, index) => (
+					<button
+						key={index}
+						type='button'
+						className='prompt-chip'
+						onClick={() => onSubmit(text)}
+					>
+						<Icon size={14} className='flex-shrink-0' />
+						<span className='flex-1 min-w-0'>{text}</span>
+					</button>
+				))}
 			</div>
-		))}
-	</div>, [onSubmit])
+		)
+	}, [onSubmit, settingsState.globalSettings.chatMode])
 
 
 
@@ -4372,6 +4381,9 @@ export const SidebarChat = () => {
 	</div>
 
 	const landingPageInput = <div className="px-0 pb-4">
+		<div className='px-3 pb-3'>
+			{initiallySuggestedPromptsHTML}
+		</div>
 		{inputChatArea}
 	</div>
 
@@ -4379,78 +4391,74 @@ export const SidebarChat = () => {
 	const chatModeName = nameOfChatMode[currentChatMode]
 	const studentLevel = settingsState.globalSettings.studentLevel
 
-	// Different taglines for different modes
-	const modeTaglines: Record<ChatMode, React.ReactNode> = {
-		'chat': <>Engage in pure conversation. Ask questions,<br />explore ideas, and get high-level advice.</>,
-		'plan': <>Research your codebase. Create detailed<br />implementation plans for review.</>,
-		'code': <>Kick off a new project. Make changes<br />across your entire codebase.</>,
-		'learn': <>Ask questions, learn concepts, and practice<br />coding with your personal tutor.</>
-	}
+	// Rotating landing copy — re-picks when the chat mode changes, stable otherwise.
+	const landingCopy = useMemo(() => {
+		const pool = landingHeadlines[currentChatMode] ?? landingHeadlines.chat
+		return pool[Math.floor(Math.random() * pool.length)]
+	}, [currentChatMode])
 
 	const landingPageContent = <div
 		ref={sidebarRef}
-		className='w-full h-full max-h-full flex flex-col overflow-hidden'
+		className='w-full h-full max-h-full flex flex-col overflow-hidden landing-bg'
 	>
-		{/* Centered empty state */}
-		<div className='flex-1 flex flex-col items-center justify-center px-8 pb-8'>
+		{/* Centered empty state with animated background */}
+		<div className='flex-1 flex flex-col items-center justify-center px-6 pb-6 relative z-10'>
 			<ErrorBoundary>
-				{/* Logo - different for student mode */}
-				{currentChatMode === 'learn' ? (
-					<GraduationCap size={48} className="text-void-accent mb-6" />
-				) : (
-					<VoidIcon size={96} opacity={0.9} className="mb-8" />
-				)}
+				{/* Animated gradient orbs behind content */}
+				<div className="absolute inset-0 overflow-hidden pointer-events-none">
+					<div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[320px] h-[320px] rounded-full opacity-[0.12] blur-3xl"
+						style={{ background: 'radial-gradient(circle, color-mix(in srgb, var(--vscode-button-background) 22%, transparent) 0%, transparent 70%)' }} />
+					<div className="absolute bottom-1/3 right-1/4 w-[220px] h-[220px] rounded-full opacity-[0.08] blur-3xl"
+						style={{ background: 'radial-gradient(circle, color-mix(in srgb, var(--vscode-textLink-foreground) 18%, transparent) 0%, transparent 70%)' }} />
+				</div>
 
-				{/* Title with mode */}
-				<div className="text-center space-y-3">
-					<h1 className='text-void-fg-1 text-3xl font-bold mb-2 text-balance'>
+				{/* Logo — smaller, more subtle */}
+				<div className="mb-5">
+					{currentChatMode === 'learn' ? (
+						<div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-void-info/10 text-void-info">
+							<GraduationCap size={28} />
+						</div>
+					) : (
+						<VoidIcon size={52} opacity={0.75} />
+					)}
+				</div>
+
+				{/* Title with gradient */}
+				<div className="text-center space-y-2">
+					<h1 className='text-gradient-premium text-4xl font-bold text-balance tracking-tight leading-tight uppercase mix-blend-plus-lighter'>
 						{currentChatMode === 'learn' ? 'A-Coder Tutor' : 'A-Coder'}
 					</h1>
-					<div className="flex items-center justify-center gap-2">
-						<span className={`px-3 py-1 text-sm font-medium rounded-full ${
-							currentChatMode === 'learn'
-								? 'bg-void-info/20 text-void-info'
-								: 'bg-void-accent/20 text-void-accent'
-						}`}>
+					<div className="flex items-center justify-center gap-2 mt-3">
+						<span className={`model-badge`}>
 							{chatModeName}
 						</span>
 						{currentChatMode === 'learn' && (
-							<span className="px-3 py-1 text-sm font-medium bg-void-bg-2 text-void-fg-3 rounded-full">
+							<span className="model-badge">
 								{nameOfStudentLevel[studentLevel]}
 							</span>
 						)}
 					</div>
 				</div>
 
-				{/* Tagline */}
-				<p className='text-void-fg-3 text-base text-center mt-6 leading-relaxed max-w-md text-pretty'>
-					{modeTaglines[currentChatMode]}
-				</p>
+				{/* Rotating headline + body — calm invitation, not a menu */}
+				<div className="text-center mt-5 max-w-sm space-y-1.5">
+					<h2 className="text-void-fg-1 text-lg font-semibold text-balance tracking-tight">{landingCopy.headline}</h2>
+					<p className='text-void-fg-3 text-sm leading-relaxed text-pretty'>{landingCopy.body}</p>
+				</div>
 
 				{/* Keyboard shortcuts hint banner */}
-				<KeyboardShortcutsBanner keybindingString={keybindingString ?? undefined} />
-
-				{/* Student mode quick tips */}
-				{currentChatMode === 'learn' && (
-					<div className="mt-6 p-4 bg-void-bg-2 rounded-xl max-w-sm text-sm">
-						<div className="font-medium text-void-fg-2 mb-2"><Lightbulb size={14} className="text-void-fg-3 inline-block mr-1.5" /> Try asking:</div>
-						<ul className="text-void-fg-3 space-y-1">
-							<li>"What is a function?"</li>
-							<li>"Explain this code to me"</li>
-							<li>"Give me a practice exercise"</li>
-							<li>"Help me build a todo app"</li>
-						</ul>
-					</div>
-				)}
+				<div className="mt-6">
+					<KeyboardShortcutsBanner keybindingString={keybindingString ?? undefined} />
+				</div>
 			</ErrorBoundary>
 		</div>
 
 		{/* Recent activity at bottom */}
-		<div className='flex-shrink-0 overflow-y-auto px-8 pb-6'>
+		<div className='flex-shrink-0 overflow-y-auto px-6 pb-4 relative z-10'>
 			{Object.keys(chatThreadsState.allThreads).length > 1 ? // show if there are threads
 				<ErrorBoundary>
 					<div className="space-y-2">
-						<div className="text-xs font-medium text-void-fg-4 mb-3">
+						<div className="text-xs font-medium text-void-fg-4 mb-2 px-1">
 							Recent conversations
 						</div>
 						<PastThreadsList />
@@ -4462,7 +4470,7 @@ export const SidebarChat = () => {
 
 		{/* Input at bottom */}
 		<ErrorBoundary>
-			<div className='flex-shrink-0 border-t border-void-border-1'>
+			<div className='flex-shrink-0 border-t border-void-border-1/50 relative z-10'>
 				{landingPageInput}
 			</div>
 		</ErrorBoundary>

@@ -538,8 +538,8 @@ const RenderToken = React.memo(({ token, inPTag, codeURI, chatMessageLocation, t
 	}
 	// default
 	return (
-		<div className='bg-orange-50 rounded-sm overflow-hidden p-2'>
-			<span className='text-sm text-orange-500'>Unknown token rendered...</span>
+		<div className='bg-void-orange/5 rounded-sm overflow-hidden p-2'>
+			<span className='text-sm text-void-orange'>Unknown token rendered...</span>
 		</div>
 	)
 }, (prevProps, nextProps) => {

@@ -3232,6 +3232,13 @@ private _updateLatestTool = (threadId: string, tool: ChatMessage & { role: 'tool
 		const thread = this.state.allThreads[threadId]
 		if (!thread) return // should never happen
 
+		// Drop cached read-only tool results for this thread. Between turns the
+		// user (or an external process) may have edited files on disk, so a
+		// memoized `read_file`/`search_*` from the previous turn could be stale.
+		// Within a single turn the cache still dedups repeated identical reads;
+		// only cross-turn reads are forced fresh.
+		delete this.toolResultCache[threadId]
+
 		// Fire SessionStart hook once per session (on the first user message).
 		// `additionalContext` from the hook is prepended to the user message so it
 		// reaches the model this turn. Non-blocking: hook errors are swallowed.

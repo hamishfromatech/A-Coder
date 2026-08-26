@@ -193,8 +193,8 @@ export const SlashCommandMenu: React.FC<SlashCommandMenuProps> = ({ query, isOpe
 	return (
 		<div
 			ref={containerRef}
-			className="absolute bottom-full left-0 mb-2 w-full bg-void-bg-1 border border-void-border-2 rounded-xl shadow-lg flex flex-col overflow-hidden z-[100]"
-			style={{ maxHeight: '280px' }}
+			className="popover absolute bottom-full left-0 mb-2 w-full bg-void-bg-1 rounded-xl flex flex-col overflow-hidden"
+			style={{ maxHeight: '280px', zIndex: 'var(--void-z-dropdown)' }}
 		>
 			<div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-void-fg-3 bg-void-bg-2 border-b border-void-border-2 select-none">
 				Slash Commands

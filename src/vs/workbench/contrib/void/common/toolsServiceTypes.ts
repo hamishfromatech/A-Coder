@@ -145,7 +145,6 @@ export type BuiltinToolCallParams = {
 		}>
 	},
 	'preview_implementation_plan': {},
-	'execute_implementation_plan': { step_id?: string },
 	'update_implementation_step': { step_id: string, status: string, notes: string | null },
 	'get_implementation_status': {},
 	// ---
@@ -154,9 +153,7 @@ export type BuiltinToolCallParams = {
 	// --- Teaching tools (Student Mode)
 	'explain_code': { code: string, language: string, level: 'beginner' | 'intermediate' | 'advanced', focus?: string },
 	'teach_concept': { concept: string, level: 'beginner' | 'intermediate' | 'advanced', language?: string, context?: string },
-	'create_exercise': { topic: string, difficulty: 'easy' | 'medium' | 'hard', language: string, type: 'fill_blank' | 'fix_bug' | 'write_function' | 'extend_code' },
-	'check_answer': { exercise_id: string, student_code: string },
-	'give_hint': { exercise_id: string },
+	'create_exercise': { title: string, instructions: string, type: 'fill_blank' | 'fix_bug' | 'write_function' | 'extend_code', language: string, initial_code: string, expected_solution: string, hints?: string[], difficulty?: 'easy' | 'medium' | 'hard' },
 	'create_lesson_plan': { goal: string, level: 'beginner' | 'intermediate' | 'advanced', time_available?: number },
 	'display_lesson': { title: string, content: string },
 	'load_skill': { skill_name: string },
@@ -312,7 +309,6 @@ export type BuiltinToolResultType = {
 	// ---
 	'create_implementation_plan': { planId: string, summary: string },
 	'preview_implementation_plan': { planId: string, goal: string, steps: any[], summary: string },
-	'execute_implementation_plan': { stepId: string, status: string, summary: string },
 	'update_implementation_step': { stepId: string, newStatus: string, summary: string },
 	'get_implementation_status': { planExists: boolean, summary: string | null },
 	// ---
@@ -321,10 +317,8 @@ export type BuiltinToolResultType = {
 	// --- Teaching tools (Student Mode)
 	'explain_code': { template: string },
 	'teach_concept': { template: string },
-	'create_exercise': { exerciseId: string, template: string },
-	'check_answer': { template: string },
-	'give_hint': { hintLevel: number, template: string },
-	'create_lesson_plan': { planId: string, template: string },
+	'create_exercise': { exerciseId: string },
+	'create_lesson_plan': { template: string },
 	'display_lesson': { success: boolean, filePath: string },
 	'load_skill': { skill_name: string, instructions: string, success: boolean, source?: string, metadata?: { name: string, description: string, version?: string, author?: string, tags?: string[], dependencies?: string[] }, scripts?: Array<{ name: string, path: string, language: string }>, references?: Array<{ name: string, path: string }>, assets?: Array<{ name: string, path: string, type: string }> },
 	'list_skills': { skills: Array<{ name: string, description: string, version?: string, author?: string, tags?: string[], source?: string, hasScripts: boolean, hasReferences: boolean, hasAssets: boolean }> },
