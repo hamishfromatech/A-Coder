@@ -5,6 +5,7 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { AlertTriangle, File, Ban, Check, ChevronRight, CircleEllipsis, Pencil, Database, Loader2, SkipForward, X, Copy as CopyIcon, Play, Folder, Text } from 'lucide-react';
+import { GlyphSpinner } from '../util/status.js';
 import { useAccessor, useChatThreadsStreamState, useIsDark, useFullChatThreadsStreamState, useActiveURI } from '../util/services.js';
 import { URI } from '../../../../../../../base/common/uri.js';
 import { ScrollType } from '../../../../../../../editor/common/editorCommon.js';
@@ -23,6 +24,8 @@ export type ToolHeaderParams = {
 	desc1OnClick?: () => void;
 	desc2?: React.ReactNode;
 	isError?: boolean;
+	/** Tool is executing right now — shows the glyph spinner, hides the tool icon. */
+	isRunning?: boolean;
 	info?: string;
 	desc1Info?: string;
 	isRejected?: boolean;
@@ -113,7 +116,7 @@ export const voidOpenFileFn = (
 export const loadingTitleWrapper = (item: React.ReactNode): React.ReactNode => {
 	return <span className='flex items-center flex-nowrap'>
 		{item}
-		<Loader2 className='w-3 h-3 ml-1 animate-spin text-void-fg-3' />
+		<GlyphSpinner className='ml-1.5 text-[0.8rem] text-void-scaffold-meta' />
 	</span>
 }
 
@@ -144,58 +147,58 @@ export const titleOfBuiltinToolName = {
 	'repo_resolve_ref': { done: 'Resolved reference', proposed: 'Resolve reference', running: 'Resolving reference' },
 	'repo_get_commit_metadata': { done: 'Got commit metadata', proposed: 'Get commit metadata', running: 'Getting commit metadata' },
 	'repo_wait_for_embeddings': { done: 'Embeddings ready', proposed: 'Wait for embeddings', running: 'Waiting for embeddings' },
-	'wait': { done: 'Wait finished', proposed: 'Wait', running: loadingTitleWrapper('Waiting') },
-	'check_terminal_status': { done: 'Terminal status checked', proposed: 'Check terminal status', running: loadingTitleWrapper('Checking terminal status') },
-	'run_persistent_command': { done: `Ran terminal`, proposed: 'Run terminal', running: loadingTitleWrapper('Running terminal') },
-	'create_file_or_folder': { done: `Created`, proposed: `Create`, running: loadingTitleWrapper(`Creating`) },
-	'delete_file_or_folder': { done: `Deleted`, proposed: `Delete`, running: loadingTitleWrapper(`Deleting`) },
-	'edit_file': { done: `Edited file`, proposed: 'Edit file', running: loadingTitleWrapper('Editing file') },
-	'edit_files': { done: `Edited files`, proposed: 'Edit files', running: loadingTitleWrapper('Editing files') },
-	'rewrite_file': { done: `Wrote file`, proposed: 'Write file', running: loadingTitleWrapper('Writing file') },
-	'run_command': { done: `Ran terminal`, proposed: 'Run terminal', running: loadingTitleWrapper('Running terminal') },
-	'open_persistent_terminal': { done: `Opened terminal`, proposed: 'Open terminal', running: loadingTitleWrapper('Opening terminal') },
-	'kill_persistent_terminal': { done: `Killed terminal`, proposed: 'Kill terminal', running: loadingTitleWrapper('Killing terminal') },
-	'run_code': { done: 'Executed code', proposed: 'Execute code', running: loadingTitleWrapper('Executing code') },
-	'create_todo': { done: 'Todo created', proposed: 'Create todo', running: loadingTitleWrapper('Creating todo') },
-	'update_todo': { done: 'Updated todo', proposed: 'Update todo', running: loadingTitleWrapper('Updating todo') },
-	'get_todos': { done: 'Got todos', proposed: 'Get todos', running: loadingTitleWrapper('Getting todos') },
-	'add_todos': { done: 'Added todos', proposed: 'Add todos', running: loadingTitleWrapper('Adding todos') },
-	'create_implementation_plan': { done: 'Created implementation plan', proposed: 'Create implementation plan', running: loadingTitleWrapper('Creating implementation plan') },
-	'preview_implementation_plan': { done: 'Previewed implementation plan', proposed: 'Preview implementation plan', running: loadingTitleWrapper('Previewing implementation plan') },
-	'update_implementation_step': { done: 'Updated implementation step', proposed: 'Update implementation step', running: loadingTitleWrapper('Updating implementation step') },
-	'get_implementation_status': { done: 'Got implementation status', proposed: 'Get implementation status', running: loadingTitleWrapper('Getting implementation status') },
-	'update_walkthrough': { done: 'Updated walkthrough', proposed: 'Update walkthrough', running: loadingTitleWrapper('Updating walkthrough') },
-	'open_walkthrough_preview': { done: 'Opened walkthrough preview', proposed: 'Open walkthrough preview', running: loadingTitleWrapper('Opening walkthrough preview') },
-	'explain_code': { done: 'Explained code', proposed: 'Explain code', running: loadingTitleWrapper('Explaining code') },
-	'teach_concept': { done: 'Taught concept', proposed: 'Teach concept', running: loadingTitleWrapper('Teaching concept') },
-	'create_exercise': { done: 'Exercise ready', proposed: 'Create exercise', running: loadingTitleWrapper('Creating exercise') },
-	'create_lesson_plan': { done: 'Created lesson plan', proposed: 'Create lesson plan', running: loadingTitleWrapper('Creating lesson plan') },
-	'load_skill': { done: 'Skill loaded', proposed: 'Load skill', running: loadingTitleWrapper('Loading skill') },
-	'list_skills': { done: 'Skills listed', proposed: 'List skills', running: loadingTitleWrapper('Listing skills') },
-	'display_lesson': { done: 'Displayed lesson', proposed: 'Display lesson', running: loadingTitleWrapper('Displaying lesson') },
-	'execute_skill_script': { done: 'Executed skill script', proposed: 'Execute skill script', running: loadingTitleWrapper('Executing skill script') },
-	'load_skill_reference': { done: 'Loaded skill reference', proposed: 'Load skill reference', running: loadingTitleWrapper('Loading skill reference') },
-	'get_skill_asset': { done: 'Got skill asset', proposed: 'Get skill asset', running: loadingTitleWrapper('Getting skill asset') },
-	'install_skill': { done: 'Installed skill', proposed: 'Install skill', running: loadingTitleWrapper('Installing skill') },
-	'uninstall_skill': { done: 'Uninstalled skill', proposed: 'Uninstall skill', running: loadingTitleWrapper('Uninstalling skill') },
-	'run_skill_benchmark': { done: 'Ran skill benchmark', proposed: 'Run skill benchmark', running: loadingTitleWrapper('Running skill benchmark') },
-	'get_skill_metrics': { done: 'Got skill metrics', proposed: 'Get skill metrics', running: loadingTitleWrapper('Getting skill metrics') },
-	'list_skill_benchmarks': { done: 'Listed skill benchmarks', proposed: 'List skill benchmarks', running: loadingTitleWrapper('Listing skill benchmarks') },
-	'generate_image': { done: 'Image generated', proposed: 'Generate image', running: loadingTitleWrapper('Generating image') },
-	'generate_video': { done: 'Video generated', proposed: 'Generate video', running: loadingTitleWrapper('Generating video') },
-	'render_form': { done: 'Form rendered', proposed: 'Render form', running: loadingTitleWrapper('Rendering form') },
-	'create_quiz': { done: 'Quiz completed', proposed: 'Create quiz', running: loadingTitleWrapper('Creating quiz') },
-	'run_subagent': { done: 'Subagent completed', proposed: 'Run subagent', running: loadingTitleWrapper('Running subagent') },
+	'wait': { done: 'Wait finished', proposed: 'Wait', running: 'Waiting' },
+	'check_terminal_status': { done: 'Terminal status checked', proposed: 'Check terminal status', running: 'Checking terminal status' },
+	'run_persistent_command': { done: `Ran terminal`, proposed: 'Run terminal', running: 'Running terminal' },
+	'create_file_or_folder': { done: `Created`, proposed: `Create`, running: `Creating` },
+	'delete_file_or_folder': { done: `Deleted`, proposed: `Delete`, running: `Deleting` },
+	'edit_file': { done: `Edited file`, proposed: 'Edit file', running: 'Editing file' },
+	'edit_files': { done: `Edited files`, proposed: 'Edit files', running: 'Editing files' },
+	'rewrite_file': { done: `Wrote file`, proposed: 'Write file', running: 'Writing file' },
+	'run_command': { done: `Ran terminal`, proposed: 'Run terminal', running: 'Running terminal' },
+	'open_persistent_terminal': { done: `Opened terminal`, proposed: 'Open terminal', running: 'Opening terminal' },
+	'kill_persistent_terminal': { done: `Killed terminal`, proposed: 'Kill terminal', running: 'Killing terminal' },
+	'run_code': { done: 'Executed code', proposed: 'Execute code', running: 'Executing code' },
+	'create_todo': { done: 'Todo created', proposed: 'Create todo', running: 'Creating todo' },
+	'update_todo': { done: 'Updated todo', proposed: 'Update todo', running: 'Updating todo' },
+	'get_todos': { done: 'Got todos', proposed: 'Get todos', running: 'Getting todos' },
+	'add_todos': { done: 'Added todos', proposed: 'Add todos', running: 'Adding todos' },
+	'create_implementation_plan': { done: 'Created implementation plan', proposed: 'Create implementation plan', running: 'Creating implementation plan' },
+	'preview_implementation_plan': { done: 'Previewed implementation plan', proposed: 'Preview implementation plan', running: 'Previewing implementation plan' },
+	'update_implementation_step': { done: 'Updated implementation step', proposed: 'Update implementation step', running: 'Updating implementation step' },
+	'get_implementation_status': { done: 'Got implementation status', proposed: 'Get implementation status', running: 'Getting implementation status' },
+	'update_walkthrough': { done: 'Updated walkthrough', proposed: 'Update walkthrough', running: 'Updating walkthrough' },
+	'open_walkthrough_preview': { done: 'Opened walkthrough preview', proposed: 'Open walkthrough preview', running: 'Opening walkthrough preview' },
+	'explain_code': { done: 'Explained code', proposed: 'Explain code', running: 'Explaining code' },
+	'teach_concept': { done: 'Taught concept', proposed: 'Teach concept', running: 'Teaching concept' },
+	'create_exercise': { done: 'Exercise ready', proposed: 'Create exercise', running: 'Creating exercise' },
+	'create_lesson_plan': { done: 'Created lesson plan', proposed: 'Create lesson plan', running: 'Creating lesson plan' },
+	'load_skill': { done: 'Skill loaded', proposed: 'Load skill', running: 'Loading skill' },
+	'list_skills': { done: 'Skills listed', proposed: 'List skills', running: 'Listing skills' },
+	'display_lesson': { done: 'Displayed lesson', proposed: 'Display lesson', running: 'Displaying lesson' },
+	'execute_skill_script': { done: 'Executed skill script', proposed: 'Execute skill script', running: 'Executing skill script' },
+	'load_skill_reference': { done: 'Loaded skill reference', proposed: 'Load skill reference', running: 'Loading skill reference' },
+	'get_skill_asset': { done: 'Got skill asset', proposed: 'Get skill asset', running: 'Getting skill asset' },
+	'install_skill': { done: 'Installed skill', proposed: 'Install skill', running: 'Installing skill' },
+	'uninstall_skill': { done: 'Uninstalled skill', proposed: 'Uninstall skill', running: 'Uninstalling skill' },
+	'run_skill_benchmark': { done: 'Ran skill benchmark', proposed: 'Run skill benchmark', running: 'Running skill benchmark' },
+	'get_skill_metrics': { done: 'Got skill metrics', proposed: 'Get skill metrics', running: 'Getting skill metrics' },
+	'list_skill_benchmarks': { done: 'Listed skill benchmarks', proposed: 'List skill benchmarks', running: 'Listing skill benchmarks' },
+	'generate_image': { done: 'Image generated', proposed: 'Generate image', running: 'Generating image' },
+	'generate_video': { done: 'Video generated', proposed: 'Generate video', running: 'Generating video' },
+	'render_form': { done: 'Form rendered', proposed: 'Render form', running: 'Rendering form' },
+	'create_quiz': { done: 'Quiz completed', proposed: 'Create quiz', running: 'Creating quiz' },
+	'run_subagent': { done: 'Subagent completed', proposed: 'Run subagent', running: 'Running subagent' },
 	// Browser / Webview tools
-	'open_url': { done: 'URL opened', proposed: 'Open URL', running: loadingTitleWrapper('Opening URL') },
-	'fetch_url': { done: 'URL fetched', proposed: 'Fetch URL', running: loadingTitleWrapper('Fetching URL') },
-	'open_devtools': { done: 'DevTools opened', proposed: 'Open DevTools', running: loadingTitleWrapper('Opening DevTools') },
-	'click_element': { done: 'Element clicked', proposed: 'Click element', running: loadingTitleWrapper('Clicking element') },
-	'get_page_text': { done: 'Page text extracted', proposed: 'Extract page text', running: loadingTitleWrapper('Extracting page text') },
-	'webview_screenshot': { done: 'Screenshot captured', proposed: 'Take screenshot', running: loadingTitleWrapper('Capturing screenshot') },
-	'search_web': { done: 'Web search complete', proposed: 'Search web', running: loadingTitleWrapper('Searching web') },
-	'browse_resources': { done: 'Resources browsed', proposed: 'Browse resources', running: loadingTitleWrapper('Browsing resources') },
-	'type_into_element': { done: 'Typed into element', proposed: 'Type into element', running: loadingTitleWrapper('Typing into element') },
+	'open_url': { done: 'URL opened', proposed: 'Open URL', running: 'Opening URL' },
+	'fetch_url': { done: 'URL fetched', proposed: 'Fetch URL', running: 'Fetching URL' },
+	'open_devtools': { done: 'DevTools opened', proposed: 'Open DevTools', running: 'Opening DevTools' },
+	'click_element': { done: 'Element clicked', proposed: 'Click element', running: 'Clicking element' },
+	'get_page_text': { done: 'Page text extracted', proposed: 'Extract page text', running: 'Extracting page text' },
+	'webview_screenshot': { done: 'Screenshot captured', proposed: 'Take screenshot', running: 'Capturing screenshot' },
+	'search_web': { done: 'Web search complete', proposed: 'Search web', running: 'Searching web' },
+	'browse_resources': { done: 'Resources browsed', proposed: 'Browse resources', running: 'Browsing resources' },
+	'type_into_element': { done: 'Typed into element', proposed: 'Type into element', running: 'Typing into element' },
 } as const satisfies Record<BuiltinToolName, { done: React.ReactNode, proposed: React.ReactNode, running: React.ReactNode }>
 
 export const getTitle = (toolMessage: Pick<ChatMessage & { role: 'tool' }, 'name' | 'type' | 'mcpServerName'>): React.ReactNode => {
@@ -210,8 +213,6 @@ export const getTitle = (toolMessage: Pick<ChatMessage & { role: 'tool' }, 'name
 								: t.type === 'tool_error' ? 'Call'
 									: 'Call'
 		const title = `${descriptor} ${toolMessage.mcpServerName || 'MCP'}`
-		if (t.type === 'running_now' || t.type === 'tool_request')
-			return loadingTitleWrapper(title)
 		return title
 	}
 	else {
@@ -458,8 +459,10 @@ export const toolNameToDesc = (toolName: BuiltinToolName, _toolParams: BuiltinTo
 // --- Shared Components ---
 
 export const ToolChildrenWrapper = ({ children, className }: { children: React.ReactNode, className?: string }) => {
-	return <div className={`${className ? className : ''} cursor-default select-none border-t border-void-border-2`}>
-		<div className='px-2 min-w-full overflow-y-auto max-h-[600px]'>
+	// Chrome-free: the expanded tool shell owns the border — this is just the
+	// padded, scrollable body so the shell never boxes content twice.
+	return <div className={`${className ? className : ''} cursor-default select-none`}>
+		<div className='px-1 py-0.5 min-w-full overflow-y-auto max-h-[600px]'>
 			{children}
 		</div>
 	</div>
@@ -467,7 +470,7 @@ export const ToolChildrenWrapper = ({ children, className }: { children: React.R
 
 export const CodeChildren = ({ children, className }: { children: React.ReactNode, className?: string }) => {
 	const isDark = useIsDark()
-	return <div className={`${className ?? ''} p-4 rounded-xl overflow-auto text-[11px] font-mono border border-void-border-2 ${isDark ? 'bg-void-bg-4 shadow-inner' : 'bg-void-bg-1'} tracking-tight`}>
+	return <div className={`${className ?? ''} px-2 py-1.5 rounded-[5px] overflow-auto text-[11px] font-mono border border-void-hairline ${isDark ? 'bg-void-bg-4' : 'bg-void-bg-1'} tracking-tight`}>
 		<div className='!select-text cursor-auto leading-relaxed'>
 			{children}
 		</div>
@@ -491,21 +494,19 @@ export const BottomChildren = ({ children, title }: { children: React.ReactNode,
 	const [isOpen, setIsOpen] = useState(false);
 	if (!children) return null;
 	return (
-		<div className="w-full px-2 mt-2">
+		<div className='w-full min-w-0'>
 			<div
-				className={`flex items-center cursor-pointer select-none transition-all duration-200 px-3 py-2 rounded-xl hover:bg-void-bg-2 group bg-void-bg-2 border border-void-border-2`}
+				className='group/bottom flex w-full min-w-0 cursor-pointer select-none items-center gap-1.5 rounded-md px-1.5 py-1 transition-colors hover:bg-void-row-hover'
 				onClick={() => setIsOpen(o => !o)}
 			>
 				<ChevronRight
 					size={12}
-					className={`mr-2 transition-transform duration-200 text-void-fg-4 group-hover:text-void-fg-2 ${isOpen ? 'rotate-90 text-void-accent' : ''}`}
+					className={`shrink-0 text-void-scaffold-meta transition-all duration-150 ease-out ${isOpen ? 'rotate-90 opacity-80' : 'opacity-0 group-hover/bottom:opacity-80'}`}
 				/>
-				<span className="font-bold text-void-fg-3 group-hover:text-void-fg-2 text-[10px] uppercase tracking-wider">{title}</span>
+				<span className='text-[10px] font-medium uppercase tracking-[0.08em] text-void-scaffold-meta transition-colors group-hover/bottom:text-void-fg-2'>{title}</span>
 			</div>
-			<div className={`overflow-hidden transition-all duration-300 ease-in-out ${isOpen ? 'opacity-100 max-h-[1000px] mt-2 mb-2' : 'max-h-0 opacity-0'} text-xs`}>
-				<div className="pl-2">
-					{children}
-				</div>
+			<div className={`overflow-hidden transition-all duration-200 ease-out ${isOpen ? 'opacity-100 max-h-[1000px] my-1' : 'max-h-0 opacity-0'} text-xs px-1.5`}>
+				{children}
 			</div>
 		</div>
 	);
@@ -524,6 +525,7 @@ export const ToolHeaderWrapper = ({
 	info,
 	bottomChildren,
 	isError,
+	isRunning,
 	onClick,
 	desc2OnClick,
 	isOpen,
@@ -546,35 +548,61 @@ export const ToolHeaderWrapper = ({
 	const isDropdown = children !== undefined
 	const isClickable = !!(isDropdown || onClick)
 	const isDesc1Clickable = !!desc1OnClick
-	const isReadingTool = (title && typeof title === 'string' && (title.toLowerCase().includes('read') || title.toLowerCase().includes('searched') || title.toLowerCase().includes('listed'))) || false
-	const isCodingTool = (title && typeof title === 'string' && (title.toLowerCase().includes('edit') || title.toLowerCase().includes('rewrite') || title.toLowerCase().includes('created'))) || false
-	const containerClasses = `w-full rounded-xl overflow-hidden transition-all duration-200 bg-void-bg-2 border border-void-border-2 hover:border-void-border-1 hover:bg-void-bg-2-hover ${isCodingTool ? 'shadow-sm ring-1 ring-void-accent/10' : 'shadow-sm'} ${className}`
-	const desc1HTML = <span className={`text-void-fg-4 text-xs italic truncate ml-2 ${isDesc1Clickable ? 'cursor-pointer hover:brightness-125 transition-all duration-150' : ''}`} onClick={desc1OnClick} {...desc1Info ? { 'data-tooltip-id': 'void-tooltip', 'data-tooltip-content': desc1Info, 'data-tooltip-place': 'top', 'data-tooltip-delay-show': 1000 } : {}}>{desc1}</span>
+
+	// Hermes-style scaffold line: a tool call is one quiet grey row around the
+	// reply — a borderless line at rest; only an EXPANDED row earns a hairline
+	// shell. Status preempts the tool icon in the leading slot (spinner while
+	// running, warning when failed, ban when rejected) — success is silent and
+	// just shows the tool's icon. No icon chips, no card-in-card.
+	const titleStr = typeof title === 'string' ? title.toLowerCase() : ''
+	const isReadingTool = titleStr.includes('read') || titleStr.includes('search') || titleStr.includes('list') || titleStr.includes('outline')
+	const isCodingTool = titleStr.includes('edit') || titleStr.includes('wrote') || titleStr.includes('created') || titleStr.includes('deleted')
+
+	const leadingGlyph = isRunning
+		? <GlyphSpinner className='text-[0.95rem] text-void-scaffold-meta' />
+		: isError
+			? <AlertTriangle size={14} className='text-void-warning' />
+			: isRejected
+				? <Ban size={14} className='text-void-fg-4' />
+				: icon
+					? <span className='text-void-fg-3 [&_svg]:size-3.5'>{icon}</span>
+					: isReadingTool
+						? <File size={14} className='text-void-fg-3' />
+						: isCodingTool
+							? <Pencil size={14} className='text-void-fg-3' />
+							: <Database size={14} className='text-void-fg-3' />;
+
+	const desc1HTML = <span className={`min-w-0 truncate text-[11px] leading-[1.45] text-void-scaffold-meta ${isDesc1Clickable ? 'cursor-pointer hover:text-void-fg-2 transition-colors duration-150' : ''}`} onClick={desc1OnClick} {...desc1Info ? { 'data-tooltip-id': 'void-tooltip', 'data-tooltip-content': desc1Info, 'data-tooltip-place': 'top', 'data-tooltip-delay-show': 1000 } : {}}>{desc1}</span>
 
 	return (
-		<div className='my-3 px-1'>
-			<div className={containerClasses}>
-				<div className={`select-none flex items-center justify-between ${isReadingTool ? 'min-h-[32px] px-3 py-1.5' : 'min-h-[36px] px-3 py-2'} ${isClickable ? 'cursor-pointer group/header' : ''}`} onClick={() => { if (isDropdown) { setIsOpen(v => !v); } if (onClick) { onClick(); } }}>
-					<div className={`flex items-center min-w-0 overflow-hidden ${isRejected ? 'line-through opacity-60' : ''}`}>
-						{isDropdown && <ChevronRight size={14} className={`text-void-fg-4 mr-2 transition-transform duration-200 ease-out group-hover/header:text-void-fg-2 ${isExpanded ? 'rotate-90 text-void-accent' : ''}`} />}
-						<div className={`mr-2 p-1 rounded-md ${isCodingTool ? 'bg-void-accent/10 text-void-accent' : icon ? 'bg-void-bg-3 text-void-fg-2' : 'bg-void-bg-3 text-void-fg-3'}`}>
-							{icon || (isReadingTool ? <File size={12} strokeWidth={2.5} /> : isCodingTool ? <Pencil size={12} strokeWidth={2.5} /> : <Database size={12} strokeWidth={2.5} />)}
-						</div>
-						<span className={`flex-shrink-0 truncate ${isReadingTool ? 'text-void-fg-2 text-xs font-semibold' : 'text-void-fg-1 text-sm font-bold'}`}>{title}</span>
+		<div className='my-2 px-1'>
+			<div className={`w-full min-w-0 overflow-hidden transition-all duration-200 ${isExpanded ? 'rounded-[5px] border border-void-hairline' : ''} ${className ?? ''}`}>
+				<div
+					className={`group/header select-none flex min-w-0 items-center gap-1.5 min-h-[26px] ${isExpanded ? 'border-b border-void-hairline px-2 py-1.5' : 'px-1.5 py-1'} ${isClickable ? 'cursor-pointer' : ''}`} onClick={() => { if (isDropdown) { setIsOpen(v => !v); } if (onClick) { onClick(); } }}>
+					<span className={`grid size-3.5 shrink-0 place-items-center ${isRejected ? 'line-through opacity-60' : ''}`}>{leadingGlyph}</span>
+					<span className={`flex min-w-0 flex-1 items-center gap-1.5 ${isRejected ? 'line-through opacity-60' : ''}`}>
+						<span className='min-w-0 flex-1 truncate text-[13px] font-normal leading-[1.45] text-void-scaffold-text transition-colors group-hover/header:text-void-fg-2'>{title}</span>
 						{desc1HTML}
-					</div>
-					<div className="flex items-center gap-x-2 flex-shrink-0 ml-3">
-						{info && <CircleEllipsis className='text-void-fg-4 opacity-40 flex-shrink-0 hover:opacity-100 transition-opacity' size={14} data-tooltip-id='void-tooltip' data-tooltip-content={info} data-tooltip-place='top-end' />}
-						{isError && <AlertTriangle className='text-void-warning opacity-90 flex-shrink-0' size={14} data-tooltip-id='void-tooltip' data-tooltip-content={'Error running tool'} data-tooltip-place='top' />}
-						{isRejected && <Ban className='text-void-fg-4 opacity-90 flex-shrink-0' size={14} data-tooltip-id='void-tooltip' data-tooltip-content={'Canceled'} data-tooltip-place='top' />}
-						{desc2 && <div className="flex-shrink-0">{desc2}</div>}
-						{numResults !== undefined && <span className="text-[10px] font-bold text-void-fg-3 bg-void-bg-3 px-1.5 py-0.5 rounded-full border border-void-border-2">{`${numResults}${hasNextPage ? '+' : ''}`}</span>}
-						{hasNextPage && <span className="text-[10px] font-bold text-void-accent bg-void-accent/10 px-1.5 py-0.5 rounded uppercase tracking-wider">More</span>}
+						{isDropdown && (
+							// Caret sits right of the text and appears on hover; stays visible when open.
+							<ChevronRight
+								size={12}
+								className={`shrink-0 text-void-scaffold-meta transition-all duration-150 ease-out ${isExpanded ? 'rotate-90 opacity-80' : 'opacity-0 group-hover/header:opacity-80'}`}
+							/>
+						)}
+					</span>
+					<div className='flex items-center gap-x-2 flex-shrink-0 ml-auto pl-1.5'>
+						{numResults !== undefined && <span className='text-[10px] font-medium tabular-nums text-void-scaffold-meta'>{`${numResults}${hasNextPage ? '+' : ''}`}</span>}
+						{hasNextPage && numResults === undefined && <span className='text-[10px] font-medium uppercase tracking-wider text-void-accent'>More</span>}
+						{desc2 && <div className='flex-shrink-0 text-[10px] tabular-nums text-void-scaffold-meta' onClick={desc2OnClick}>{desc2}</div>}
+						{info && <CircleEllipsis className='text-void-scaffold-meta opacity-70 hover:opacity-100 transition-opacity flex-shrink-0' size={13} data-tooltip-id='void-tooltip' data-tooltip-content={info} data-tooltip-place='top-end' />}
+						{isError && <span className='text-[10px] font-medium text-void-warning' data-tooltip-id='void-tooltip' data-tooltip-content={'Error running tool'} data-tooltip-place='top'>Error</span>}
+						{isRejected && <span className='text-[10px] font-medium text-void-scaffold-meta' data-tooltip-id='void-tooltip' data-tooltip-content={'Canceled'} data-tooltip-place='top'>Canceled</span>}
 					</div>
 				</div>
-				{children !== undefined && <div className={`overflow-auto transition-all duration-300 ease-in-out border-t border-void-border-2 bg-void-bg-1 ${isExpanded ? 'opacity-100 max-h-[800px] py-3' : 'max-h-0 opacity-0'} px-3 text-void-fg-2`}>{children}</div>}
+				{children !== undefined && <div className={`overflow-auto transition-all duration-200 ease-out ${isExpanded ? 'opacity-100 max-h-[800px] py-1.5' : 'max-h-0 opacity-0'} px-2 text-void-fg-2`}>{children}</div>}
 			</div>
-			{bottomChildren && <div className="mt-1 animate-in fade-in duration-200">{bottomChildren}</div>}
+			{bottomChildren && <div className='mt-1 animate-in fade-in duration-200'>{bottomChildren}</div>}
 		</div>
 	)
 };

@@ -18,9 +18,13 @@ import {
 	ImageAttachment,
 } from '../../../../common/chatThreadServiceTypes.js';
 import {
-	ArrowUp, ImagePlus, Loader2, Bot,
-	FileCode, Bug, Zap, X, Slash, Calendar, Target, Globe
+	ArrowUp, ImagePlus, Bot,
+	FileCode, Bug, Zap, X, Slash
 } from 'lucide-react';
+import { parseSlashCommand, SlashCommandMenu, type ParsedSlashCommand, type SlashCommand } from '../sidebar-tsx/SlashCommandMenu.js';
+import { ComposerStatusStack } from '../sidebar-tsx/ComposerStatusStack.js';
+import { GlyphSpinner } from '../util/status.js';
+import { Severity } from '../../../../../../../platform/notification/common/notification.js';
 import '../styles.css';
 
 // ------------------------------------------------------------------
@@ -32,15 +36,20 @@ const SUGGESTED_PROMPTS = [
 	{ label: 'Write tests', icon: Zap },
 ];
 
-// ------------------------------------------------------------------
-//  Slash commands
-// ------------------------------------------------------------------
-const SLASH_COMMANDS = [
-	{ command: '/goal', desc: 'Run until complete', icon: Target },
-	{ command: '/schedule', desc: 'Set a timer', icon: Calendar },
-	{ command: '/grill-me', desc: 'Ask clarifying questions', icon: Bot },
-	{ command: '/browser', desc: 'Use browser tools', icon: Globe },
-];
+// Slash command suggestions shown on the empty state (all real built-ins).
+const EMPTY_STATE_SLASH_COMMANDS = ['/goal', '/compact', '/clear'];
+
+/** Expand a parsed builtin command to the message actually sent to the LLM.
+ *  Client actions (clear/goal/compact) never reach here — they are handled
+ *  before sending. Mirrors SidebarChat.expandSlashCommand. */
+const expandSlashCommand = (parsed: ParsedSlashCommand): string | null => {
+	const { command, rest } = parsed;
+	if (!command) return null;
+	if (command.action === 'client-clear') return null;
+	if (command.expand) return command.expand(rest);
+	if (command.prompt) return command.prompt.split('$ARGUMENTS').join(rest);
+	return null;
+};
 
 const MAX_IMAGE_SIZE = 20 * 1024 * 1024;
 const MAX_IMAGES = 10;
@@ -160,13 +169,13 @@ const EmptyState = ({
 		</div>
 
 		<div className="mt-5 flex items-center gap-1.5 flex-wrap justify-center">
-			{SLASH_COMMANDS.map(cmd => (
+			{EMPTY_STATE_SLASH_COMMANDS.map(cmd => (
 				<button
-					key={cmd.command}
-					onClick={() => onPromptClick(cmd.command + ' ')}
+					key={cmd}
+					onClick={() => onPromptClick(cmd + ' ')}
 					className="text-[10px] px-2 py-1 rounded-md bg-void-bg-2 border border-void-border-2 text-void-fg-4 hover:text-void-fg-2 hover:border-void-border-1 transition-colors"
 				>
-					{cmd.command}
+					{cmd}
 				</button>
 			))}
 		</div>
@@ -195,7 +204,9 @@ export const AgentChat = () => {
 	const [attachedImages, setAttachedImages] = useState<ImageAttachment[]>([]);
 	const [isDragging, setIsDragging] = useState(false);
 	const [isInputFocused, setIsInputFocused] = useState(false);
-	const [showSlash, setShowSlash] = useState(false);
+	const [slashOpen, setSlashOpen] = useState(false);
+	const [slashQuery, setSlashQuery] = useState('');
+	const justSelectedSlashRef = useRef(false);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const bottomRef = useRef<HTMLDivElement>(null);
 	const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -218,12 +229,68 @@ export const AgentChat = () => {
 	}, [messages.length, displayContentSoFar, isRunning]);
 
 	const handleSubmit = useCallback(async () => {
-		const text = inputText.trim();
+		let text = inputText.trim();
 		if (!text && attachedImages.length === 0) return;
 		if (isRunning) return;
 		if (!currentThread) {
 			voidDevWarn('No active thread to send message to');
 			return;
+		}
+
+		// Handle real slash commands (same contract as the main window's composer):
+		// client actions act locally and never reach the model; builtin/plugin
+		// commands expand to their prompt before sending.
+		const parsedSlash = parseSlashCommand(text);
+		if (parsedSlash.command) {
+			setSlashOpen(false);
+			setSlashQuery('');
+
+			if (parsedSlash.command.action === 'client-clear') {
+				await chatThreadsService.abortRunning(threadId);
+				chatThreadsService.deleteMessagesFromIndex(threadId, 0);
+				setInputText('');
+				setAttachedImages([]);
+				textareaRef.current?.focus();
+				return;
+			}
+
+			if (parsedSlash.command.action === 'client-goal') {
+				const hookService = accessor.get('IHookService');
+				const notificationService = accessor.get('INotificationService');
+				const args = parsedSlash.rest.trim();
+				const clearWords = new Set(['clear', 'stop', 'off', 'reset', 'none', 'cancel']);
+				if (clearWords.has(args.toLowerCase())) {
+					hookService.clearSessionGoal();
+					notificationService.notify({ severity: Severity.Info, message: 'Session goal cleared.' });
+				} else if (!args) {
+					const current = hookService.state.sessionGoal;
+					notificationService.notify({ severity: Severity.Info, message: current ? `Current goal: ${current}` : 'No session goal set. Use /goal <condition> to set one.' });
+				} else {
+					hookService.setSessionGoal(args);
+					notificationService.notify({ severity: Severity.Info, message: `Goal set: ${args}\nThe agent will keep working until it judges this goal met. Use /goal clear to remove.` });
+				}
+				setInputText('');
+				textareaRef.current?.focus();
+				return;
+			}
+
+			if (parsedSlash.command.action === 'client-compact') {
+				const args = parsedSlash.rest.trim();
+				const clearWords = new Set(['clear', 'undo', 'reset', 'off', 'none', 'cancel']);
+				if (clearWords.has(args.toLowerCase())) {
+					chatThreadsService.clearCompaction(threadId);
+				} else {
+					await chatThreadsService.compactThread(threadId, args || undefined);
+				}
+				setInputText('');
+				textareaRef.current?.focus();
+				return;
+			}
+
+			const expanded = expandSlashCommand(parsedSlash);
+			if (expanded !== null) {
+				text = expanded;
+			}
 		}
 
 		setInputText('');
@@ -239,7 +306,7 @@ export const AgentChat = () => {
 		} catch (e) {
 			console.error('Send failed:', e);
 		}
-	}, [inputText, attachedImages, isRunning, threadId, chatThreadsService, currentThread]);
+	}, [inputText, attachedImages, isRunning, threadId, chatThreadsService, currentThread, accessor]);
 
 	const handleAbort = useCallback(async () => {
 		await chatThreadsService.abortRunning(threadId);
@@ -363,31 +430,29 @@ export const AgentChat = () => {
 				</div>
 			</div>
 
+			{/* Session status sink — todos + subagents for this thread */}
+			<ComposerStatusStack threadId={threadId} />
+
 			{/* Input */}
-			<div className="flex-shrink-0 px-6 pb-5 pt-2 border-t border-void-border-2">
+			<div className="flex-shrink-0 px-6 pb-5 pt-2 border-t border-void-hairline">
 				<div className="max-w-2xl mx-auto relative">
-					{showSlash && (
-						<div className="absolute bottom-full left-0 right-0 mb-2 bg-void-depth-floating border border-void-border-2 rounded-lg shadow-xl overflow-hidden z-20"
-						>
-							{SLASH_COMMANDS.map((cmd, idx) => (
-								<button
-									key={cmd.command}
-									onClick={() => {
-										setInputText(cmd.command + ' ');
-										setShowSlash(false);
-										textareaRef.current?.focus();
-									}}
-									className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-void-bg-3
-										${idx !== 0 ? 'border-t border-void-border-2' : ''}`}
-								>
-									{React.createElement(cmd.icon, { className: 'w-3.5 h-3.5 text-void-fg-4 flex-shrink-0' })}
-									<div className="min-w-0"
-	>
-										<span className="text-xs font-medium text-void-fg-1">{cmd.command}</span>
-										<span className="text-[10px] text-void-fg-4 ml-2">{cmd.desc}</span>
-									</div>
-								</button>
-							))}
+					{slashOpen && (
+						<div className="absolute bottom-full left-0 right-0 mb-2 z-20">
+							<SlashCommandMenu
+								query={slashQuery}
+								isOpen={slashOpen}
+								onSelect={(cmd: SlashCommand) => {
+									setSlashOpen(false);
+									setSlashQuery('');
+									justSelectedSlashRef.current = true;
+									setInputText('/' + cmd.label + ' ');
+									textareaRef.current?.focus();
+								}}
+								onClose={() => {
+									setSlashOpen(false);
+									setSlashQuery('');
+								}}
+							/>
 						</div>
 					)}
 
@@ -408,9 +473,19 @@ export const AgentChat = () => {
 								ref={textareaRef}
 								value={inputText}
 								onChange={e => {
-									setInputText(e.target.value);
-									if (e.target.value === '/') setShowSlash(true);
-									if (!e.target.value.startsWith('/')) setShowSlash(false);
+									const text = e.target.value;
+									setInputText(text);
+									if (justSelectedSlashRef.current) {
+										justSelectedSlashRef.current = false;
+										return;
+									}
+									if (text.startsWith('/')) {
+										setSlashQuery(text.slice(1).split(' ')[0] || '');
+										setSlashOpen(true);
+									} else {
+										setSlashOpen(false);
+										setSlashQuery('');
+									}
 								}}
 								onKeyDown={e => {
 									if (e.key === 'Enter' && !e.shiftKey) {
@@ -457,7 +532,13 @@ export const AgentChat = () => {
 									</label>
 
 									<button
-										onClick={() => { setShowSlash(true); textareaRef.current?.focus(); }}
+										onClick={() => {
+											if (inputText === '' || inputText.startsWith('/')) {
+												setSlashOpen(true);
+												setSlashQuery(inputText.startsWith('/') ? inputText.slice(1) : '');
+											}
+											textareaRef.current?.focus();
+										}}
 										className="p-1.5 rounded text-void-fg-4 hover:text-void-fg-2 hover:bg-void-bg-3 transition-colors"
 										title="Commands"
 									>
@@ -472,7 +553,7 @@ export const AgentChat = () => {
 											className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-void-error/10 text-void-error hover:bg-void-error/15 text-xs font-medium transition-colors"
 										>
 											Stop
-											<Loader2 className="w-3 h-3 animate-spin" />
+											<GlyphSpinner className="text-[0.8rem]" />
 										</button>
 									) : (
 										<button

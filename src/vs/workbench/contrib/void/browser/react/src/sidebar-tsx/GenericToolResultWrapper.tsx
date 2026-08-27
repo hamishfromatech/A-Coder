@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------*/
 
 import React from 'react';
-import { Loader2 } from 'lucide-react';
+
 import { useAccessor, useChatThreadsStreamState } from '../util/services.js';
 import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js';
 import { BuiltinToolName } from '../../../../common/toolsServiceTypes.js';
@@ -29,7 +29,7 @@ export const DefaultToolResultWrapper: ResultWrapper<BuiltinToolName> = ({ toolM
 	const { desc1, desc1Info } = toolNameToDesc(toolMessage.name as BuiltinToolName, toolMessage.params, accessor)
 
 	const isRejected = toolMessage.type === 'rejected'
-	const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError: false, icon: null, isRejected }
+	const componentParams: ToolHeaderParams = { isRunning: toolMessage.type === 'running_now', title, desc1, desc1Info, isError: false, icon: null, isRejected }
 
 	if (toolMessage.type === 'running_now') {
 		const activity = streamState?.isRunning === 'tool' && streamState.toolInfo.id === toolMessage.id
@@ -40,7 +40,6 @@ export const DefaultToolResultWrapper: ResultWrapper<BuiltinToolName> = ({ toolM
 			componentParams.children = (
 				<ToolChildrenWrapper>
 					<div className="flex items-center gap-2 py-1">
-						<Loader2 className="w-3 h-3 animate-spin text-void-accent" />
 						<span className="text-xs italic text-void-fg-3">{activity}</span>
 					</div>
 				</ToolChildrenWrapper>

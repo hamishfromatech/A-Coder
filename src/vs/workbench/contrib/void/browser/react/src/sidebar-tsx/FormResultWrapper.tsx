@@ -204,6 +204,7 @@ export const FormResultWrapper: ResultWrapper<'render_form'> = ({ toolMessage, t
 	       // instead of spinning forever.
 	       const stillRunning = toolMessage.type === 'running_now' || toolMessage.type === 'tool_request'
                const componentParams: ToolHeaderParams = {
+		isRunning: toolMessage.type === 'running_now',
                        title,
                        desc1,
                        isError: !stillRunning,
@@ -277,6 +278,7 @@ export const FormResultWrapper: ResultWrapper<'render_form'> = ({ toolMessage, t
 	};
 
 	const componentParams: ToolHeaderParams = {
+		isRunning: toolMessage.type === 'running_now',
 		title,
 		desc1,
 		isError: false,

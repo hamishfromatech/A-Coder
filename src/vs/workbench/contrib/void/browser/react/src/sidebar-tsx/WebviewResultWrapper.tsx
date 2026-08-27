@@ -40,7 +40,7 @@ export const WebviewResultWrapper: ResultWrapper<WebviewToolName> = ({ toolMessa
 	const { desc1, desc1Info } = toolNameToDesc(toolName, toolMessage.params, accessor)
 
 	const isRejected = toolMessage.type === 'rejected'
-	const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError: false, isRejected }
+	const componentParams: ToolHeaderParams = { isRunning: toolMessage.type === 'running_now', title, desc1, desc1Info, isError: false, isRejected }
 
 	// Icon based on tool type
 	const getIcon = () => {

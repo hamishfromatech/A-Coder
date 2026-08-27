@@ -27,7 +27,7 @@ const projectStatus = (workspace: WorkspaceConnection): { label: string, tone: '
 
 const toneStyles: Record<string, string> = {
 	running: 'text-void-accent',
-	waiting: 'text-amber-500',
+	waiting: 'text-void-warning',
 	ready: 'text-void-fg-3',
 	empty: 'text-void-fg-4'
 };
@@ -182,8 +182,8 @@ export const SimpleHome = ({ onGoAdvanced }: { onGoAdvanced: () => void }) => {
 
 				{/* Send error */}
 				{sendError && (
-					<div className="mt-3 p-3 rounded-xl border border-amber-500/30 bg-amber-500/5 flex items-start gap-2">
-						<AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+					<div className='mt-3 flex items-start gap-2 rounded-xl border border-void-warning/30 bg-void-warning/5 p-3'>
+						<AlertTriangle className='mt-0.5 h-4 w-4 shrink-0 text-void-warning' />
 						<p className="text-[11px] text-void-fg-2 flex-1">{sendError}</p>
 						<button
 							onClick={() => setSendError(null)}
@@ -214,9 +214,9 @@ export const SimpleHome = ({ onGoAdvanced }: { onGoAdvanced: () => void }) => {
 
 				{/* Sent confirmation */}
 				{sent && target && (
-					<div className="mt-4 p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 flex items-center gap-3">
-						<div className="w-7 h-7 rounded-full bg-emerald-500/15 flex items-center justify-center flex-shrink-0">
-							<CornerDownLeft className="w-3.5 h-3.5 text-emerald-500" />
+					<div className='mt-4 flex items-center gap-3 rounded-xl border border-void-success/20 bg-void-success/5 p-3'>
+						<div className='flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-void-success/15'>
+							<CornerDownLeft className='h-3.5 w-3.5 text-void-success/85' />
 						</div>
 						<div className="flex-1 min-w-0">
 							<p className="text-xs font-medium text-void-fg-1">Sent to {sent.to}</p>
@@ -267,7 +267,7 @@ const ProjectCard = ({ workspace }: { workspace: WorkspaceConnection }) => {
 	};
 
 	return (
-		<div className="p-3 rounded-xl border border-void-border-2 bg-void-bg-2 hover:bg-void-bg-3/50 transition-colors">
+		<div className='rounded-xl border border-void-hairline bg-void-bg-2 p-3 transition-colors hover:border-void-border-2'>
 			<div className="flex items-center gap-3">
 				<div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: workspace.color + '20' }}>
 					<Folder className="w-4 h-4" style={{ color: workspace.color }} />

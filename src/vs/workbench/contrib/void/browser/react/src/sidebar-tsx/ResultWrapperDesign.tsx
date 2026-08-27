@@ -38,12 +38,12 @@ const statusIcons: Record<ResultStatus, React.ReactNode> = {
 
 // Status colors
 const statusColors: Record<ResultStatus, { bg: string; border: string; text: string; icon: string }> = {
-	idle: { bg: 'bg-void-bg-2', border: 'border-void-border-2', text: 'text-void-fg-3', icon: 'text-void-fg-3' },
-	running: { bg: 'bg-blue-500/10', border: 'border-blue-500/30', text: 'text-blue-400', icon: 'text-blue-500' },
-	success: { bg: 'bg-green-500/10', border: 'border-green-500/30', text: 'text-green-400', icon: 'text-green-500' },
-	error: { bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-400', icon: 'text-red-500' },
-	warning: { bg: 'bg-yellow-500/10', border: 'border-yellow-500/30', text: 'text-yellow-400', icon: 'text-yellow-500' },
-	rejected: { bg: 'bg-void-bg-2', border: 'border-void-border-2', text: 'text-void-fg-3', icon: 'text-void-fg-3' },
+	idle: { bg: 'bg-void-bg-2', border: 'border-void-hairline', text: 'text-void-fg-3', icon: 'text-void-fg-3' },
+	running: { bg: 'bg-void-info/10', border: 'border-void-info/30', text: 'text-void-info', icon: 'text-void-info' },
+	success: { bg: 'bg-void-success/10', border: 'border-void-success/30', text: 'text-void-success', icon: 'text-void-success' },
+	error: { bg: 'bg-void-error/10', border: 'border-void-error/30', text: 'text-void-error', icon: 'text-void-error' },
+	warning: { bg: 'bg-void-warning/10', border: 'border-void-warning/30', text: 'text-void-warning', icon: 'text-void-warning' },
+	rejected: { bg: 'bg-void-bg-2', border: 'border-void-hairline', text: 'text-void-fg-3', icon: 'text-void-fg-3' },
 };
 
 // Action button component
@@ -65,7 +65,7 @@ export const ResultActionButton: React.FC<ResultActionButtonProps> = ({
 	const variantStyles = {
 		default: 'bg-void-bg-2 hover:bg-void-bg-3 text-void-fg-2 border-void-border-2',
 		primary: 'bg-void-accent hover:bg-void-accent-hover text-white border-void-accent',
-		danger: 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border-red-500/30',
+		danger: 'bg-void-error/20 hover:bg-void-error/30 text-void-error border-void-error/30',
 		ghost: 'hover:bg-void-bg-3 text-void-fg-3 border-transparent',
 	};
 
@@ -313,9 +313,9 @@ export const ResultProgressBar: React.FC<{
 	const percentage = Math.min(100, Math.round((value / max) * 100));
 
 	const colorClasses = {
-		success: 'bg-green-500',
-		warning: 'bg-yellow-500',
-		error: 'bg-red-500',
+		success: 'bg-void-success',
+		warning: 'bg-void-warning',
+		error: 'bg-void-error',
 		accent: 'bg-void-accent',
 	};
 

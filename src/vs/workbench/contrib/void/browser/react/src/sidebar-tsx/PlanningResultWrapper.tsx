@@ -4,9 +4,20 @@
  *--------------------------------------------------------------------------------------------*/
 
 import React, { useState } from 'react'
+import { ChevronRight } from 'lucide-react'
 import { useAccessor } from '../util/services.js'
 import { ToolName } from '../../../../common/toolsServiceTypes.js'
 import { WrapperProps } from './ToolResultHelpers.js'
+import { GlyphSpinner, TodoGlyph, WIDGET_SHELL_CLASS, type TodoStatus } from '../util/status.js'
+
+const todoStatusOf = (s: TaskItem['status']): TodoStatus => {
+	switch (s) {
+		case 'complete': return 'complete'
+		case 'in_progress': return 'in_progress'
+		case 'failed': return 'failed'
+		default: return 'pending'
+	}
+}
 
 interface TaskItem {
 	text: string
@@ -65,57 +76,28 @@ const parseMarkdownTasks = (markdown: string): { tasks: TaskItem[], goal: string
 	return { tasks, goal }
 }
 
-// Status icon component
-const StatusIcon: React.FC<{ status: TaskItem['status'], index?: number }> = ({ status, index }) => {
-	if (status === 'complete') {
-		return (
-			<div className="w-4 h-4 rounded-full bg-void-success flex items-center justify-center flex-shrink-0">
-				<svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-				</svg>
-			</div>
-		)
-	}
-
-	if (status === 'in_progress') {
-		return (
-			<div className="w-4 h-4 rounded-full bg-void-info flex items-center justify-center flex-shrink-0">
-				<span className="text-white text-[10px] font-bold">{(index ?? 0) + 1}</span>
-			</div>
-		)
-	}
-
-	if (status === 'failed') {
-		// Failed - red circle with X (distinct from pending's empty circle)
-		return (
-			<div className="w-4 h-4 rounded-full bg-void-error flex items-center justify-center flex-shrink-0">
-				<svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 6l12 12M18 6L6 18" />
-				</svg>
-			</div>
-		)
-	}
-
-	// Pending - empty circle
-	return (
-		<div className="w-4 h-4 rounded-full border border-void-fg-4 flex-shrink-0" />
-	)
+// Status icon — the shared todo-glyph vocabulary (dashed ring pending,
+// spinner in-progress, check complete, warning failed).
+const StatusIcon: React.FC<{ status: TaskItem['status'] }> = ({ status }) => {
+	return <TodoGlyph status={todoStatusOf(status)} />
 }
 
-// Task row component
-const TaskRow: React.FC<{ task: TaskItem, index: number }> = ({ task, index }) => {
+// Task row component — quiet scaffold line: glyph + text, line-through once done.
+const TaskRow: React.FC<{ task: TaskItem }> = ({ task }) => {
 	return (
-		<div className="flex items-start gap-2 py-0.5">
-			<div className="mt-0.5">
-				<StatusIcon status={task.status} index={index} />
-			</div>
-			<span className={`text-sm ${
+		<div className='flex items-start gap-2 py-0.5'>
+			<span className='mt-0.5 grid size-3.5 shrink-0 place-items-center'>
+				<StatusIcon status={task.status} />
+			</span>
+			<span className={`min-w-0 flex-1 text-[12px] leading-[1.45] ${
 				task.status === 'complete'
-					? 'text-void-fg-3'
+					? 'text-void-scaffold-meta'
 					: task.status === 'failed'
 						? 'text-void-error'
-						: 'text-void-fg-2'
-			}`}>
+						: task.status === 'in_progress'
+							? 'text-void-fg-1'
+							: 'text-void-scaffold-text'
+			} ${task.status === 'complete' ? 'line-through' : ''}`}>
 				{task.text}
 			</span>
 		</div>
@@ -155,16 +137,10 @@ const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 	// During streaming, result may not be available yet - show a simple loading state
 	if (!result) {
 		return (
-			<div className="planning-result w-full rounded-xl overflow-hidden border border-void-border-2 bg-void-bg-2 shadow-sm">
-				<div className="flex items-center gap-2 px-3 py-2">
-					<div
-						className="w-3 h-3 border-2 rounded-full border-void-accent"
-						style={{
-							borderTopColor: 'transparent',
-							animation: 'spin 0.8s linear infinite'
-						}}
-					/>
-					<span className="text-void-fg-3 text-sm">{getActionText(true)}</span>
+			<div className={`planning-result w-full ${WIDGET_SHELL_CLASS}`}>
+				<div className='flex items-center gap-2'>
+					<GlyphSpinner className='text-[0.9rem] text-void-fg-3' />
+					<span className='text-[13px] text-void-scaffold-text'>{getActionText(true)}</span>
 				</div>
 			</div>
 		)
@@ -194,37 +170,33 @@ const PlanningResultWrapper: React.FC<PlanningResultWrapperProps> = ({
 	const hiddenCount = tasks.length - visibleTasks.length
 
 	return (
-		<div className="planning-result w-full rounded-xl overflow-hidden border border-void-border-2 bg-void-bg-2 shadow-sm hover:shadow-md">
-			{/* Header - clickable to expand/collapse */}
+		<div className={`planning-result w-full ${WIDGET_SHELL_CLASS}`}>
+			{/* Header - clickable to expand/collapse, caret revealed on hover */}
 			<div
-				className="flex items-center gap-2 cursor-pointer select-none px-3 py-2 hover:brightness-125 transition-all duration-150"
+				className='group/plan flex min-w-0 cursor-pointer select-none items-center gap-1.5'
 				onClick={() => setIsExpanded(!isExpanded)}
 			>
-				<svg
-					className={`w-4 h-4 text-void-fg-3 flex-shrink-0 transition-transform duration-100 ease-[cubic-bezier(0.4,0,0.2,1)] ${isExpanded ? 'rotate-90' : ''}`}
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
-				>
-					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-				</svg>
-				<span className="text-void-fg-1 text-sm font-medium">
+				<span className='min-w-0 flex-1 truncate text-[13px] font-normal leading-[1.45] text-void-scaffold-text transition-colors hover:text-void-fg-2'>
 					{getActionText(false)}
 				</span>
-				<span className="text-void-fg-4 text-xs italic ml-1">
+				<span className='shrink-0 text-[10px] tabular-nums text-void-scaffold-meta'>
 					{getStatusText()}
 				</span>
+				<ChevronRight
+					size={12}
+					className={`shrink-0 text-void-scaffold-meta transition-all duration-150 ease-out ${isExpanded ? 'rotate-90 opacity-80' : 'opacity-0 group-hover/plan:opacity-80'}`}
+				/>
 			</div>
 
 			{/* Task list - shows first 2 when collapsed, all when expanded */}
-			<div className={`space-y-0.5 px-3 pb-3 pt-1 ${isExpanded ? 'max-h-[800px] overflow-auto' : ''}`}>
+			<div className={`group/plan space-y-0.5 pt-1.5 ${isExpanded ? 'max-h-[800px] overflow-auto' : ''}`}>
 				{visibleTasks.map((task, index) => (
-					<TaskRow key={index} task={task} index={index} />
+					<TaskRow key={index} task={task} />
 				))}
 				{!isExpanded && hiddenCount > 0 && (
 					<button
 						onClick={(e) => { e.stopPropagation(); setIsExpanded(true) }}
-						className="text-void-fg-4 text-xs italic hover:text-void-fg-2 transition-colors py-0.5"
+						className='py-0.5 text-[11px] text-void-scaffold-meta transition-colors hover:text-void-fg-2'
 					>
 						+{hiddenCount} more…
 					</button>

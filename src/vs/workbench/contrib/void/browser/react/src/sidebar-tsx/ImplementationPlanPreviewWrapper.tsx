@@ -9,6 +9,17 @@ import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js'
 import { ToolName } from '../../../../common/toolsServiceTypes.js'
 import { ToolMessage, isToolMessage } from '../../../../common/chatThreadServiceTypes.js'
 import { WrapperProps } from './ToolResultHelpers.js'
+import { GlyphSpinner, TodoGlyph, WIDGET_SHELL_CLASS, type TodoStatus } from '../util/status.js'
+import { ChevronRight } from 'lucide-react'
+
+const todoStatusOf = (s?: string): TodoStatus => {
+	switch (s) {
+		case 'completed': return 'complete'
+		case 'in_progress': return 'in_progress'
+		case 'failed': return 'failed'
+		default: return 'pending'
+	}
+}
 
 type ImplementationPlanStep = {
 	status?: string;
@@ -76,16 +87,10 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 	const planResult = latestPlan.result as ImplementationPlanResult
 	if (!planResult) {
 		return (
-			<div className="implementation-plan-result w-full rounded-xl overflow-hidden border border-void-border-2 bg-void-bg-2 shadow-sm">
-				<div className="flex items-center gap-2 px-3 py-2">
-					<div
-						className="w-3 h-3 border-2 rounded-full border-void-accent"
-						style={{
-							borderTopColor: 'transparent',
-							animation: 'spin 0.8s linear infinite'
-						}}
-					/>
-					<span className="text-void-fg-3 text-sm">Preparing implementation plan...</span>
+			<div className={`implementation-plan-result w-full ${WIDGET_SHELL_CLASS}`}>
+				<div className='flex items-center gap-2'>
+					<GlyphSpinner className='text-[0.9rem] text-void-fg-3' />
+					<span className='text-[13px] text-void-scaffold-text'>Preparing implementation plan…</span>
 				</div>
 			</div>
 		)
@@ -134,26 +139,6 @@ const ImplementationPlanPreviewWrapper: React.FC<ImplementationPlanPreviewWrappe
 
 	const planInfo = getPlanInfo()
 	const isSuccess = planResult && !planResult.error
-
-	const getToolIcon = () => {
-		switch (toolMessage.name) {
-			case 'create_implementation_plan': return '\u{1F4CB}'
-			case 'preview_implementation_plan': return '👁️'
-			case 'update_implementation_step': return '\u{2705}'
-			case 'get_implementation_status': return '\u{1F4CA}'
-			default: return '\u{1F3AF}'
-		}
-	}
-
-	const getActionColor = () => {
-		switch (toolMessage.name) {
-			case 'create_implementation_plan': return 'text-void-info'
-			case 'preview_implementation_plan': return 'text-void-accent'
-			case 'update_implementation_step': return 'text-void-warning'
-			case 'get_implementation_status': return 'text-void-orange'
-			default: return 'text-void-fg-1'
-		}
-	}
 
 	const handleApprove = async () => {
 		// Approve implementation plan and trigger execution
@@ -325,52 +310,41 @@ My requested changes:`
 
 	return (
 		<div className="@@void-scope">
-			<div className="implementation-plan-preview border border-void-border-2 rounded-lg overflow-hidden shadow-sm bg-void-bg-4">
+			<div className={`implementation-plan-preview ${WIDGET_SHELL_CLASS} border border-void-hairline overflow-hidden`}>
 				{/* Header */}
 				<div
-					className="px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-void-bg-4-hover transition-colors border-b border-void-border-2 bg-void-bg-3"
+					className='group/planheader flex min-w-0 cursor-pointer select-none items-center gap-1.5 border-b border-void-hairline px-3 py-2'
 					onClick={() => setIsExpanded(!isExpanded)}
 				>
-					<div className="flex items-center gap-2 min-w-0 flex-1">
-					<svg
-						className={`w-4 h-4 text-void-fg-3 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''} flex-shrink-0`}
-						fill="none"
-						stroke="currentColor"
-						viewBox="0 0 24 24"
-					>
-						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-					</svg>
-					<span className={`text-lg ${getActionColor()} flex-shrink-0`}>{getToolIcon()}</span>
-					<div className="min-w-0 flex-1">
-						<div className="font-medium text-void-fg-1 truncate">
+					<div className='min-w-0 flex-1'>
+						<div className='truncate text-[13px] font-normal text-void-scaffold-text transition-colors group-hover/planheader:text-void-fg-2'>
 							{planInfo.title}
 						</div>
-						<div className="text-xs text-void-fg-4 truncate">
-							{isSuccess ? 'Operation completed successfully' : 'Operation failed'}
+						<div className='truncate text-[11px] text-void-scaffold-meta'>
+							{isSuccess ? 'Completed' : 'Failed'}
 						</div>
 					</div>
-				</div>
-				<div className="flex items-center gap-2 flex-shrink-0">
 					{isSuccess && (
-						<div className="px-2 py-1 bg-void-success/15 text-void-success border border-void-success/30 rounded-md text-xs font-medium">
-							Success
-						</div>
+						<span className='shrink-0 text-[10px] font-medium text-void-success/85'>Done</span>
 					)}
 					<button
 						onClick={(e) => {
 							e.stopPropagation()
 							handleOpenPreview()
 						}}
-						className="px-2 py-1 bg-void-bg-3 hover:bg-void-bg-4 text-void-fg-2 border border-void-border-2 rounded-md text-xs font-medium transition-colors flex items-center gap-1"
-						title="Open in preview"
+						className='flex shrink-0 items-center gap-1 rounded-md border border-void-hairline px-2 py-1 text-xs font-medium text-void-fg-2 transition-colors hover:bg-void-row-hover'
+						title='Open in preview'
 					>
-						<svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+						<svg className='h-3 w-3' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+							<path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14' />
 						</svg>
 						Open
 					</button>
+					<ChevronRight
+						size={12}
+						className={`shrink-0 text-void-scaffold-meta transition-all duration-150 ease-out ${isExpanded ? 'rotate-90 opacity-80' : 'opacity-0 group-hover/planheader:opacity-80'}`}
+					/>
 				</div>
-			</div>
 
 			{/* Collapsible Content */}
 			{isExpanded && (
@@ -380,41 +354,34 @@ My requested changes:`
 						{/* Render steps if available */}
 						{planResult.steps && Array.isArray(planResult.steps) && planResult.steps.length > 0 && (
 							<div className="mb-4">
-								<div className="text-sm font-medium text-void-fg-2 mb-2">Steps:</div>
-								<div className="space-y-2">
+								<div className="mb-2 text-[10px] font-medium uppercase tracking-[0.08em] text-void-scaffold-meta">Steps</div>
+								<div className="space-y-0.5">
 									{planResult.steps.map((step, index: number) => {
 										const status = step.status || 'pending'
-										const statusIcon = status === 'completed' ? '\u{2705}' : status === 'in_progress' ? '\u{1F504}' : status === 'failed' ? '\u{274C}' : '\u{2B1C}'
-										const statusColor = status === 'completed' ? 'text-void-success' : status === 'in_progress' ? 'text-void-info' : status === 'failed' ? 'text-void-error' : 'text-void-fg-3'
 
 										return (
-											<div key={index} className="flex items-start gap-3 p-2 bg-void-bg-3 rounded-md border border-void-border-2">
-												<div className="flex-shrink-0 w-6 h-6 flex items-center justify-center">
-													<span className={statusColor}>{statusIcon}</span>
-												</div>
-												<div className="flex-1 min-w-0">
-													<div className="flex items-center gap-2">
-														<span className="text-xs text-void-fg-4 font-mono">Step {index + 1}</span>
-														{status !== 'pending' && (
-															<span className={`text-xs px-1.5 py-0.5 rounded ${
-																status === 'completed' ? 'bg-void-success/15 text-void-success' :
-																status === 'in_progress' ? 'bg-void-info/15 text-void-info' :
-																status === 'failed' ? 'bg-void-error/15 text-void-error' :
-																'bg-void-bg-2 text-void-fg-4'
-															}`}>
-																{status}
-															</span>
-														)}
-													</div>
-													<div className="text-sm text-void-fg-1 mt-1">
+											<div key={index} className="flex min-w-0 items-start gap-2.5 rounded-md px-1 py-1 transition-colors hover:bg-void-row-hover">
+												<span className="mt-0.5 grid size-3.5 shrink-0 place-items-center">
+													<TodoGlyph status={todoStatusOf(status)} />
+												</span>
+												<div className="min-w-0 flex-1">
+													<span className={`block text-[12px] leading-[1.45] ${
+														status === 'completed' ? 'text-void-scaffold-meta line-through' :
+														status === 'failed' ? 'text-void-error' :
+														status === 'in_progress' ? 'text-void-fg-1' :
+														'text-void-scaffold-text'
+													}`}>
 														{step.title || step.description || `Step ${index + 1}`}
-													</div>
+													</span>
 													{step.description && step.title && (
-														<div className="text-xs text-void-fg-3 mt-1">
+														<div className="mt-0.5 text-[11px] text-void-scaffold-meta">
 															{step.description}
 														</div>
 													)}
 												</div>
+												{status !== 'pending' && (
+													<span className="shrink-0 text-[10px] text-void-scaffold-meta">{status}</span>
+												)}
 											</div>
 										)
 									})}
@@ -443,38 +410,33 @@ My requested changes:`
 
 					{/* Action Buttons */}
 					{planInfo.canApprove && isSuccess && (
-						<div className="border-t border-void-border-2 p-3">
-							<div className="flex items-center gap-2 mb-2">
-								<span className="text-sm font-medium text-void-fg-2">Plan Actions:</span>
-							</div>
+						<div className='border-t border-void-hairline p-3'>
+							<div className='mb-2 text-[10px] font-medium uppercase tracking-[0.08em] text-void-scaffold-meta'>Plan actions</div>
 							<div className="flex gap-2">
 								<button
 									onClick={handleApprove}
 									disabled={isApproving}
-									className="px-3 py-1.5 bg-void-accent hover:bg-void-accent-hover disabled:opacity-50 text-white text-sm font-medium rounded-md transition-colors flex items-center gap-2"
+									className='flex items-center gap-2 rounded-md bg-void-accent px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-void-accent-hover disabled:opacity-50' 
 								>
 									{isApproving ? (
 										<>
-											<svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
-												<circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-												<path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-											</svg>
-											Approving...
+											<GlyphSpinner className='text-[0.85rem]' />
+											Approving…
 										</>
 									) : (
 										<>
-											{'\u{2705}'} Approve Plan
+											Approve Plan
 										</>
 									)}
 								</button>
 								<button
 									onClick={handleRequestChanges}
-									className="px-3 py-1.5 bg-void-warning hover:bg-void-warning-hover text-white text-sm font-medium rounded-md transition-colors flex items-center gap-2"
+									className='flex items-center gap-2 rounded-md border border-void-hairline bg-void-bg-3 px-3 py-1.5 text-sm font-medium text-void-fg-2 transition-colors hover:bg-void-bg-2-hover'
 								>
-									{'\u{270F}\u{FE0F}'} Request Changes
+									Request Changes
 								</button>
 							</div>
-							<div className="text-xs text-void-fg-4 mt-2 italic opacity-70">
+							<div className='mt-2 text-[11px] text-void-scaffold-meta'>
 								Approve to begin execution, or request changes to modify the plan.
 							</div>
 						</div>

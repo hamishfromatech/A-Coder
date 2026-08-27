@@ -169,6 +169,16 @@ module.exports = {
 				'void-info': alphaVar('var(--void-info)'),
 				'void-orange': alphaVar('var(--void-orange)'),
 
+				// Scaffold lines — quiet greys for tool-call rows in the transcript
+				'void-scaffold-text': alphaVar('var(--void-scaffold-text)'),
+				'void-scaffold-meta': alphaVar('var(--void-scaffold-meta)'),
+
+				// Quietest hairline — expanded tool shells, in-transcript dividers
+				'void-hairline': alphaVar('var(--void-hairline)'),
+
+				// Soft row hover for quiet (scaffold) rows
+				'void-row-hover': alphaVar('var(--void-row-hover)'),
+
 				vscode: {
 					// see: https://code.visualstudio.com/api/extension-guides/webview#theming-webview-content
 

@@ -51,6 +51,7 @@ export const ExerciseResultWrapper: ResultWrapper<'create_exercise'> = ({ toolMe
 	const lessonId = `exercise_${threadId}`;
 
 	const componentParams: ToolHeaderParams = {
+		isRunning: toolMessage.type === 'running_now',
 		title,
 		desc1,
 		isError: false,

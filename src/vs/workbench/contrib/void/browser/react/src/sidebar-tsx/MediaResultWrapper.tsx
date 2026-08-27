@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------*/
 
 import React from 'react';
-import { Loader2, Image as ImageIcon } from 'lucide-react';
+import { Image as ImageIcon } from 'lucide-react';
 import { useAccessor, useChatThreadsStreamState } from '../util/services.js';
 import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js';
 import { BuiltinToolName } from '../../../../common/toolsServiceTypes.js';
@@ -30,7 +30,7 @@ export const MediaResultWrapper: ResultWrapper<'generate_image' | 'generate_vide
 
 	const isRejected = toolMessage.type === 'rejected'
 	const icon = <ImageIcon size={12} strokeWidth={2.5} />
-	const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError: false, icon, isRejected }
+	const componentParams: ToolHeaderParams = { isRunning: toolMessage.type === 'running_now', title, desc1, desc1Info, isError: false, icon, isRejected }
 
 	if (toolMessage.type === 'running_now') {
 		const activity = streamState?.isRunning === 'tool' && streamState.toolInfo.id === toolMessage.id
@@ -41,7 +41,6 @@ export const MediaResultWrapper: ResultWrapper<'generate_image' | 'generate_vide
 			componentParams.children = (
 				<ToolChildrenWrapper>
 					<div className="flex items-center gap-2 py-1">
-						<Loader2 className="w-3 h-3 animate-spin text-void-accent" />
 						<span className="text-xs italic text-void-fg-3">{activity}</span>
 					</div>
 				</ToolChildrenWrapper>

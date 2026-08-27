@@ -32,16 +32,16 @@ const ActionButton = memo(({ onClick, icon: Icon, title, subtitle, primary }: Ac
 	return (
 		<button
 			onClick={onClick}
-			className="flex items-center gap-4 p-4 rounded-xl border border-void-border-2 bg-void-bg-2 hover:bg-void-bg-3 hover:border-void-accent/40 transition-all group shadow-sm hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-void-accent focus:ring-offset-2 w-full text-left"
+			className='group flex w-full items-center gap-3.5 rounded-xl border border-void-hairline bg-void-bg-2 p-3.5 text-left transition-colors hover:border-void-accent/40 hover:bg-void-bg-2-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-void-accent'
 			aria-label={title}
 		>
-			<div className={`p-3 rounded-xl ${primary ? 'bg-void-accent shadow-md shadow-void-accent/20' : 'bg-void-bg-3 border border-void-border-2'} group-hover:scale-110 transition-all flex-shrink-0`}>
-				<Icon className={`w-5 h-5 ${primary ? 'text-white' : 'text-void-fg-4 group-hover:text-void-accent'} transition-colors`} aria-hidden="true" />
-			</div>
-			<div className="min-w-0">
-				<span className="block text-sm font-semibold text-void-fg-1">{title}</span>
-				<span className="block text-[10px] text-void-fg-4 font-medium">{subtitle}</span>
-			</div>
+			<span className={`grid size-9 shrink-0 place-items-center rounded-lg ${primary ? 'bg-void-accent' : 'border border-void-hairline bg-void-bg-3'}`}>
+				<Icon className={`size-4 ${primary ? 'text-white' : 'text-void-fg-3 group-hover:text-void-accent'} transition-colors`} aria-hidden={true} />
+			</span>
+			<span className='min-w-0'>
+				<span className='block text-[13px] font-medium text-void-fg-1'>{title}</span>
+				<span className='block text-[11px] text-void-scaffold-meta'>{subtitle}</span>
+			</span>
 		</button>
 	);
 });
@@ -52,43 +52,23 @@ export const DashboardView = memo(({ stats, onNewThread, onBrowseFiles, onOpenSe
 	return (
 		<div className="flex flex-col h-full overflow-hidden">
 			<div className="p-8 pb-4">
-				<div className="mb-8">
-					<h2 className="text-2xl font-bold text-void-fg-1 tracking-tight">Dashboard</h2>
-					<p className="text-xs text-void-fg-4 mt-1">Overview of your activity and workspace</p>
+				<div className='mb-6'>
+					<h2 className='text-xl font-semibold tracking-tight text-void-fg-1'>Overview</h2>
+					<p className='mt-1 text-xs text-void-scaffold-meta'>Your activity and workspace at a glance</p>
 				</div>
 
-				<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-					<StatCard
-						icon={MessageSquare}
-						label="Conversations"
-						value={stats.threadsCount}
-						color="from-blue-500/10 to-blue-600/10"
-					/>
-					<StatCard
-						icon={Zap}
-						label="Messages"
-						value={stats.messagesCount}
-						color="from-purple-500/10 to-purple-600/10"
-					/>
-					<StatCard
-						icon={Clock}
-						label="Active Time"
-						value={formatDuration(stats.activeTime)}
-						color="from-amber-500/10 to-orange-600/10"
-					/>
-					<StatCard
-						icon={Sparkles}
-						label="AI Tokens"
-						value={formatTokens(stats.totalTokens)}
-						color="from-cyan-500/10 to-teal-600/10"
-					/>
+				<div className='mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4'>
+					<StatCard icon={MessageSquare} label='Conversations' value={stats.threadsCount} />
+					<StatCard icon={Zap} label='Messages' value={stats.messagesCount} />
+					<StatCard icon={Clock} label='Active Time' value={formatDuration(stats.activeTime)} />
+					<StatCard icon={Sparkles} label='AI Tokens' value={formatTokens(stats.totalTokens)} />
 				</div>
 			</div>
 
 			<div className="flex-1 overflow-hidden px-8 pb-8">
 				<div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full min-h-0">
 					<div className="lg:col-span-2 flex flex-col min-h-0">
-						<h3 className="text-sm font-bold text-void-fg-1 uppercase tracking-wider mb-4">Quick Actions</h3>
+						<h3 className='mb-3 text-[10px] font-medium uppercase tracking-[0.08em] text-void-scaffold-meta'>Quick actions</h3>
 						<div className="flex flex-col gap-3">
 							<ActionButton
 								onClick={onNewThread}
@@ -113,9 +93,9 @@ export const DashboardView = memo(({ stats, onNewThread, onBrowseFiles, onOpenSe
 					</div>
 
 					<div className="flex flex-col gap-4">
-						<h3 className="text-sm font-bold text-void-fg-1 uppercase tracking-wider mb-1">Stats Summary</h3>
-						<div className="p-4 rounded-xl border border-void-border-2 bg-void-bg-2">
-							<div className="space-y-3">
+						<h3 className='mb-2 text-[10px] font-medium uppercase tracking-[0.08em] text-void-scaffold-meta'>Summary</h3>
+						<div className='rounded-xl border border-void-hairline bg-void-bg-2 p-4'>
+							<div className='space-y-2.5'>
 								<div className="flex justify-between items-center">
 									<span className="text-xs text-void-fg-4">Total Threads</span>
 									<span className="text-sm font-bold text-void-fg-1">{stats.threadsCount}</span>

@@ -47,6 +47,7 @@ export const TeachingResultWrapper: ResultWrapper<'explain_code' | 'teach_concep
 	const isRejected = toolMessage.type === 'rejected';
 
 	const componentParams: ToolHeaderParams = {
+		isRunning: toolMessage.type === 'running_now',
 		title,
 		desc1,
 		isError: false,

@@ -325,6 +325,7 @@ export const QuizResultWrapper: ResultWrapper<'create_quiz'> = ({ toolMessage, t
 		// indefinite spinner.
 		const stillRunning = toolMessage.type === 'running_now' || toolMessage.type === 'tool_request'
 		const componentParams: ToolHeaderParams = {
+		isRunning: toolMessage.type === 'running_now',
 			title,
 			desc1,
 			isError: !stillRunning,
@@ -411,6 +412,7 @@ export const QuizResultWrapper: ResultWrapper<'create_quiz'> = ({ toolMessage, t
 	};
 
 	const componentParams: ToolHeaderParams = {
+		isRunning: toolMessage.type === 'running_now',
 		title,
 		desc1,
 		isError: false,

@@ -17,6 +17,7 @@ import { IChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
 import { INativeHostService } from '../../../../platform/native/common/native.js';
 import { IAuxiliaryWindowService } from '../../../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
+import { IChatThreadService } from './chatThreadService.js';
 
 /**
  * Browser-side service that connects to the main process hub.
@@ -37,6 +38,7 @@ class WorkspaceConnectionService extends Disposable implements IWorkspaceConnect
 
 	constructor(
 		@IThreadSummaryService private readonly threadSummaryService: IThreadSummaryService,
+		@IChatThreadService private readonly chatThreadService: IChatThreadService,
 		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
 		@IMainProcessService private readonly mainProcessService: IMainProcessService,
 		@INativeHostService nativeHostService: INativeHostService,
@@ -103,6 +105,31 @@ class WorkspaceConnectionService extends Disposable implements IWorkspaceConnect
 				this.workspaceName = folders[0].name;
 			}
 		}));
+
+		// Push live updates to the hub: the 25s heartbeat alone leaves the Agent
+		// Manager reading stale thread status for up to 25s after a thread starts
+		// or stops streaming. Watch the thread service's own change events and
+		// debounce a full sync (500ms) so cross-window status is near-realtime.
+		this._register(this.chatThreadService.onDidChangeCurrentThread(() => this.scheduleLiveSync()));
+		this._register(this.chatThreadService.onDidChangeStreamState(() => this.scheduleLiveSync()));
+		this._register(this.chatThreadService.onDidChangeMessageQueue(() => this.scheduleLiveSync()));
+	}
+
+	/**
+	 * Debounced full sync driven by thread-service change events. Also acts as
+	 * a fallback while a thread is streaming: a periodic tick keeps the
+	 * Agent Manager's live indicators fresh even if events are missed.
+	 */
+	private liveSyncTimeout: NodeJS.Timeout | null = null;
+	private scheduleLiveSync(): void {
+		if (this.liveSyncTimeout) return;
+		this.liveSyncTimeout = setTimeout(() => {
+			this.liveSyncTimeout = null;
+			void this.fullSync(
+				this.threadSummaryService.generateAllSummaries(),
+				this.threadSummaryService.getActiveOperationsCount()
+			);
+		}, 500);
 	}
 
 	/**
@@ -240,6 +267,10 @@ class WorkspaceConnectionService extends Disposable implements IWorkspaceConnect
 	}
 
 	override dispose(): void {
+		if (this.liveSyncTimeout) {
+			clearTimeout(this.liveSyncTimeout);
+			this.liveSyncTimeout = null;
+		}
 		// Unregister from hub
 		if (this.workspaceId && this.channel) {
 			this.channel.call('unregister', this.workspaceId).catch(err => {

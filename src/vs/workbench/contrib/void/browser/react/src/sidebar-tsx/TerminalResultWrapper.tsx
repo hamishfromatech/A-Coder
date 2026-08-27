@@ -112,7 +112,7 @@ export const CommandToolResultWrapper: ResultWrapper<'run_command' | 'run_persis
 	const title = getTitle(toolMessage)
 	const { desc1, desc1Info } = toolNameToDesc(toolMessage.name as 'run_command' | 'run_persistent_command' | 'wait' | 'check_terminal_status', toolMessage.params, accessor)
 	const isRejected = toolMessage.type === 'rejected'
-	const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError: false, icon: null, isRejected }
+	const componentParams: ToolHeaderParams = { isRunning: toolMessage.type === 'running_now', title, desc1, desc1Info, isError: false, icon: null, isRejected }
 
 	useEffect(() => {
 		let disposed = false;

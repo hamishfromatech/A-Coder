@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------*/
 
 import React, { useState, useEffect } from 'react';
-import { Zap, Check, Info, Loader2, Trophy, Star, Lock, TrendingUp, Flame, Award } from 'lucide-react';
+import { Zap, Check, Info, Trophy, Star, Lock, TrendingUp, Flame, Award } from 'lucide-react';
 import { useAccessor, useChatThreadsStreamState } from '../util/services.js';
 import { ChatMarkdownRender } from '../markdown/ChatMarkdownRender.js';
 import {
@@ -71,7 +71,7 @@ export const SkillsResultWrapper: ResultWrapper<'load_skill' | 'list_skills' | '
 	const { desc1, desc1Info } = toolNameToDesc(toolMessage.name as 'load_skill' | 'list_skills' | 'execute_skill_script' | 'load_skill_reference' | 'get_skill_asset' | 'install_skill' | 'uninstall_skill', toolMessage.params, accessor)
 
 	const isRejected = toolMessage.type === 'rejected'
-	const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError: false, icon: <Zap size={12} className="text-void-accent" />, isRejected }
+	const componentParams: ToolHeaderParams = { isRunning: toolMessage.type === 'running_now', title, desc1, desc1Info, isError: false, icon: <Zap size={12} className="text-void-accent" />, isRejected }
 
 	if (toolMessage.type === 'running_now') {
 		const activity = streamState?.isRunning === 'tool' && streamState.toolInfo.id === toolMessage.id
@@ -82,7 +82,6 @@ export const SkillsResultWrapper: ResultWrapper<'load_skill' | 'list_skills' | '
 			componentParams.children = (
 				<ToolChildrenWrapper>
 					<div className="flex items-center gap-2 py-1">
-						<Loader2 className="w-3 h-3 animate-spin text-void-accent" />
 						<span className="text-xs italic text-void-fg-3">{activity}</span>
 					</div>
 				</ToolChildrenWrapper>

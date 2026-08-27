@@ -7,7 +7,7 @@ import React, { ButtonHTMLAttributes, FormEvent, FormHTMLAttributes, Fragment, K
 
 
 import { useAccessor, useChatThreadsState, useChatThreadsStreamState, useSettingsState, useActiveURI, useCommandBarState, useFullChatThreadsStreamState, useIsDark, useSubagents } from '../util/services.js';
-import { SubagentRun, SubagentStatus } from '../../../subagentService.js';
+import { SubagentRun } from '../../../subagentService.js';
 import { ScrollType } from '../../../../../../../editor/common/editorCommon.js';
 import { Severity } from '../../../../../../../platform/notification/common/notification.js';
 
@@ -24,7 +24,7 @@ import { ChatMode, displayInfoOfProviderName, FeatureName, isFeatureNameDisabled
 import { ICommandService } from '../../../../../../../platform/commands/common/commands.js';
 import { WarningBox } from '../void-settings-tsx/WarningBox.js';
 import { getModelCapabilities, getIsReasoningEnabledState } from '../../../../common/modelCapabilities.js';
-import { AlertTriangle, ChevronRight, ChevronDown, X, Copy as CopyIcon, CircleEllipsis, Play, Settings, ArrowUp, ArrowDown, Trash2, Send, Circle, Loader2, Brain, Check, Pencil, CirclePlus, File as FileIcon, Folder as FolderIcon, Text as TextIcon, SkipForward, MessageCircle, RotateCw, FileText, FileCode, FileJson, Target, CheckCircle, Lightbulb, Trophy, Mic, Clock, Ban, Cpu, GraduationCap, HelpCircle, Zap } from 'lucide-react';
+import { AlertTriangle, ChevronRight, ChevronDown, X, Copy as CopyIcon, CircleEllipsis, Play, Settings, ArrowUp, ArrowDown, Trash2, Send, Circle, Loader2, Brain, Check, Pencil, CirclePlus, File as FileIcon, Folder as FolderIcon, Text as TextIcon, SkipForward, MessageCircle, RotateCw, FileText, FileCode, FileJson, Target, CheckCircle, Lightbulb, Trophy, Mic, Clock, Ban, GraduationCap, HelpCircle, Zap } from 'lucide-react';
 import { ChatMessage, CheckpointEntry, StagingSelectionItem, ToolMessage, ImageAttachment, isToolMessage, hasParallelBatchId } from '../../../../common/chatThreadServiceTypes.js';
 import { BuiltinToolName, ToolName, approvalTypeOfBuiltinToolName, LintErrorItem } from '../../../../common/toolsServiceTypes.js';
 import { IsRunningType } from '../../../chatThreadService.js';
@@ -33,7 +33,6 @@ import { AUTO_CONTINUE_CHAR_THRESHOLD } from '../../../chatThreadService.js';
 import { builtinToolNames, isABuiltinToolName, MAX_FILE_CHARS_PAGE } from '../../../../common/prompt/prompts.js';
 import { RawToolCallObj } from '../../../../common/sendLLMMessageTypes.js';
 import ErrorBoundary from './ErrorBoundary.js';
-import { SubagentRow } from '../agent-manager-tsx/SubagentsView.js';
 
 import { persistentTerminalNameOfId } from '../../../terminalToolService.js';
 import { TypingIndicator, ToolLoadingIndicator, ReActPhaseIndicator, SmoothHeight } from './ChatAnimations.js';
@@ -83,7 +82,8 @@ import { TeachingResultWrapper } from './TeachingResultWrapper.js';
 import { LearningDashboard } from './LearningDashboard.js';
 import { QuizMe } from './QuizMe.js';
 import { NestedToolGroup } from './NestedToolGroup.js';
-import { PersistentTaskPlan } from './PersistentTaskPlan.js';
+import { GlyphSpinner } from '../util/status.js';
+import { ComposerStatusStack } from './ComposerStatusStack.js';
 import { useVoiceMode } from './useVoiceMode.js';
 
 // Lazy-loaded components - MUST be at module level to avoid re-creating on every render
@@ -466,79 +466,62 @@ const TaskPlanView = ({
 	);
 };
 
-// Subagent status helpers (shared with SubagentsView)
-const subagentStatusMeta: Record<SubagentStatus, { label: string, icon: React.ElementType, color: string, pulse: boolean }> = {
-	queued: { label: 'Queued', icon: Clock, color: 'text-void-fg-3', pulse: false },
-	running: { label: 'Running', icon: Loader2, color: 'text-void-info', pulse: true },
-	completed: { label: 'Done', icon: Check, color: 'text-void-success', pulse: false },
-	failed: { label: 'Failed', icon: X, color: 'text-void-error', pulse: false },
-	cancelled: { label: 'Cancelled', icon: Ban, color: 'text-void-warning', pulse: false },
-}
-
 const InlineSubagentCard = ({ run }: { run: SubagentRun }) => {
 	const accessor = useAccessor()
 	const [expanded, setExpanded] = useState(false)
-	const meta = subagentStatusMeta[run.status]
-	const Icon = meta.icon
 	const isActive = run.status === 'running' || run.status === 'queued'
 	const previewText = (run.status === 'running' ? run.streamingText : run.fullText) || run.error || ''
-	const fallbackText = run.currentToolActivity || (isActive ? 'Working…' : undefined)
+	const fallbackText = run.currentToolActivity || (isActive ? 'Working\u2026' : undefined)
 
 	const handleCancel = () => {
 		const svc = accessor.get('ISubagentService')
 		svc.cancel(run.id)
 	}
 
+	// Flat subagent row — same visual vocabulary as the composer status stack:
+	// status glyph (breathe spinner while running), shimmering title, one meta
+	// line, hover-revealed cancel. No card chrome.
 	return (
-		<div className="rounded-lg border border-void-border-2 bg-void-bg-3 overflow-hidden my-2">
+		<div className='group/sub min-w-0 my-1'>
 			<button
-				onClick={() => setExpanded(!expanded)}
-				className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-void-bg-4 transition-colors"
+				onClick={() => setExpanded(v => !v)}
+				className='flex w-full min-w-0 items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-void-row-hover'
+				aria-expanded={expanded}
 			>
-				<Icon className={`w-3.5 h-3.5 flex-shrink-0 ${meta.color} ${meta.pulse ? 'animate-spin' : ''}`} />
-				<div className="flex-1 min-w-0">
-					<div className="flex items-center gap-2 min-w-0">
-						<span className="text-xs font-medium text-void-fg-1 truncate">{run.title || 'Untitled subagent'}</span>
-						{run.isBackground && (
-							<span className="text-[10px] px-1 py-0.5 rounded bg-void-bg-2 text-void-fg-4 border border-void-border-2">BG</span>
-						)}
-					</div>
-					<div className="flex items-center gap-2 text-[10px] text-void-fg-4">
-						<span className={meta.color}>{meta.label}</span>
-						{isActive && (
-							<span>{run.iterationCount}/{run.maxIterations} turns · {run.toolCallCount} tools</span>
-						)}
-					</div>
-					{run.currentToolActivity && (
-						<div className="flex items-center gap-1 text-[10px] text-void-fg-3 mt-0.5">
-							<Loader2 className="w-2.5 h-2.5 animate-spin" />
-							<span className="truncate">{run.currentToolActivity}</span>
-						</div>
-					)}
-				</div>
+				<span className='grid size-3.5 shrink-0 place-items-center'>
+					{isActive
+						? <GlyphSpinner variant='breathe' className='text-[0.95rem] text-void-fg-3' />
+						: run.status === 'failed' || run.status === 'cancelled'
+							? <AlertTriangle size={14} className='text-void-error' />
+							: <Check size={14} className='text-void-success/85' />}
+				</span>
+				<span className={`min-w-0 flex-1 truncate text-[12px] leading-[1.45] ${run.status === 'failed' ? 'text-void-error' : run.status === 'running' ? 'shimmer-text' : 'text-void-scaffold-text'}`}>
+					{run.title || 'Untitled subagent'}
+				</span>
+				{isActive && run.currentToolActivity && (
+					<span className='hidden max-w-[40%] shrink-0 truncate text-[10px] leading-4 text-void-scaffold-meta group-hover/sub:inline'>
+						{run.currentToolActivity}
+					</span>
+				)}
+				<span className='shrink-0 text-[10px] tabular-nums text-void-scaffold-meta'>
+					{isActive && run.maxIterations > 0 ? `${run.iterationCount}/${run.maxIterations}` : ''}
+				</span>
 				{isActive && (
 					<span
 						onClick={(e) => { e.stopPropagation(); handleCancel() }}
-						role="button"
-						className="p-1 rounded hover:bg-void-bg-2 text-void-fg-4 hover:text-void-error transition-colors flex-shrink-0"
-						title="Cancel subagent"
+						role='button'
+						className='hidden shrink-0 rounded p-0.5 text-void-scaffold-meta transition-colors hover:text-void-error group-hover/sub:block'
+						aria-label='Cancel subagent'
 					>
-						<Ban className="w-3.5 h-3.5" />
+						<Ban className='size-3' />
 					</span>
 				)}
-				<ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 text-void-fg-4 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+				<ChevronRight className={`size-3 shrink-0 text-void-scaffold-meta transition-all duration-150 ease-out ${expanded ? 'rotate-90 opacity-80' : 'opacity-0 group-hover/sub:opacity-80'}`} />
 			</button>
-			{isActive && (
-				<div className="h-0.5 bg-void-bg-2">
-					<div
-						className="h-full bg-void-info transition-all duration-300"
-						style={{ width: `${Math.max(4, run.maxIterations > 0 ? Math.min(100, Math.round((run.iterationCount / run.maxIterations) * 100)) : 0)}%` }}
-					/>
-				</div>
-			)}
 			{expanded && (previewText || fallbackText) && (
-				<div className="px-3 py-2 border-t border-void-border-2 bg-void-bg-2">
-					<pre className="text-xs text-void-fg-3 whitespace-pre-wrap break-words max-h-48 overflow-y-auto font-mono leading-relaxed">
+				<div className='pb-1 pl-6 pr-1'>
+					{run.error && <div className='mb-1 text-[11px] text-void-error'>{run.error}</div>}
+					<pre className='max-h-48 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-void-fg-3'>
 						{previewText || fallbackText}
 					</pre>
 				</div>
@@ -561,40 +544,6 @@ const RunSubagentResultWrapper = ({ toolMessage }: WrapperProps<'run_subagent'>)
 		)
 	}
 	return <InlineSubagentCard run={run} />
-}
-
-const SubagentPanel = ({ runs, threadId }: { runs: SubagentRun[], threadId: string }) => {
-	const [isExpanded, setIsExpanded] = useState(true)
-	const activeCount = runs.filter(r => r.status === 'running' || r.status === 'queued').length
-	const bgCount = runs.filter(r => r.isBackground).length
-
-	if (runs.length === 0) return null
-
-	return (
-		<div className="mb-3 card-premium">
-			<div
-				className="flex items-center justify-between p-3 cursor-pointer hover:bg-void-bg-2-hover transition-all duration-200"
-				onClick={() => setIsExpanded(v => !v)}
-				role="button"
-				tabIndex={0}
-				aria-expanded={isExpanded}
-				onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsExpanded(v => !v) } }}
-			>
-				<div className="flex items-center gap-2">
-					<Cpu className="w-4 h-4 text-void-fg-3" />
-					<span className="text-sm font-semibold text-void-fg-1">Subagents</span>
-					<span className="pill pill-neutral">{activeCount}/{runs.length}</span>
-					{bgCount > 0 && <span className="pill pill-neutral">{bgCount} BG</span>}
-				</div>
-				<ChevronRight className={`w-4 h-4 text-void-fg-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-			</div>
-			{isExpanded && (
-				<div className="border-t border-void-border-2 p-3 space-y-2 max-h-80 overflow-y-auto">
-					{runs.map(run => <SubagentRow key={`${threadId}-${run.id}`} run={run} />)}
-				</div>
-			)}
-		</div>
-	)
 }
 
 // Token Counter Component
@@ -2271,7 +2220,7 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 			const { desc1, desc1Info } = toolNameToDesc(toolMessage.name, toolMessage.params, accessor)
 			const isRejected = toolMessage.type === 'rejected'
 			const { params } = toolMessage
-			const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError: false, icon: null, isRejected }
+			const componentParams: ToolHeaderParams = { isRunning: toolMessage.type === 'running_now', title, desc1, desc1Info, isError: false, icon: null, isRejected }
 			componentParams.info = getRelative(params.uri, accessor)
 
 			if (toolMessage.type === 'success' || toolMessage.type === 'rejected') {
@@ -2297,7 +2246,7 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 			const { desc1, desc1Info } = toolNameToDesc(toolMessage.name, toolMessage.params, accessor)
 			const isRejected = toolMessage.type === 'rejected'
 			const { params } = toolMessage
-			const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError: false, icon: null, isRejected }
+			const componentParams: ToolHeaderParams = { isRunning: toolMessage.type === 'running_now', title, desc1, desc1Info, isError: false, icon: null, isRejected }
 			componentParams.info = getRelative(params.uri, accessor)
 
 			if (toolMessage.type === 'success') {
@@ -2326,7 +2275,7 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 			}
 			const isRejected = toolMessage.type === 'rejected'
 			const { params } = toolMessage
-			const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError: false, icon: null, isRejected }
+			const componentParams: ToolHeaderParams = { isRunning: toolMessage.type === 'running_now', title, desc1, desc1Info, isError: false, icon: null, isRejected }
 			const relativePath = params.cwd ? getRelative(URI.file(params.cwd), accessor) : ''
 			if (relativePath) componentParams.info = `Running in ${relativePath}`
 			if (toolMessage.type === 'success') {
@@ -2347,7 +2296,7 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 			const { desc1, desc1Info } = toolNameToDesc(toolMessage.name, toolMessage.params, accessor)
 			const isRejected = toolMessage.type === 'rejected'
 			const { params } = toolMessage
-			const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError: false, icon: null, isRejected }
+			const componentParams: ToolHeaderParams = { isRunning: toolMessage.type === 'running_now', title, desc1, desc1Info, isError: false, icon: null, isRejected }
 			if (toolMessage.type === 'success') {
 				const { persistentTerminalId } = params
 				componentParams.desc1 = persistentTerminalNameOfId(persistentTerminalId)
@@ -2365,7 +2314,7 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 			const { desc1, desc1Info } = toolNameToDesc(toolMessage.name, toolMessage.params, accessor)
 			const isRejected = toolMessage.type === 'rejected'
 			const { params } = toolMessage
-			const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError: false, icon: null, isRejected }
+			const componentParams: ToolHeaderParams = { isRunning: toolMessage.type === 'running_now', title, desc1, desc1Info, isError: false, icon: null, isRejected }
 			if (toolMessage.type === 'success') {
 				componentParams.bottomChildren = <BottomChildren title='Result'><CodeChildren>{JSON.stringify(toolMessage.result.result, null, 2)}</CodeChildren></BottomChildren>
 			} else if (toolMessage.type === 'tool_error') {
@@ -2381,7 +2330,7 @@ const builtinToolNameToComponent: { [T in BuiltinToolName]: { resultWrapper: Res
 			const { desc1, desc1Info } = toolNameToDesc(toolMessage.name, toolMessage.params, accessor)
 			const isRejected = toolMessage.type === 'rejected'
 			const { params } = toolMessage
-			const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError: false, icon: null, isRejected }
+			const componentParams: ToolHeaderParams = { isRunning: toolMessage.type === 'running_now', title, desc1, desc1Info, isError: false, icon: null, isRejected }
 			componentParams.info = getRelative(params.uri, accessor)
 			if (toolMessage.type === 'success') {
 				componentParams.onClick = () => { voidOpenFileFn(params.uri, accessor) }
@@ -2705,13 +2654,7 @@ const CommandBarInChat = () => {
 		if (generatingToolName && isABuiltinToolName(generatingToolName)) {
 			const runningTitle = titleOfBuiltinToolName[generatingToolName]?.running
 			if (runningTitle) {
-				if (typeof runningTitle === 'object' && runningTitle && 'props' in runningTitle) {
-					const props = runningTitle.props as React.PropsWithChildren<{ children?: React.ReactNode }>
-					const childrenArray = React.Children.toArray(props.children)
-					const firstChild = childrenArray[0]
-					return typeof firstChild === 'string' ? firstChild : 'Generating tool...'
-				}
-				return String(runningTitle)
+				return typeof runningTitle === 'string' ? runningTitle : 'Generating tool...'
 			}
 		}
 
@@ -3257,9 +3200,6 @@ export const SidebarChat = () => {
 	const [tasks, setTasks] = useState<TaskPlan[]>([])
 	const threadId = chatThreadsState.currentThreadId
 
-	// Thread-scoped subagent runs (visible inline + in the pinned panel)
-	const allSubagentRuns = useSubagents()
-	const threadSubagentRuns = useMemo(() => allSubagentRuns.filter(r => r.parentThreadId === threadId), [allSubagentRuns, threadId])
 
 	// Load tasks when the thread changes OR when the current thread's task plan
 	// changes. createTask/updateTaskStatus/deleteTask fire onDidChangeCurrentThread,
@@ -3747,7 +3687,7 @@ export const SidebarChat = () => {
 											toolMessages={batchMessages as (ChatMessage & { role: 'tool' })[]}
 											indices={batchIndices}
 											currCheckpointIdx={currCheckpointIdx}
-											chatIsRunning={!!isRunning}
+											chatIsRunning={isRunning}
 											threadId={threadId}
 											_scrollToBottom={() => scrollToBottom(scrollContainerRef)}
 										/>
@@ -4232,6 +4172,9 @@ export const SidebarChat = () => {
 			</div>
 		)}
 
+		{/* Session status sink — todos + subagents, fused with the composer surface */}
+		<ComposerStatusStack threadId={threadId} />
+
 		{voiceModeActive && voiceError && <div className="mb-2 text-xs text-void-error">{voiceError}</div>}
 
 		<VoidChatArea
@@ -4368,13 +4311,6 @@ export const SidebarChat = () => {
 				</button>
 			</div>
 		)}
-		{/* Thread-scoped subagent panel — pinned above the input */}
-		{threadSubagentRuns.length > 0 && (
-			<div className='px-4'>
-				<SubagentPanel runs={threadSubagentRuns} threadId={threadId} />
-			</div>
-		)}
-
 		<div className='px-0 pb-4'>
 			{inputChatArea}
 		</div>
@@ -4576,7 +4512,6 @@ export const SidebarChat = () => {
 				</div>
 			</ErrorBoundary>
 		)}
-		<PersistentTaskPlan />
 		<ErrorBoundary>
 			<div className='flex-1 overflow-hidden relative'>
 				{/* Floating scroll-to-bottom button */}

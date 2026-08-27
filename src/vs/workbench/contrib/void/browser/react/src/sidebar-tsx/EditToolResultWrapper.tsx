@@ -128,6 +128,7 @@ export const EditToolResultWrapper: ResultWrapper<'edit_file' | 'rewrite_file' |
 	}
 
 	const componentParams: ToolHeaderParams = {
+		isRunning: toolMessage.type === 'running_now',
 		title,
 		desc1: diffStatsElement ? <span className='flex items-center'>{desc1}{diffStatsElement}</span> : desc1,
 		desc1OnClick,

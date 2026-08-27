@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------*/
 
 import React from 'react';
-import { Loader2 } from 'lucide-react';
+
 import { useAccessor, useChatThreadsStreamState } from '../util/services.js';
 import { MAX_FILE_CHARS_PAGE } from '../../../../common/prompt/prompts.js';
 import { 
@@ -27,7 +27,7 @@ export const FileResultWrapper: ResultWrapper<'read_file' | 'outline_file'> = ({
 	const { desc1, desc1Info } = toolNameToDesc(toolMessage.name, toolMessage.params, accessor);
 	const isRejected = toolMessage.type === 'rejected'
 	const { params } = toolMessage
-	const componentParams: ToolHeaderParams = { title, desc1, desc1Info, isError: false, icon: null, isRejected, }
+	const componentParams: ToolHeaderParams = { isRunning: toolMessage.type === 'running_now', title, desc1, desc1Info, isError: false, icon: null, isRejected, }
 
 	// Handle line ranges for read_file
 	let range: [number, number] | undefined = undefined
@@ -60,7 +60,6 @@ export const FileResultWrapper: ResultWrapper<'read_file' | 'outline_file'> = ({
 			componentParams.children = (
 				<ToolChildrenWrapper>
 					<div className="flex items-center gap-2 py-1">
-						<Loader2 className="w-3 h-3 animate-spin text-void-accent" />
 						<span className="text-xs italic text-void-fg-3">{activity}</span>
 					</div>
 				</ToolChildrenWrapper>

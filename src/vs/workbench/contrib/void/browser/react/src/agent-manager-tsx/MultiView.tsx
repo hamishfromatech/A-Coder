@@ -23,40 +23,40 @@ export const MultiView = memo(({ onNewThread, onOpenSettings }: MultiViewProps) 
 			<div className="p-6 border-b border-void-border-2">
 				<div className="flex items-center justify-between mb-6">
 					<div>
-						<h2 className="text-xl font-bold text-void-fg-1 tracking-tight flex items-center gap-2">
-							<Globe className="w-5 h-5 text-void-accent" aria-hidden="true" />
+						<h2 className='flex items-center gap-2 text-xl font-semibold tracking-tight text-void-fg-1'>
+							<Globe className='h-5 w-5 text-void-accent' aria-hidden={true} />
 							All Projects
 						</h2>
-						<p className="text-xs text-void-fg-4 mt-1">See and control every A-Coder IDE project from one place</p>
+						<p className='mt-1 text-xs text-void-scaffold-meta'>See and control every A-Coder IDE project from one place</p>
 					</div>
 					<div className="flex items-center gap-2">
 						{multiStats.activeWorkspaces > 0 && (
-							<div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-								<div className="relative" aria-hidden="true">
-									<div className="w-2 h-2 rounded-full bg-emerald-500" />
-									<div className="absolute inset-0 w-2 h-2 rounded-full bg-emerald-500 animate-ping opacity-40" />
-								</div>
-								<span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">{multiStats.activeWorkspaces} active</span>
+							<div className='flex items-center gap-2 rounded-lg border border-void-success/20 bg-void-success/10 px-3 py-1.5'>
+								<span className='relative' aria-hidden={true}>
+									<span className='h-2 w-2 rounded-full bg-void-success' />
+									<span className='absolute inset-0 h-2 w-2 animate-ping rounded-full bg-void-success opacity-40' />
+								</span>
+								<span className='text-[10px] font-semibold uppercase tracking-wider text-void-success/85'>{multiStats.activeWorkspaces} active</span>
 							</div>
 						)}
 					</div>
 				</div>
 
 				{/* Aggregated stats */}
-				<div className="grid grid-cols-4 gap-3" role="region" aria-label="Workspace statistics">
-					<div className="p-3 rounded-xl bg-void-bg-2 border border-void-border-2">
+				<div className='grid grid-cols-4 gap-3' role='region' aria-label='Workspace statistics'>
+					<div className='rounded-lg border border-void-hairline bg-void-bg-2 p-3'>
 						<div className="text-lg font-bold text-void-fg-1">{multiStats.totalWorkspaces}</div>
 						<div className="text-[10px] text-void-fg-4 uppercase tracking-wider">Projects</div>
 					</div>
-					<div className="p-3 rounded-xl bg-void-bg-2 border border-void-border-2">
+					<div className='rounded-lg border border-void-hairline bg-void-bg-2 p-3'>
 						<div className="text-lg font-bold text-void-fg-1">{multiStats.totalThreads}</div>
 						<div className="text-[10px] text-void-fg-4 uppercase tracking-wider">Tasks</div>
 					</div>
-					<div className="p-3 rounded-xl bg-void-bg-2 border border-void-border-2">
+					<div className='rounded-lg border border-void-hairline bg-void-bg-2 p-3'>
 						<div className="text-lg font-bold text-void-fg-1">{multiStats.totalMessages}</div>
 						<div className="text-[10px] text-void-fg-4 uppercase tracking-wider">Messages</div>
 					</div>
-					<div className="p-3 rounded-xl bg-void-bg-2 border border-void-border-2">
+					<div className='rounded-lg border border-void-hairline bg-void-bg-2 p-3'>
 						<div className="text-lg font-bold text-void-accent">{multiStats.activeOperations}</div>
 						<div className="text-[10px] text-void-fg-4 uppercase tracking-wider">Running</div>
 					</div>
@@ -65,8 +65,8 @@ export const MultiView = memo(({ onNewThread, onOpenSettings }: MultiViewProps) 
 
 			{/* Load error banner */}
 			{loadError && (
-				<div className="mx-6 mt-4 p-3 rounded-xl border border-amber-500/30 bg-amber-500/5 flex items-start gap-2">
-					<AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+				<div className='mx-6 mt-4 flex items-start gap-2 rounded-xl border border-void-warning/30 bg-void-warning/5 p-3'>
+					<AlertTriangle className='mt-0.5 h-4 w-4 shrink-0 text-void-warning' />
 					<p className="text-[11px] text-void-fg-2 flex-1">{loadError}</p>
 					<button
 						onClick={retry}
@@ -81,8 +81,8 @@ export const MultiView = memo(({ onNewThread, onOpenSettings }: MultiViewProps) 
 			<div className="flex-1 flex overflow-hidden min-h-0">
 				{/* Left: Workspace list */}
 				<div className="w-80 border-r border-void-border-2 flex flex-col">
-					<div className="p-4 border-b border-void-border-2">
-						<h3 className="text-sm font-bold text-void-fg-1 uppercase tracking-wider">Projects</h3>
+					<div className='border-b border-void-hairline px-4 py-3'>
+						<h3 className='text-[10px] font-medium uppercase tracking-[0.08em] text-void-scaffold-meta'>Projects</h3>
 					</div>
 					<div className="flex-1 overflow-y-auto p-3">
 						<WorkspaceList />

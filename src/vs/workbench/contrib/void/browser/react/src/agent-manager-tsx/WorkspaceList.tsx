@@ -7,25 +7,18 @@ import React, { useMemo } from 'react';
 import { WorkspaceConnection } from '../../../../common/workspaceRegistryTypes.js';
 import { useAllWorkspaces, useSelectedWorkspace, useWorkspaceRemoteControl } from '../util/services.js';
 import { Folder, MessageSquare, Activity, Circle, ChevronRight, ExternalLink } from 'lucide-react';
+import { StatusDot, type StatusTone } from '../util/status.js';
 
 /**
- * Status indicator component
+ * Status indicator — the shared StatusDot vocabulary (good/muted/warn/bad).
  */
-const StatusIndicator = ({ status, color }: { status: WorkspaceConnection['status'], color: string }) => {
-	const statusColors = {
-		connected: 'bg-emerald-500 shadow-emerald-500/50',
-		inactive: 'bg-amber-500 shadow-amber-500/50',
-		disconnected: 'bg-gray-400 shadow-gray-400/50'
-	};
-
-	return (
-		<div className="relative">
-			<div className={`w-2.5 h-2.5 rounded-full ${statusColors[status]} shadow-lg`} />
-			{status === 'connected' && (
-				<div className={`absolute inset-0 w-2.5 h-2.5 rounded-full ${statusColors[status]} animate-ping opacity-40`} />
-			)}
-		</div>
-	);
+const STATUS_TONE: Record<WorkspaceConnection['status'], StatusTone> = {
+	connected: 'good',
+	inactive: 'warn',
+	disconnected: 'muted',
+};
+const StatusIndicator = ({ status }: { status: WorkspaceConnection['status'] }) => {
+	return <StatusDot tone={STATUS_TONE[status]} className='size-2' />;
 };
 
 /**
@@ -61,10 +54,10 @@ const WorkspaceCard = ({
 			tabIndex={0}
 			onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
 			className={`
-				group w-full text-left p-3 rounded-xl border transition-all duration-200 cursor-pointer
+				group w-full cursor-pointer rounded-lg p-2.5 text-left transition-colors
 				${isSelected
-					? 'bg-void-accent/10 border-void-accent/30 shadow-md shadow-void-accent/10'
-					: 'bg-void-bg-2 border-void-border-2 hover:bg-void-bg-3 hover:border-void-border-1'
+					? 'bg-void-row-hover ring-1 ring-void-accent/40'
+					: 'hover:bg-void-row-hover'
 				}
 			`}
 		>
@@ -81,7 +74,7 @@ const WorkspaceCard = ({
 				<div className="flex-1 min-w-0">
 					<div className="flex items-center gap-2 mb-1">
 						<span className="text-sm font-semibold text-void-fg-1 truncate">{workspace.name}</span>
-						<StatusIndicator status={workspace.status} color={workspace.color} />
+						<StatusIndicator status={workspace.status} />
 					</div>
 					<span className="text-[10px] text-void-fg-4 truncate block opacity-70 font-mono">
 						{workspace.path.split('/').pop() || workspace.path}
@@ -95,7 +88,7 @@ const WorkspaceCard = ({
 			</div>
 
 			{/* Stats row */}
-			<div className="flex items-center gap-4 mt-3 pt-2 border-t border-void-border-2">
+			<div className="mt-2 flex items-center gap-3 border-t border-void-hairline pt-1.5">
 				<div className="flex items-center gap-1.5">
 					<MessageSquare className="w-3 h-3 text-void-fg-4" />
 					<span className="text-[10px] font-medium text-void-fg-3">{workspace.threads.length} tasks</span>
@@ -112,7 +105,7 @@ const WorkspaceCard = ({
 				)}
 				<button
 					onClick={focus}
-					className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-void-bg-1 hover:bg-void-bg-3 text-void-fg-3 hover:text-void-accent border border-void-border-2 transition-colors"
+					className="ml-auto rounded px-2 py-0.5 text-[10px] font-medium text-void-scaffold-meta opacity-0 transition-colors hover:bg-void-row-hover hover:text-void-accent group-hover:opacity-100"
 					title="Bring this window to the front"
 				>
 					<ExternalLink className="w-3 h-3" /> Focus

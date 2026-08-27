@@ -13,12 +13,11 @@ interface ContentPreviewProps {
 
 export const ContentPreview = memo(({ title, content }: ContentPreviewProps) => {
 	return (
-		<div className="h-full flex flex-col bg-void-bg-3 border-l border-void-border-2 shadow-lg">
-			<div className="px-6 py-4 border-b border-void-border-2 bg-void-bg-2 flex items-center justify-between">
-				<span className="text-xs font-bold text-void-fg-1 uppercase tracking-widest">{title}</span>
-				<span className="px-2 py-0.5 rounded bg-void-accent/10 text-void-accent text-[9px] font-bold border border-void-accent/20 uppercase">Markdown</span>
+		<div className='flex h-full min-w-0 flex-col bg-void-bg-2'>
+			<div className='flex items-center justify-between border-b border-void-hairline px-4 py-2'>
+				<span className='text-[10px] font-medium uppercase tracking-[0.08em] text-void-scaffold-meta'>{title}</span>
 			</div>
-			<div className="flex-1 overflow-auto p-6 custom-scrollbar">
+			<div className='custom-scrollbar flex-1 overflow-auto p-5'>
 				<ChatMarkdownRender string={content} chatMessageLocation={undefined} />
 			</div>
 		</div>

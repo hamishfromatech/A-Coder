@@ -28,7 +28,7 @@ export const MCPToolResultWrapper: ResultWrapper<string> = ({ toolMessage }) => 
 	const desc1 = removeMCPToolNamePrefix(toolMessage.name)
 	const isRejected = toolMessage.type === 'rejected'
 	const { params } = toolMessage
-	const componentParams: ToolHeaderParams = { title, desc1, isError: false, icon: null, isRejected, }
+	const componentParams: ToolHeaderParams = { isRunning: toolMessage.type === 'running_now', title, desc1, isError: false, icon: null, isRejected, }
 
 	const paramsStr = JSON.stringify(params, null, 2)
 	componentParams.desc2 = <CopyButton codeStr={paramsStr} toolTipName={`Copy inputs: ${paramsStr}`} />

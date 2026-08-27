@@ -13,10 +13,10 @@ import { Circle, Search, X, Folder, Send, Square, ExternalLink, CornerDownLeft, 
  */
 const ThreadStatusBadge = ({ status }: { status: WorkspaceThreadSummary['status'] }) => {
 	const config = {
-		idle: { bg: 'bg-void-bg-2', text: 'text-void-fg-4', label: 'Idle' },
+		idle: { bg: 'bg-void-bg-2', text: 'text-void-scaffold-meta', label: 'Idle' },
 		streaming: { bg: 'bg-void-accent/10', text: 'text-void-accent', label: 'Active', animate: true },
-		awaiting_user: { bg: 'bg-amber-500/10', text: 'text-amber-500', label: 'Waiting' },
-		error: { bg: 'bg-red-500/10', text: 'text-red-500', label: 'Error' }
+		awaiting_user: { bg: 'bg-void-warning/10', text: 'text-void-warning', label: 'Waiting' },
+		error: { bg: 'bg-void-error/10', text: 'text-void-error', label: 'Error' }
 	};
 
 	const { bg, text, label, animate } = config[status];
@@ -40,22 +40,29 @@ const RemoteThreadRow = ({ workspace, thread }: { workspace: WorkspaceConnection
 	const [done, setDone] = useState<string | null>(null);
 
 	const isRunning = thread.status === 'streaming';
+	const [sendError, setSendError] = useState<string | null>(null);
 
-	const open = () => {
-		remoteControl.sendCommand({ type: 'openThread', targetWorkspaceId: workspace.id, threadId: thread.id });
+	// All remote commands are awaited so failures surface here instead of
+	// showing a false "Sent" confirmation on a dead window.
+	const runCommand = async (command: Parameters<typeof remoteControl.sendCommand>[0], doneLabel: string, errorLabel: string) => {
+		setSendError(null);
+		try {
+			await remoteControl.sendCommand(command);
+			if (doneLabel) setDone(doneLabel);
+		} catch (e) {
+			setSendError(`${errorLabel} (${e instanceof Error ? e.message : String(e)})`);
+		}
 	};
-	const stop = () => {
-		remoteControl.sendCommand({ type: 'stop', targetWorkspaceId: workspace.id, threadId: thread.id });
-	};
+
+	const open = () => runCommand({ type: 'openThread', targetWorkspaceId: workspace.id, threadId: thread.id }, '', 'Couldn\'t open the conversation');
+	const stop = () => runCommand({ type: 'stop', targetWorkspaceId: workspace.id, threadId: thread.id }, '', 'Couldn\'t stop the conversation');
 	const submit = () => {
 		const text = draft.trim();
 		if (!text || !composeMode) return;
 		if (composeMode === 'message') {
-			remoteControl.sendCommand({ type: 'sendMessage', targetWorkspaceId: workspace.id, threadId: thread.id, userMessage: text });
-			setDone('Sent — check that window.');
+			void runCommand({ type: 'sendMessage', targetWorkspaceId: workspace.id, threadId: thread.id, userMessage: text }, 'Sent — check that window.', `Couldn\'t send to ${workspace.name}`);
 		} else {
-			remoteControl.sendCommand({ type: 'createTask', targetWorkspaceId: workspace.id, threadId: thread.id, description: text });
-			setDone('Task added — check that window.');
+			void runCommand({ type: 'createTask', targetWorkspaceId: workspace.id, threadId: thread.id, description: text }, 'Task added — check that window.', `Couldn\'t add the task to ${workspace.name}`);
 		}
 		setDraft('');
 		setComposeMode(null);
@@ -83,7 +90,7 @@ const RemoteThreadRow = ({ workspace, thread }: { workspace: WorkspaceConnection
 				{isRunning && (
 					<button
 						onClick={stop}
-						className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 transition-colors"
+						className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-void-error/10 hover:bg-void-error/20 text-void-error border border-void-error/20 transition-colors"
 						title="Stop what A-Coder IDE is doing in this conversation"
 					>
 						<Square className="w-3 h-3" /> Stop
@@ -122,7 +129,10 @@ const RemoteThreadRow = ({ workspace, thread }: { workspace: WorkspaceConnection
 				</div>
 			)}
 			{done && !composeMode && (
-				<p className="text-[10px] text-emerald-500 mt-1.5">{done}</p>
+				<p className='mt-1.5 text-[10px] text-void-success/85'>{done}</p>
+			)}
+			{sendError && !composeMode && (
+				<p className='mt-1.5 text-[10px] text-void-error'>{sendError}</p>
 			)}
 		</div>
 	);

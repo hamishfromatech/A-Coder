@@ -103,6 +103,23 @@
 	--void-border-4: var(--vscode-editorGroup-border);
 
 	/* ============================================
+	   SCAFFOLD LINES
+	   The quiet greys for tool-call rows in the transcript —
+	   the agent's activity reads as scaffolding around the reply,
+	   a shade quieter than body text. (Hermes-style scaffold lines.)
+	   ============================================ */
+
+	--void-scaffold-text: color-mix(in srgb, var(--void-fg-1) 64%, transparent);
+	--void-scaffold-meta: color-mix(in srgb, var(--void-fg-1) 44%, transparent);
+
+	/* Quietest hairline — expanded tool shells and in-transcript dividers.
+	   More muted than --void-border-3, theme-adaptive. */
+	--void-hairline: color-mix(in srgb, var(--void-fg-1) 10%, transparent);
+
+	/* Row hover — soft content-shaped hover for quiet rows */
+	--void-row-hover: color-mix(in srgb, var(--void-fg-1) 4%, transparent);
+
+	/* ============================================
 	   BORDER RADIUS SYSTEM
 	   Variable radii for visual hierarchy
 	   ============================================ */
@@ -1593,6 +1610,98 @@
 @keyframes breathe {
 	0%, 100% { opacity: 1; transform: scale(1); }
 	50% { opacity: 0.7; transform: scale(1.05); }
+}
+
+/* ============================================
+   GLYPH SPINNER — compositor-only braille spinner
+   Every frame sits in the DOM from mount as a vertical strip;
+   a translateY keyframes animation scrolls it one frame at a
+   time with steps(). No JS timer, no per-frame DOM writes.
+   The travel must be an ABSOLUTE length (frames * 1em), never
+   a percentage — a percentage translate resolves against the
+   strip's own box and Chromium refuses to composite it.
+   ============================================ */
+
+@keyframes void-glyph-spinner-advance {
+	from { transform: translateY(0); }
+	to { transform: translateY(calc(var(--glyph-spinner-frames, 10) * -1 * var(--glyph-spinner-frame-height, 1em))); }
+}
+
+.void-glyph-spinner {
+	display: block;
+	height: var(--glyph-spinner-frame-height, 1em);
+	overflow: hidden;
+	line-height: 1;
+	/* Decorative — never lands in a transcript copy */
+	-webkit-user-select: none;
+	user-select: none;
+}
+
+.void-glyph-spinner__strip {
+	display: block;
+	animation: void-glyph-spinner-advance var(--glyph-spinner-duration, 800ms) steps(var(--glyph-spinner-frames, 10)) infinite;
+}
+
+.void-glyph-spinner:not([data-paused='true']) .void-glyph-spinner__strip {
+	will-change: transform;
+}
+
+.void-glyph-spinner[data-paused='true'] .void-glyph-spinner__strip {
+	animation-play-state: paused;
+	will-change: auto;
+}
+
+.void-glyph-spinner__frame {
+	display: block;
+	height: var(--glyph-spinner-frame-height, 1em);
+	/* Braille (U+2800..U+28FF) renders from a system fallback face —
+	   clip each frame to its own box so ink from neighbouring frames
+	   cannot bleed into the viewport. */
+	overflow: hidden;
+	line-height: 1;
+}
+
+/* Single-glyph breathe variant — pulse instead of scroll */
+.void-glyph-breathe {
+	animation: breathe 1.2s ease-in-out infinite;
+}
+
+/* Shimmering text for live/running titles — a soft highlight sweep.
+   Background-clip keeps the text selectable and layout identical. */
+@keyframes void-text-shimmer {
+	0% { background-position: 200% 0; }
+	100% { background-position: -200% 0; }
+}
+
+.void-shimmer-text {
+	background: linear-gradient(90deg,
+		var(--void-fg-3) 30%,
+		var(--void-fg-1) 50%,
+		var(--void-fg-3) 70%);
+	background-size: 200% 100%;
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+	animation: void-text-shimmer 2.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.void-shimmer-text {
+		animation: none;
+		color: var(--void-fg-2);
+		-webkit-background-clip: initial;
+		background-clip: initial;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.void-glyph-spinner__strip {
+		animation-play-state: paused;
+		will-change: auto;
+	}
+	.void-glyph-breathe {
+		animation: none;
+	}
 }
 
 .void-animate-shimmer {

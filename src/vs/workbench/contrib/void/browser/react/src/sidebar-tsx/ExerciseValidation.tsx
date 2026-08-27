@@ -87,6 +87,7 @@ export const ExerciseValidation: React.FC<{
 	const title = getTitle(toolMessage);
 	const isRejected = toolMessage.type === 'rejected';
 	const componentParams: ToolHeaderParams = {
+		isRunning: toolMessage.type === 'running_now',
 		title,
 		desc1: exerciseData?.title,
 		isError: false,

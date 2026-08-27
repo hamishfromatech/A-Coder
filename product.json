@@ -1,8 +1,8 @@
 {
 	"nameShort": "A-Coder IDE",
 	"nameLong": "A-Coder IDE",
-	"voidVersion": "1.9.10",
-	"voidRelease": "0095",
+	"voidVersion": "1.9.11",
+	"voidRelease": "0096",
 	"applicationName": "a-coder",
 	"dataFolderName": ".a-coder",
 	"userDataFolderName": "A-Coder/ide",
