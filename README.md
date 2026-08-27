@@ -1,9 +1,9 @@
-# A-Coder: The Agentic IDE That Codes With You
+# A-Coder IDE
 
 <div align="center">
 	<img
 		src="./resources/a-coder-transparent-512.png"
-	 	alt="A-Coder Logo"
+	 	alt="A-Coder IDE Logo"
 		width="200"
 	 	height="200"
 	/>
@@ -12,19 +12,19 @@
 
 ---
 
-## What is A-Coder?
+## What is A-Coder IDE?
 
-**A-Coder** is the next-generation AI-native code editor built for developers who demand more from their tools. Forked from Void and built on VS Code's battle-tested foundation, A-Coder transforms your IDE from a passive editor into an intelligent, autonomous coding partner.
+**A-Coder IDE** is the next-generation AI-native code editor built for developers who demand more from their tools. Built on VS Code's battle-tested foundation, A-Coder IDE transforms your IDE from a passive editor into an intelligent, autonomous coding partner.
 
-Forget copy-pasting code snippets. A-Coder understands your entire codebase, researches solutions, implements features, and learns your preferences—all while you stay in the flow.
+Forget copy-pasting code snippets. A-Coder IDE understands your entire codebase, researches solutions, implements features, and learns your preferences—all while you stay in the flow.
 
 ---
 
-## 🚀 Why A-Coder Stands Apart
+## 🚀 Why A-Coder IDE Stands Apart
 
 ### AI That Truly Understands Context
 
-A-Coder doesn't just complete code—it **reasons** about your project. With intelligent context gathering, semantic search, and file-aware understanding, your AI assistant sees what you see and more.
+A-Coder IDE doesn't just complete code—it **reasons** about your project. With intelligent context gathering, semantic search, and file-aware understanding, your AI assistant sees what you see and more.
 
 - **Fast Context**: Semantic codebase search powered by Morph AI
 - **Smart File Reading**: Paginated reading for large files with intelligent chunking
@@ -42,7 +42,7 @@ A-Coder doesn't just complete code—it **reasons** about your project. With int
 
 ### Student Mode: Your Personal Coding Tutor
 
-Transform A-Coder into an interactive learning environment:
+Transform A-Coder IDE into an interactive learning environment:
 
 - **3 Difficulty Levels**: Beginner, Intermediate, Advanced
 - **Interactive Exercises**: Fill-in-the-blank, bug fixing, function writing
@@ -88,7 +88,7 @@ Transform A-Coder into an interactive learning environment:
 
 ### Code Application That Actually Works
 
-AI-generated code often fails to apply correctly. A-Coder solves this with:
+AI-generated code often fails to apply correctly. A-Coder IDE solves this with:
 
 - **Exact Match Requirement**: Clean, predictable behavior—text must match exactly (like Claude Code)
 - **Clear Error Messages**: Helpful suggestions showing similar blocks when text isn't found
@@ -108,9 +108,9 @@ AI-generated code often fails to apply correctly. A-Coder solves this with:
 
 ### Seamless Migration
 Switch from your current editor in seconds:
-- **VS Code** → A-Coder
-- **Cursor** → A-Coder
-- **Windsurf** → A-Coder
+- **VS Code** → A-Coder IDE
+- **Cursor** → A-Coder IDE
+- **Windsurf** → A-Coder IDE
 
 One click imports your settings, keybindings, and extensions.
 
@@ -151,7 +151,7 @@ One click imports your settings, keybindings, and extensions.
 ## 🔌 Extensibility & Integration
 
 ### Model Context Protocol (MCP)
-Extend A-Coder with custom tools and data sources:
+Extend A-Coder IDE with custom tools and data sources:
 - Connect to internal APIs
 - Add company-specific knowledge bases
 - Build custom workflows
@@ -220,7 +220,7 @@ Join us in building the future of AI development:
 
 ## The Tech Stack
 
-A-Coder is built on proven, enterprise-grade technologies:
+A-Coder IDE is built on proven, enterprise-grade technologies:
 
 | Layer | Technology |
 |-------|------------|
@@ -234,7 +234,7 @@ A-Coder is built on proven, enterprise-grade technologies:
 
 ## Join the Revolution
 
-A-Coder is more than an editor—it's a new way to develop software. Whether you're building the next unicorn or learning to code, A-Coder adapts to you.
+A-Coder IDE is more than an editor—it's a new way to develop software. Whether you're building the next unicorn or learning to code, A-Coder IDE adapts to you.
 
 <div align="center">
 
@@ -250,13 +250,13 @@ A-Coder is more than an editor—it's a new way to develop software. Whether you
 
 ## 🙏 Special Thanks
 
-A-Coder stands on the shoulders of giants:
+A-Coder IDE stands on the shoulders of giants:
 
 - **[Void Editor](https://github.com/voideditor/void)** — The visionary agentic IDE that pioneered this space
 - **[VS Code](https://github.com/microsoft/vscode)** — The battle-tested foundation that powers millions of developers
 
-These incredible projects provide the foundation upon which A-Coder is built. Thank you to their contributors and communities for paving the way.
+These incredible projects provide the foundation upon which A-Coder IDE is built. Thank you to their contributors and communities for paving the way.
 
 ---
 
-*A-Coder is proudly open-source, built for developers, by developers.*
+*A-Coder IDE is proudly open-source, built for developers, by developers.*

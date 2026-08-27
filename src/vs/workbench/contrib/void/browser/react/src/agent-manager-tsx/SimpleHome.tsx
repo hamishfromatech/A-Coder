@@ -14,10 +14,10 @@ import { Send, Sparkles, Bug, Wrench, BookOpen, Folder, ExternalLink, CornerDown
 const projectStatus = (workspace: WorkspaceConnection): { label: string, tone: 'running' | 'waiting' | 'ready' | 'empty' } => {
 	const threads = workspace.threads;
 	if (threads.some(t => t.status === 'streaming')) {
-		return { label: 'A-Coder is working on something…', tone: 'running' };
+		return { label: 'A-Coder IDE is working on something…', tone: 'running' };
 	}
 	if (threads.some(t => t.status === 'awaiting_user')) {
-		return { label: 'A-Coder is waiting for you', tone: 'waiting' };
+		return { label: 'A-Coder IDE is waiting for you', tone: 'waiting' };
 	}
 	if (threads.length > 0) {
 		return { label: 'Ready — nothing running', tone: 'ready' };
@@ -114,7 +114,7 @@ export const SimpleHome = ({ onGoAdvanced }: { onGoAdvanced: () => void }) => {
 					<>
 						<h2 className="text-lg font-semibold text-void-fg-1">Open a project to get started</h2>
 						<p className="text-xs text-void-fg-4 mt-2 max-w-sm">
-							A-Coder works on your projects. Open a folder in an A-Coder window, and it will show up here so you can tell A-Coder what to do.
+							A-Coder IDE works on your projects. Open a folder in an A-Coder IDE window, and it will show up here so you can tell A-Coder IDE what to do.
 						</p>
 						<button
 							onClick={onGoAdvanced}
@@ -134,10 +134,10 @@ export const SimpleHome = ({ onGoAdvanced }: { onGoAdvanced: () => void }) => {
 				{/* Heading */}
 				<div className="flex items-center gap-2 mb-1">
 					<Sparkles className="w-4 h-4 text-void-accent" />
-					<span className="text-[11px] font-bold uppercase tracking-wider text-void-accent">A-Coder</span>
+					<span className="text-[11px] font-bold uppercase tracking-wider text-void-accent">A-Coder IDE</span>
 				</div>
-				<h1 className="text-2xl font-bold text-void-fg-1 tracking-tight">What do you want A-Coder to do?</h1>
-				<p className="text-sm text-void-fg-4 mt-2">Describe it in your own words. A-Coder will do it in the project you pick.</p>
+				<h1 className="text-2xl font-bold text-void-fg-1 tracking-tight">What do you want A-Coder IDE to do?</h1>
+				<p className="text-sm text-void-fg-4 mt-2">Describe it in your own words. A-Coder IDE will do it in the project you pick.</p>
 
 				{/* Project picker */}
 				<div className="mt-6">
@@ -175,7 +175,7 @@ export const SimpleHome = ({ onGoAdvanced }: { onGoAdvanced: () => void }) => {
 							disabled={!draft.trim() || !target || sending}
 							className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--vscode-button-background)] text-white hover:bg-[var(--vscode-button-hoverBackground)] disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold transition-colors"
 						>
-							<Send className="w-3.5 h-3.5" /> {sending ? 'Sending…' : 'Send to A-Coder'}
+							<Send className="w-3.5 h-3.5" /> {sending ? 'Sending…' : 'Send to A-Coder IDE'}
 						</button>
 					</div>
 				</div>

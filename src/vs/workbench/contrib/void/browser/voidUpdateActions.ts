@@ -85,7 +85,7 @@ const notifyUpdate = (res: VoidCheckUpdateRespose & { message: string }, notifSe
 		primary.push({
 			id: 'void.updater.site',
 			enabled: true,
-			label: `A-Coder Site`,
+			label: `A-Coder IDE Site`,
 			tooltip: '',
 			class: undefined,
 			run: () => {
@@ -200,7 +200,7 @@ registerAction2(class extends Action2 {
 		super({
 			f1: true,
 			id: 'void.voidCheckUpdate',
-			title: localize2('voidCheckUpdate', 'A-Coder: Check for Updates'),
+			title: localize2('voidCheckUpdate', 'A-Coder IDE: Check for Updates'),
 			menu: [{
 				id: MenuId.MenubarHelpMenu,
 				group: '5_update',

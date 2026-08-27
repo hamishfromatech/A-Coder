@@ -27,7 +27,7 @@ export const MultiView = memo(({ onNewThread, onOpenSettings }: MultiViewProps) 
 							<Globe className="w-5 h-5 text-void-accent" aria-hidden="true" />
 							All Projects
 						</h2>
-						<p className="text-xs text-void-fg-4 mt-1">See and control every A-Coder project from one place</p>
+						<p className="text-xs text-void-fg-4 mt-1">See and control every A-Coder IDE project from one place</p>
 					</div>
 					<div className="flex items-center gap-2">
 						{multiStats.activeWorkspaces > 0 && (

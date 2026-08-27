@@ -95,4 +95,4 @@ export const textCodeBlockBackground = registerColor('textCodeBlock.background',
 
 export const voidAccent = registerColor('void.accent',
 	{ dark: '#0078D4', light: '#005FB8', hcDark: '#0078D4', hcLight: '#005FB8' },
-	nls.localize('voidAccent', "Primary accent color for A-Coder components."));
+	nls.localize('voidAccent', "Primary accent color for A-Coder IDE components."));

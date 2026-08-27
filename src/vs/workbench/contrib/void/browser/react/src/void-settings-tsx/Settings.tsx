@@ -1477,7 +1477,7 @@ const ComposioSettingsSection = ({
 							/>
 						</SettingRow>
 						<p className="text-xs text-void-fg-3 mt-2">
-							When enabled, A-Coder can receive real-time events from connected apps (e.g., GitHub push, Jira ticket update).
+							When enabled, A-Coder IDE can receive real-time events from connected apps (e.g., GitHub push, Jira ticket update).
 						</p>
 					</SettingBox>
 
@@ -1797,7 +1797,7 @@ export const AIInstructionsBox = () => {
 	return <VoidInputBox2
 		className='min-h-[81px] p-3 rounded-sm'
 		initValue={voidSettingsState.globalSettings.aiInstructions}
-		placeholder={`Describe how A-Coder should write code — preferred languages, style, and what to avoid. e.g. "Use TypeScript, match my indentation, and don't delete comments."`}
+		placeholder={`Describe how A-Coder IDE should write code — preferred languages, style, and what to avoid. e.g. "Use TypeScript, match my indentation, and don't delete comments."`}
 		multiline
 		onChangeText={(newText) => {
 			voidSettingsService.setGlobalSetting('aiInstructions', newText)
@@ -1840,7 +1840,7 @@ export const OllamaSetupInstructions = ({ sayWeAutoDetect }: { sayWeAutoDetect?:
 		>
 			<ChatMarkdownRender string={`3. Run \`ollama pull your_model\` to install a model.`} chatMessageLocation={undefined} />
 		</div>
-		{sayWeAutoDetect && <div className=' pl-6'><ChatMarkdownRender string={`A-Coder automatically detects locally running models and enables them.`} chatMessageLocation={undefined} /></div>}
+		{sayWeAutoDetect && <div className=' pl-6'><ChatMarkdownRender string={`A-Coder IDE automatically detects locally running models and enables them.`} chatMessageLocation={undefined} /></div>}
 	</div>
 }
 
@@ -3421,7 +3421,7 @@ const NAV_GROUPS: NavGroup[] = [
 ];
 
 const STANDALONE_NAV_ITEMS: NavItem[] = [
-	{ tab: 'about', label: 'About A-Coder', icon: Info },
+	{ tab: 'about', label: 'About A-Coder IDE', icon: Info },
 	{ tab: 'all', label: 'View All Settings', icon: LayoutGrid },
 ];
 
@@ -3561,7 +3561,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 					<div className="flex items-center gap-3 px-6 py-6 select-none border-b border-void-border-2/20">
 						<div className="@@void-void-icon w-8 h-8 rounded-full ring-2 ring-void-accent/20 opacity-90" />
 						<div className="flex flex-col">
-							<span className="text-[14px] font-semibold text-void-fg-1 tracking-tight">A-Coder</span>
+							<span className="text-[14px] font-semibold text-void-fg-1 tracking-tight">A-Coder IDE</span>
 							<span className="text-[10px] text-void-fg-4/70 uppercase tracking-wider">Settings</span>
 						</div>
 					</div>
@@ -3691,7 +3691,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 					<div className="flex items-center justify-between mb-16">
 						<div>
 							<h1 className="text-[26px] font-semibold text-void-fg-1 tracking-tight">Settings</h1>
-							<p className="text-[14px] text-void-fg-3/70 mt-2 leading-relaxed">Configure your A-Coder experience</p>
+							<p className="text-[14px] text-void-fg-3/70 mt-2 leading-relaxed">Configure your A-Coder IDE experience</p>
 						</div>
 						<ErrorBoundary>
 							<RedoOnboardingButton className="text-[11px] px-4 py-2 rounded-full border border-void-border-2/50 hover:bg-void-depth-elevated/60 hover:border-void-border-1 transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] text-void-fg-3 hover:text-void-fg-1 active:scale-[0.98]" />
@@ -4511,7 +4511,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 										<SettingBox>
 											<SettingRow
 												label="Anonymous Usage Reporting"
-												description="Help us improve A-Coder by sharing anonymous telemetry. We never collect code, file names, or personal data."
+												description="Help us improve A-Coder IDE by sharing anonymous telemetry. We never collect code, file names, or personal data."
 											>
 												<VoidSwitch
 													size='sm'
@@ -4682,13 +4682,13 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 							<section className="space-y-6">
 								<div className="mb-6">
 									<h2 className="text-xl font-medium text-void-fg-1">Mobile API</h2>
-									<p className="text-sm text-void-fg-3 mt-1">Connect your mobile device to A-Coder.</p>
+									<p className="text-sm text-void-fg-3 mt-1">Connect your mobile device to A-Coder IDE.</p>
 								</div>
 
 								<SettingCard
 									isDark={isDark}
 									title="API Server Status"
-									description="Enable the remote API to use A-Coder from your mobile device."
+									description="Enable the remote API to use A-Coder IDE from your mobile device."
 								>
 									<SettingBox className={settingsState.globalSettings.apiEnabled ? 'bg-green-500/5 border-green-500/20' : ''}>
 										<SettingRow label="API Server Enabled">
@@ -5000,7 +5000,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 										<div className="space-y-2">
 											<p className="text-sm font-semibold uppercase tracking-widest text-void-fg-3">The A-Tech Corporation</p>
 											<h2 className="text-3xl font-extrabold tracking-tight text-void-fg-1">
-												A-Coder
+												A-Coder IDE
 											</h2>
 											<p className="text-sm text-void-fg-3 max-w-sm mx-auto leading-relaxed">
 												The open-source, AI-powered code editor built for the next generation of software development.
@@ -5102,7 +5102,7 @@ export const Settings = ({ initialTab }: { initialTab?: Tab }) => {
 
 									{/* Footer */}
 									<div className="mt-10 pt-6 border-t border-void-border-2/40 text-center space-y-2">
-										<p className="text-xs text-void-fg-3 font-medium">A-Coder — your AI-native editor.</p>
+										<p className="text-xs text-void-fg-3 font-medium">A-Coder IDE — your AI-native editor.</p>
 										<p className="text-xs text-void-fg-4">
 											© {new Date().getFullYear()} The A-Tech Corporation. All rights reserved.
 										</p>

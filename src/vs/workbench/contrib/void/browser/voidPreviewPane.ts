@@ -122,6 +122,6 @@ class VoidPreviewPane extends EditorPane {
 
 // Register Preview pane
 Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane(
-	EditorPaneDescriptor.create(VoidPreviewPane, VoidPreviewPane.ID, nls.localize('VoidPreviewPane', "A-Coder Preview Pane")),
+	EditorPaneDescriptor.create(VoidPreviewPane, VoidPreviewPane.ID, nls.localize('VoidPreviewPane', "A-Coder IDE Preview Pane")),
 	[new SyncDescriptor(VoidPreviewInput)]
 );

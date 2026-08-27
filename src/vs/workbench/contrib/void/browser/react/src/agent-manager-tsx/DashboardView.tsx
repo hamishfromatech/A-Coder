@@ -107,7 +107,7 @@ export const DashboardView = memo(({ stats, onNewThread, onBrowseFiles, onOpenSe
 								onClick={onOpenSettings}
 								icon={Settings}
 								title="Settings"
-								subtitle="Configure A-Coder"
+								subtitle="Configure A-Coder IDE"
 							/>
 						</div>
 					</div>

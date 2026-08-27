@@ -183,7 +183,7 @@ registerAction2(class extends Action2 {
 		super({
 			id: 'voidDebugInfo',
 			f1: true,
-			title: localize2('voidMetricsDebug', 'A-Coder: Log Debug Info'),
+			title: localize2('voidMetricsDebug', 'A-Coder IDE: Log Debug Info'),
 		});
 	}
 	async run(accessor: ServicesAccessor): Promise<void> {
@@ -192,6 +192,6 @@ registerAction2(class extends Action2 {
 
 		const debugProperties = await metricsService.getDebuggingProperties()
 		console.log('Metrics:', debugProperties)
-		notifService.info(`A-Coder Debug info:\n${JSON.stringify(debugProperties, null, 2)}`)
+		notifService.info(`A-Coder IDE Debug info:\n${JSON.stringify(debugProperties, null, 2)}`)
 	}
 })

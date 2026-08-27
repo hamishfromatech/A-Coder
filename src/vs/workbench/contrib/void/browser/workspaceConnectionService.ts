@@ -10,6 +10,7 @@ import { IWorkspaceConnectionService, WorkspaceConnection, WorkspaceThreadSummar
 import { IThreadSummaryService } from '../common/workspaceRegistryTypes.js';
 import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
+import { voidDevLog } from '../common/devLog.js';
 import { WORKSPACE_REGISTRY_STORAGE_KEY } from '../common/storageKeys.js';
 import { generateUuid } from '../../../../base/common/uuid.js';
 import { IChannel } from '../../../../base/parts/ipc/common/ipc.js';
@@ -62,10 +63,10 @@ class WorkspaceConnectionService extends Disposable implements IWorkspaceConnect
 		// Auxiliary windows (e.g. the Agent Manager) are not workspaces — they must
 		// never register with the hub. They may still read the registry.
 		if (this.auxiliaryWindowService.getWindow(this.windowId)) {
-			console.log('[WorkspaceConnection] skipping registration — auxiliary window', this.windowId)
+			voidDevLog('[WorkspaceConnection] skipping registration — auxiliary window', this.windowId)
 			return;
 		}
-		console.log('[WorkspaceConnection] initialize() starting for window', this.windowId)
+		voidDevLog('[WorkspaceConnection] initialize() starting for window', this.windowId)
 
 		// Get workspace info
 		const workspace = this.workspaceContextService.getWorkspace();
@@ -113,7 +114,7 @@ class WorkspaceConnectionService extends Disposable implements IWorkspaceConnect
 		try {
 			// The hub channel is registered on the main process IPC server.
 			this.channel = this.mainProcessService.getChannel('void-channel-workspace-hub');
-			console.log('[WorkspaceConnection] got hub channel, registering', { id: this.workspaceId, name: this.workspaceName, windowId: this.windowId })
+			voidDevLog('[WorkspaceConnection] got hub channel, registering', { id: this.workspaceId, name: this.workspaceName, windowId: this.windowId })
 
 			if (this.channel) {
 				const registeredId = await this.channel.call('register', {
@@ -122,7 +123,7 @@ class WorkspaceConnectionService extends Disposable implements IWorkspaceConnect
 					path: this.workspacePath,
 					windowId: this.windowId
 				});
-				console.log('[WorkspaceConnection] register call returned', registeredId)
+				voidDevLog('[WorkspaceConnection] register call returned', registeredId)
 
 				// Push an immediate full sync so the Agent Manager sees this window's
 				// current threads without waiting for the first 25s heartbeat.
@@ -130,7 +131,7 @@ class WorkspaceConnectionService extends Disposable implements IWorkspaceConnect
 					this.threadSummaryService.generateAllSummaries(),
 					this.threadSummaryService.getActiveOperationsCount()
 				)
-				console.log('[WorkspaceConnection] full sync done; registered OK')
+				voidDevLog('[WorkspaceConnection] full sync done; registered OK')
 
 				// Listen for workspace updates
 				const event = this.channel.listen<WorkspaceConnection[]>('onDidChangeWorkspaces');

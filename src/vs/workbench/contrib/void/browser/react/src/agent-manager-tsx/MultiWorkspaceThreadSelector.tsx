@@ -84,7 +84,7 @@ const RemoteThreadRow = ({ workspace, thread }: { workspace: WorkspaceConnection
 					<button
 						onClick={stop}
 						className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 transition-colors"
-						title="Stop what A-Coder is doing in this conversation"
+						title="Stop what A-Coder IDE is doing in this conversation"
 					>
 						<Square className="w-3 h-3" /> Stop
 					</button>

@@ -353,14 +353,14 @@ const ApplyButtonsForEdit = ({
 		setApplying(newApplyingUri)
 
 		if (!applyDonePromise) {
-			notificationService.info(`A-Coder Error: We couldn't run Apply here. ${uri === 'current' ? 'This Apply block wants to run on the current file, but you might not have a file open.' : `This Apply block wants to run on ${uri.fsPath}, but it might not exist.`}`)
+			notificationService.info(`A-Coder IDE Error: We couldn't run Apply here. ${uri === 'current' ? 'This Apply block wants to run on the current file, but you might not have a file open.' : `This Apply block wants to run on ${uri.fsPath}, but it might not exist.`}`)
 		}
 
 		// catch any errors by interrupting the stream
 		applyDonePromise?.catch(e => {
 			const uri = getUriBeingApplied(applyBoxId)
 			if (uri) editCodeService.interruptURIStreaming({ uri: uri })
-			notificationService.info(`A-Coder Error: There was a problem running Apply: ${e}.`)
+			notificationService.info(`A-Coder IDE Error: There was a problem running Apply: ${e}.`)
 
 		})
 		metricsService.capture('Apply Code', { length: codeStr.length }) // capture the length only

@@ -5,6 +5,7 @@
 
 import * as os from 'os';
 import * as path from 'path';
+import { cpSync, existsSync, renameSync, rmSync } from 'fs';
 import { NativeParsedArgs } from '../common/argv.js';
 
 const cwd = process.env['VSCODE_CWD'] || process.cwd();
@@ -83,5 +84,30 @@ function doGetUserDataPath(cliArgs: NativeParsedArgs, productName: string): stri
 			throw new Error('Platform not supported');
 	}
 
-	return path.join(appDataPath, productName);
+	const userDataDir = path.join(appDataPath, productName);
+
+	// A-Coder: one-time migration from the legacy flat user-data dir
+	// ('A-Coder', the pre-rebrand nameShort) into the nested per-app layout
+	// ('A-Coder/ide' — siblings: A-Coder/cli, A-Coder/desktop, added by the
+	// other A-Coder apps). Runs before anything reads the user-data dir; the
+	// main process constructs its environment service first, so it wins any
+	// race with later processes. Skipped in dev (early return above), portable
+	// mode, VSCODE_APPDATA and --user-data-dir overrides (all return earlier).
+	const legacyUserDataDir = path.join(appDataPath, 'A-Coder');
+	if (userDataDir !== legacyUserDataDir && existsSync(legacyUserDataDir) && !existsSync(userDataDir)) {
+		const stagingDir = `${userDataDir}.migrating-${process.pid}`;
+		try {
+			// Copy to a staging dir then rename so a crash mid-copy can never
+			// leave a half-migrated dir at the final location.
+			cpSync(legacyUserDataDir, stagingDir, { recursive: true });
+			renameSync(stagingDir, userDataDir);
+		} catch {
+			// Best-effort: on failure fall back to a fresh dir rather than
+			// blocking startup. The legacy dir is left untouched so users can
+			// copy their data manually.
+			try { rmSync(stagingDir, { recursive: true, force: true }); } catch { /* ignore */ }
+		}
+	}
+
+	return userDataDir;
 }

@@ -205,7 +205,7 @@ const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName, includ
 			apiKey: 'noop',
 			// Add specific configurations for better Ollama compatibility
 			defaultHeaders: {
-				'HTTP-User-Agent': `A-Coder/${product.voidVersion || product.version}`
+				'HTTP-User-Agent': `A-Coder-IDE/${product.voidVersion || product.version}`
 			},
 			// Increase timeout for Ollama models which can be slower
 			timeout: 120000, // 2 minutes
@@ -219,7 +219,7 @@ const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName, includ
 			apiKey: thisConfig.apiKey,
 			// Add specific configurations for better Ollama compatibility
 			defaultHeaders: {
-				'HTTP-User-Agent': `A-Coder/${product.voidVersion || product.version}`
+				'HTTP-User-Agent': `A-Coder-IDE/${product.voidVersion || product.version}`
 			},
 			// Increase timeout for Ollama models which can be slower
 			timeout: 120000, // 2 minutes
@@ -245,7 +245,7 @@ const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName, includ
 			apiKey: thisConfig.apiKey,
 			defaultHeaders: {
 				'HTTP-Referer': 'https://a-coder.dev', // Optional, for including your app on openrouter.ai rankings.
-				'X-Title': 'A-Coder', // Optional. Shows in rankings on openrouter.ai.
+				'X-Title': 'A-Coder IDE', // Optional. Shows in rankings on openrouter.ai.
 			},
 			...commonPayloadOpts,
 		})
@@ -319,7 +319,7 @@ const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName, includ
 			baseURL: 'https://provider.atech.industries/v1',
 			apiKey: thisConfig.apiKey,
 			defaultHeaders: {
-				'HTTP-User-Agent': `A-Coder/${product.voidVersion || product.version}`,
+				'HTTP-User-Agent': `A-Coder-IDE/${product.voidVersion || product.version}`,
 			},
 			...commonPayloadOpts
 		})
@@ -354,7 +354,7 @@ const newOpenAICompatibleSDK = async ({ settingsOfProvider, providerName, includ
 const _sendLlamaCppInfillFIM = async ({ prefix, suffix, stopTokens, onFinalMessage, onError, settingsOfProvider, _setAborter }: { prefix: string, suffix: string, stopTokens?: string[], onFinalMessage: OnFinalMessage, onError: OnError, settingsOfProvider: SettingsOfProvider, _setAborter: (aborter: () => void) => void }) => {
 	const endpoint = (settingsOfProvider.llamaCpp.endpoint || '').replace(/\/+$/, '')
 	if (!endpoint) {
-		onError({ message: `llama.cpp endpoint was empty (set it in A-Coder settings).`, fullError: null })
+		onError({ message: `llama.cpp endpoint was empty (set it in A-Coder IDE settings).`, fullError: null })
 		return
 	}
 	const controller = new AbortController()
@@ -588,9 +588,9 @@ const rawToolCallObjOfParamsStr = (name: string, toolParamsStr: string, id: stri
 		return null
 	}
 
-	const rawParams: RawToolParamsObj = input as any
+	const rawParams: RawToolParamsObj = input as RawToolParamsObj
 	voidDevLog(`[sendLLMMessage] ✓ Successfully parsed tool call "${name}" with ${Object.keys(rawParams).length} parameters`)
-	return { id, name: name as any, rawParams, doneParams: Object.keys(rawParams) as any[], isDone: true, thought_signature }
+	return { id, name, rawParams, doneParams: Object.keys(rawParams), isDone: true, thought_signature }
 }
 
 
@@ -762,13 +762,16 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 
 	const options: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
 		model: modelName,
-		messages: providerName === 'mistral' || providerName === 'openRouter'
+		// LLMChatMessage is void's provider-agnostic message type; it maps
+		// structurally onto the OpenAI wire format but TS can't prove it, so we
+		// assert to the exact SDK param type at this boundary.
+		messages: (providerName === 'mistral' || providerName === 'openRouter'
 			? sanitizeOpenAIMessages(messages)
 			: providerName === 'llamaCpp'
 				? llamaCppMessages!
 				: providerName === 'ollamaCloud'
-					? sanitizeOllamaCloudMessages(messages as any)
-					: messages as any,
+					? sanitizeOllamaCloudMessages(messages)
+					: messages) as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming['messages'],
 		stream: true,
 		...nativeToolsObj,
 		// Enable parallel tool calls for models that support native tool calling.
@@ -791,8 +794,8 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		model: options.model,
 		messageCount: options.messages.length,
 		hasTools: 'tools' in options,
-		toolCount: (options as any).tools?.length ?? 0,
-		parallelToolCalls: (options as any).parallel_tool_calls ?? false,
+		toolCount: options.tools?.length ?? 0,
+		parallelToolCalls: options.parallel_tool_calls ?? false,
 		stream: options.stream
 	}))
 
@@ -860,7 +863,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		return calls
 			.filter(tc => !!tc && !!tc.name) // Skip holes and unnamed tools
 			.map(tc => ({
-				name: tc.name as any,
+				name: tc.name,
 				rawParams: parsePartialJSON(tc.paramsStr),
 				isDone: false,
 				doneParams: [],
@@ -1045,7 +1048,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 			if (hasEmptyResponse) {
 				voidDevLog(`[sendLLMMessage] \u{274C} Empty response detected`)
 				// ... (guiding messages for Ollama)
-				onError({ message: 'A-Coder: Response from model was empty.', fullError: null })
+				onError({ message: 'A-Coder IDE: Response from model was empty.', fullError: null })
 			}
 			else {
 				const finalToolCalls = toolCalls
@@ -1070,21 +1073,26 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 
 			// Retry on 500 errors (server-side issues) - wait 3 seconds and try once more
 			// Don't call onError yet - let the UI keep showing "thinking" state
-			if (error instanceof OpenAI.APIError && error.status === 500 && !(options as any)._isRetry) {
+			if (error instanceof OpenAI.APIError && error.status === 500 && !('_isRetry' in options && options._isRetry)) {
 				voidDevLog(`[sendLLMMessage] \u{23F3} Server returned 500 error, retrying in 3 seconds...`)
 				await new Promise(resolve => setTimeout(resolve, 3000))
 				voidDevLog(`[sendLLMMessage] \u{1F504} Retrying request...`)
 
 				// Retry the request with a flag to prevent infinite retries
-				const retryOptions = { ...options, _isRetry: true } as typeof options & { _isRetry: boolean }
+				const retryOptions: typeof options & { _isRetry: boolean } = { ...options, _isRetry: true }
 				// Fresh controller so a Stop during the 3s wait / retry connect still cancels.
 				const retryAbort = new AbortController()
 				_setAborter(() => retryAbort.abort())
 				openai.chat.completions
 					.create(retryOptions, { signal: retryAbort.signal })
-					.then(async retryResponse => {
+					.then(async retryStreamOrResponse => {
 						voidDevLog(`[sendLLMMessage] \u{2705} Retry succeeded, processing response`)
-						_setAborter(() => (retryResponse as any).controller?.abort?.())
+						// The SDK types .create() conservatively (the stream flag is only
+						// known at runtime here), so assert to the streaming shape we know
+						// we requested: an async iterable of chunks that also exposes the
+						// AbortController (present on SDK Stream objects).
+						const retryStream = retryStreamOrResponse as unknown as AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk> & { controller?: AbortController }
+						_setAborter(() => retryStream.controller?.abort?.())
 
 						// Reset state for retry
 						fullTextSoFar = ''
@@ -1096,7 +1104,7 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 
 						let chunkCount = 0
 						let retryFinishReason: string | undefined
-						for await (const chunk of retryResponse as any) {
+						for await (const chunk of retryStream) {
 							chunkCount++
 							const choice = chunk.choices?.[0]
 							if (!choice) continue
@@ -1452,7 +1460,7 @@ const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessag
 			toolCalls: toolCallsAccumulator.length === 0 ? undefined : toolCallsAccumulator
 				.filter(tc => !!tc)
 				.map(tc => ({
-					name: tc.name as any,
+					name: tc.name,
 					rawParams: parsePartialJSON(tc.paramsStr),
 					isDone: false,
 					doneParams: [],
@@ -1500,7 +1508,7 @@ const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessag
 					toolCalls: toolCallsAccumulator.length === 0 ? undefined : toolCallsAccumulator
 						.filter(tc => !!tc)
 						.map(tc => ({
-							name: tc.name as any,
+							name: tc.name,
 							rawParams: parsePartialJSON(tc.paramsStr),
 							isDone: false,
 							doneParams: [],
@@ -1519,7 +1527,7 @@ const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessag
 					toolCalls: toolCallsAccumulator.length === 0 ? undefined : toolCallsAccumulator
 						.filter(tc => !!tc)
 						.map(tc => ({
-							name: tc.name as any,
+							name: tc.name,
 							rawParams: parsePartialJSON(tc.paramsStr),
 							isDone: false,
 							doneParams: [],
@@ -1598,7 +1606,7 @@ const sendMistralFIM = ({ messages, onFinalMessage, onError, settingsOfProvider,
 // ------------ OLLAMA ------------
 const newOllamaSDK = ({ endpoint }: { endpoint: string }) => {
 	// if endpoint is empty, normally ollama will send to 11434, but we want it to fail - the user should type it in
-	if (!endpoint) throw new Error(`Ollama Endpoint was empty (please enter ${defaultProviderSettings.ollama.endpoint} in A-Coder if you want the default url).`)
+	if (!endpoint) throw new Error(`Ollama Endpoint was empty (please enter ${defaultProviderSettings.ollama.endpoint} in A-Coder IDE if you want the default url).`)
 	const ollama = new Ollama({ host: endpoint })
 	return ollama
 }
@@ -1626,7 +1634,10 @@ const ollamaList = async ({ onSuccess: onSuccess_, onError: onError_, settingsOf
 			try {
 				const ctxLen = await _fetchOllamaShowContext(endpoint, model.name)
 				if (typeof ctxLen === 'number' && ctxLen > 0 && model.details) {
-					;(model.details as any).context_length = ctxLen
+					// Ollama's ModelDetails type doesn't declare context_length (the
+					// field comes from /api/show's model_info, not /api/tags), so
+					// extend the type instead of reaching through `any`.
+					;(model.details as Omit<typeof model.details, never> & { context_length?: number }).context_length = ctxLen
 				}
 			} catch {
 				// Silently skip models that fail /api/show (e.g. running model with no Modelfile)
@@ -1929,7 +1940,7 @@ const sendGeminiChat = async ({
 					fullText: fullTextSoFar,
 					fullReasoning: fullReasoningSoFar,
 					toolCalls: toolCallsAccumulator.length === 0 ? undefined : toolCallsAccumulator.map(tc => ({
-						name: tc.name as any,
+						name: tc.name,
 						rawParams: parsePartialJSON(tc.paramsStr),
 						isDone: false,
 						doneParams: [],
@@ -1940,7 +1951,7 @@ const sendGeminiChat = async ({
 
 			// on final
 			if (!fullTextSoFar && !fullReasoningSoFar && toolCallsAccumulator.length === 0) {
-				onError({ message: 'A-Coder: Response from model was empty.', fullError: null })
+				onError({ message: 'A-Coder IDE: Response from model was empty.', fullError: null })
 			} else {
 				const finalToolCalls = toolCallsAccumulator.map(tc => rawToolCallObjOfParamsStr(tc.name, tc.paramsStr, tc.id || generateUuid(), tc.thoughtSignature)).filter(tc => !!tc) as RawToolCallObj[]
 				const toolCallObj = finalToolCalls.length > 0 ? { toolCalls: finalToolCalls } : {}

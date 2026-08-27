@@ -66,13 +66,13 @@ export interface ITerminalToolService {
 export const ITerminalToolService = createDecorator<ITerminalToolService>('TerminalToolService');
 
 export const persistentTerminalNameOfId = (id: string) => {
-	if (id === '1') return 'A-Coder Agent'
-	return `A-Coder Agent (${id})`
+	if (id === '1') return 'A-Coder IDE Agent'
+	return `A-Coder IDE Agent (${id})`
 }
 export const idOfPersistentTerminalName = (name: string) => {
-	if (name === 'A-Coder Agent') return '1'
+	if (name === 'A-Coder IDE Agent') return '1'
 
-	const match = name.match(/A-Coder Agent \((\d+)\)/)
+	const match = name.match(/A-Coder IDE Agent \((\d+)\)/)
 	if (!match) return null
 	// match[1] is a string; coerce to a number before the integer check.
 	const n = Number(match[1])

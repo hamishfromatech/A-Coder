@@ -682,7 +682,7 @@ MenuRegistry.appendMenuItem(MenuId.MenubarFileMenu, {
 	group: '0_void',
 	command: {
 		id: VOID_OPEN_SETTINGS_ACTION_ID,
-		title: nls.localize({ key: 'openVoid', comment: ['&& denotes a mnemonic'] }, "&&Open A-Coder Settings"),
+		title: nls.localize({ key: 'openVoid', comment: ['&& denotes a mnemonic'] }, "&&Open A-Coder IDE Settings"),
 	},
 	order: 1
 });

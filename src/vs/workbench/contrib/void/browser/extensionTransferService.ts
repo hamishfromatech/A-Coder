@@ -10,6 +10,7 @@ import { URI } from '../../../../base/common/uri.js';
 import { IFileService } from '../../../../platform/files/common/files.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
+import { voidDevLog } from '../common/devLog.js';
 import { TransferEditorType, TransferFilesInfo } from './extensionTransferTypes.js';
 
 
@@ -65,7 +66,7 @@ class ExtensionTransferService extends Disposable implements IExtensionTransferS
 			// Check if the source file exists before attempting to copy
 			try {
 				if (!isExtensions) {
-					console.log('transferring item', from, to)
+					voidDevLog('transferring item', from, to)
 
 					const exists = await fileService.exists(from)
 					if (exists) {
@@ -77,12 +78,12 @@ class ExtensionTransferService extends Disposable implements IExtensionTransferS
 						}
 						await fileService.copy(from, to, true)
 					} else {
-						console.log(`Skipping file that doesn't exist: ${from.toString()}`)
+						voidDevLog(`Skipping file that doesn't exist: ${from.toString()}`)
 					}
 				}
 				// extensions folder
 				else {
-					console.log('transferring extensions...', from, to)
+					voidDevLog('transferring extensions...', from, to)
 					const exists = await fileService.exists(from)
 					if (exists) {
 						const stat = await fileService.resolve(from)
@@ -111,16 +112,16 @@ class ExtensionTransferService extends Disposable implements IExtensionTransferS
 										await fileService.writeFile(to, VSBuffer.fromString(jsonStr))
 									}
 									catch {
-										console.log('Error copying extensions.json, skipping')
+										voidDevLog('Error copying extensions.json, skipping')
 									}
 								}
 							}
 						}
 
 					} else {
-						console.log(`Skipping file that doesn't exist: ${from.toString()}`)
+						voidDevLog(`Skipping file that doesn't exist: ${from.toString()}`)
 					}
-					console.log('done transferring extensions.')
+					voidDevLog('done transferring extensions.')
 				}
 			}
 			catch (e) {
@@ -145,7 +146,7 @@ class ExtensionTransferService extends Disposable implements IExtensionTransferS
 				if (child.isDirectory) {
 					// if is blacklisted
 					if (isBlacklisted(child.resource.fsPath)) {
-						console.log('Deleting extension', child.resource.fsPath)
+						voidDevLog('Deleting extension', child.resource.fsPath)
 						await fileService.del(child.resource, { recursive: true, useTrash: true })
 					}
 				}
@@ -153,7 +154,7 @@ class ExtensionTransferService extends Disposable implements IExtensionTransferS
 					// if is extensions.json
 
 					if (child.name === 'extensions.json') {
-						console.log('Updating extensions.json', child.resource.fsPath)
+						voidDevLog('Updating extensions.json', child.resource.fsPath)
 						try {
 							const contentsStr = await fileService.readFile(child.resource)
 							const json: any = JSON.parse(contentsStr.value.toString())
@@ -162,7 +163,7 @@ class ExtensionTransferService extends Disposable implements IExtensionTransferS
 							await fileService.writeFile(child.resource, VSBuffer.fromString(jsonStr))
 						}
 						catch {
-							console.log('Error copying extensions.json, skipping')
+							voidDevLog('Error copying extensions.json, skipping')
 						}
 					}
 				}
@@ -195,10 +196,10 @@ const transferTheseFilesOfOS = (os: 'mac' | 'windows' | 'linux' | null, fromEdit
 		if (fromEditor === 'VS Code') {
 			return [{
 				from: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, 'Library', 'Application Support', 'Code', 'User', 'settings.json'),
-				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, 'Library', 'Application Support', 'A-Coder', 'User', 'settings.json'),
+				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, 'Library', 'Application Support', 'A-Coder', 'ide', 'User', 'settings.json'),
 			}, {
 				from: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, 'Library', 'Application Support', 'Code', 'User', 'keybindings.json'),
-				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, 'Library', 'Application Support', 'A-Coder', 'User', 'keybindings.json'),
+				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, 'Library', 'Application Support', 'A-Coder', 'ide', 'User', 'keybindings.json'),
 			}, {
 				from: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.vscode', 'extensions'),
 				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.a-coder', 'extensions'),
@@ -207,10 +208,10 @@ const transferTheseFilesOfOS = (os: 'mac' | 'windows' | 'linux' | null, fromEdit
 		} else if (fromEditor === 'Cursor') {
 			return [{
 				from: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, 'Library', 'Application Support', 'Cursor', 'User', 'settings.json'),
-				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, 'Library', 'Application Support', 'A-Coder', 'User', 'settings.json'),
+				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, 'Library', 'Application Support', 'A-Coder', 'ide', 'User', 'settings.json'),
 			}, {
 				from: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, 'Library', 'Application Support', 'Cursor', 'User', 'keybindings.json'),
-				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, 'Library', 'Application Support', 'A-Coder', 'User', 'keybindings.json'),
+				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, 'Library', 'Application Support', 'A-Coder', 'ide', 'User', 'keybindings.json'),
 			}, {
 				from: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.cursor', 'extensions'),
 				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.a-coder', 'extensions'),
@@ -219,10 +220,10 @@ const transferTheseFilesOfOS = (os: 'mac' | 'windows' | 'linux' | null, fromEdit
 		} else if (fromEditor === 'Windsurf') {
 			return [{
 				from: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, 'Library', 'Application Support', 'Windsurf', 'User', 'settings.json'),
-				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, 'Library', 'Application Support', 'A-Coder', 'User', 'settings.json'),
+				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, 'Library', 'Application Support', 'A-Coder', 'ide', 'User', 'settings.json'),
 			}, {
 				from: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, 'Library', 'Application Support', 'Windsurf', 'User', 'keybindings.json'),
-				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, 'Library', 'Application Support', 'A-Coder', 'User', 'keybindings.json'),
+				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, 'Library', 'Application Support', 'A-Coder', 'ide', 'User', 'keybindings.json'),
 			}, {
 				from: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.windsurf', 'extensions'),
 				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.a-coder', 'extensions'),
@@ -238,10 +239,10 @@ const transferTheseFilesOfOS = (os: 'mac' | 'windows' | 'linux' | null, fromEdit
 		if (fromEditor === 'VS Code') {
 			return [{
 				from: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.config', 'Code', 'User', 'settings.json'),
-				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.config', 'A-Coder', 'User', 'settings.json'),
+				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.config', 'A-Coder', 'ide', 'User', 'settings.json'),
 			}, {
 				from: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.config', 'Code', 'User', 'keybindings.json'),
-				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.config', 'A-Coder', 'User', 'keybindings.json'),
+				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.config', 'A-Coder', 'ide', 'User', 'keybindings.json'),
 			}, {
 				from: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.vscode', 'extensions'),
 				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.a-coder', 'extensions'),
@@ -250,10 +251,10 @@ const transferTheseFilesOfOS = (os: 'mac' | 'windows' | 'linux' | null, fromEdit
 		} else if (fromEditor === 'Cursor') {
 			return [{
 				from: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.config', 'Cursor', 'User', 'settings.json'),
-				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.config', 'A-Coder', 'User', 'settings.json'),
+				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.config', 'A-Coder', 'ide', 'User', 'settings.json'),
 			}, {
 				from: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.config', 'Cursor', 'User', 'keybindings.json'),
-				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.config', 'A-Coder', 'User', 'keybindings.json'),
+				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.config', 'A-Coder', 'ide', 'User', 'keybindings.json'),
 			}, {
 				from: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.cursor', 'extensions'),
 				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.a-coder', 'extensions'),
@@ -262,10 +263,10 @@ const transferTheseFilesOfOS = (os: 'mac' | 'windows' | 'linux' | null, fromEdit
 		} else if (fromEditor === 'Windsurf') {
 			return [{
 				from: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.config', 'Windsurf', 'User', 'settings.json'),
-				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.config', 'A-Coder', 'User', 'settings.json'),
+				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.config', 'A-Coder', 'ide', 'User', 'settings.json'),
 			}, {
 				from: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.config', 'Windsurf', 'User', 'keybindings.json'),
-				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.config', 'A-Coder', 'User', 'keybindings.json'),
+				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.config', 'A-Coder', 'ide', 'User', 'keybindings.json'),
 			}, {
 				from: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.windsurf', 'extensions'),
 				to: URI.joinPath(URI.from({ scheme: 'file' }), homeDir, '.a-coder', 'extensions'),
@@ -283,10 +284,10 @@ const transferTheseFilesOfOS = (os: 'mac' | 'windows' | 'linux' | null, fromEdit
 		if (fromEditor === 'VS Code') {
 			return [{
 				from: URI.joinPath(URI.from({ scheme: 'file' }), appdata, 'Code', 'User', 'settings.json'),
-				to: URI.joinPath(URI.from({ scheme: 'file' }), appdata, 'A-Coder', 'User', 'settings.json'),
+				to: URI.joinPath(URI.from({ scheme: 'file' }), appdata, 'A-Coder', 'ide', 'User', 'settings.json'),
 			}, {
 				from: URI.joinPath(URI.from({ scheme: 'file' }), appdata, 'Code', 'User', 'keybindings.json'),
-				to: URI.joinPath(URI.from({ scheme: 'file' }), appdata, 'A-Coder', 'User', 'keybindings.json'),
+				to: URI.joinPath(URI.from({ scheme: 'file' }), appdata, 'A-Coder', 'ide', 'User', 'keybindings.json'),
 			}, {
 				from: URI.joinPath(URI.from({ scheme: 'file' }), userprofile, '.vscode', 'extensions'),
 				to: URI.joinPath(URI.from({ scheme: 'file' }), userprofile, '.a-coder', 'extensions'),
@@ -295,10 +296,10 @@ const transferTheseFilesOfOS = (os: 'mac' | 'windows' | 'linux' | null, fromEdit
 		} else if (fromEditor === 'Cursor') {
 			return [{
 				from: URI.joinPath(URI.from({ scheme: 'file' }), appdata, 'Cursor', 'User', 'settings.json'),
-				to: URI.joinPath(URI.from({ scheme: 'file' }), appdata, 'A-Coder', 'User', 'settings.json'),
+				to: URI.joinPath(URI.from({ scheme: 'file' }), appdata, 'A-Coder', 'ide', 'User', 'settings.json'),
 			}, {
 				from: URI.joinPath(URI.from({ scheme: 'file' }), appdata, 'Cursor', 'User', 'keybindings.json'),
-				to: URI.joinPath(URI.from({ scheme: 'file' }), appdata, 'A-Coder', 'User', 'keybindings.json'),
+				to: URI.joinPath(URI.from({ scheme: 'file' }), appdata, 'A-Coder', 'ide', 'User', 'keybindings.json'),
 			}, {
 				from: URI.joinPath(URI.from({ scheme: 'file' }), userprofile, '.cursor', 'extensions'),
 				to: URI.joinPath(URI.from({ scheme: 'file' }), userprofile, '.a-coder', 'extensions'),
@@ -307,10 +308,10 @@ const transferTheseFilesOfOS = (os: 'mac' | 'windows' | 'linux' | null, fromEdit
 		} else if (fromEditor === 'Windsurf') {
 			return [{
 				from: URI.joinPath(URI.from({ scheme: 'file' }), appdata, 'Windsurf', 'User', 'settings.json'),
-				to: URI.joinPath(URI.from({ scheme: 'file' }), appdata, 'A-Coder', 'User', 'settings.json'),
+				to: URI.joinPath(URI.from({ scheme: 'file' }), appdata, 'A-Coder', 'ide', 'User', 'settings.json'),
 			}, {
 				from: URI.joinPath(URI.from({ scheme: 'file' }), appdata, 'Windsurf', 'User', 'keybindings.json'),
-				to: URI.joinPath(URI.from({ scheme: 'file' }), appdata, 'A-Coder', 'User', 'keybindings.json'),
+				to: URI.joinPath(URI.from({ scheme: 'file' }), appdata, 'A-Coder', 'ide', 'User', 'keybindings.json'),
 			}, {
 				from: URI.joinPath(URI.from({ scheme: 'file' }), userprofile, '.windsurf', 'extensions'),
 				to: URI.joinPath(URI.from({ scheme: 'file' }), userprofile, '.a-coder', 'extensions'),

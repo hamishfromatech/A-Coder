@@ -113,7 +113,7 @@ export const MCPServerModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: 
 									<Database size={24} className="text-void-fg-3" />
 								</div>
 								<p className="text-sm text-void-fg-2 font-medium">No Servers Found</p>
-								<p className="text-xs text-void-fg-4 mt-1">Configure MCP servers in settings to extend A-Coder's capabilities.</p>
+								<p className="text-xs text-void-fg-4 mt-1">Configure MCP servers in settings to extend A-Coder IDE's capabilities.</p>
 							</div>
 						) : (
 							mcpServerEntries.map(([name, server]) => {

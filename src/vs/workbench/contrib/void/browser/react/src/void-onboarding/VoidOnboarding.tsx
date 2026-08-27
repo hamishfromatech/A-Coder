@@ -639,7 +639,7 @@ const VoidOnboardingContent = () => {
 			<PrimaryActionButton
 				onClick={() => setIsExiting(true)}
 			// ringSize removed for matrix animation
-			>Enter A-Coder</PrimaryActionButton>
+			>Enter A-Coder IDE</PrimaryActionButton>
 		</div>
 	</div>
 
@@ -699,7 +699,7 @@ const VoidOnboardingContent = () => {
 					{/* Title & Tagline */}
 					<div className="text-center space-y-4 max-w-lg">
 						<h1 className="text-5xl font-extrabold text-void-fg-1 tracking-tight">
-							Welcome to <span className="text-void-accent">A-Coder</span>
+							Welcome to <span className="text-void-accent">A-Coder IDE</span>
 						</h1>
 						<p className="text-xs text-void-fg-3 font-mono opacity-60">
 							{productService.voidVersion

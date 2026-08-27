@@ -47,19 +47,19 @@ export const SlideInRight = ({ children }: { children: React.ReactNode, delay?: 
 
 const MESSAGES_BY_STATE: Record<'thinking' | 'processing' | 'generating', string[]> = {
 	thinking: [
-		'A-Coder is thinking',
-		'A-Coder is planning the next steps',
-		'A-Coder is looking over your code',
+		'A-Coder IDE is thinking',
+		'A-Coder IDE is planning the next steps',
+		'A-Coder IDE is looking over your code',
 	],
 	processing: [
-		'A-Coder is processing your request',
-		'A-Coder is working out the best way to tackle this',
-		'A-Coder is checking context and tools',
+		'A-Coder IDE is processing your request',
+		'A-Coder IDE is working out the best way to tackle this',
+		'A-Coder IDE is checking context and tools',
 	],
 	generating: [
-		'A-Coder is drafting a response',
-		'A-Coder is putting the pieces together',
-		'A-Coder is writing your answer',
+		'A-Coder IDE is drafting a response',
+		'A-Coder IDE is putting the pieces together',
+		'A-Coder IDE is writing your answer',
 	],
 };
 

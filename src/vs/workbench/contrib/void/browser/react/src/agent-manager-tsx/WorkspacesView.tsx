@@ -22,7 +22,7 @@ export const WorkspacesView = memo(() => {
 						<Folder className="w-7 h-7 opacity-30" />
 					</div>
 					<p className="text-sm font-semibold text-void-fg-3 mb-2">No Workspace Open</p>
-					<p className="text-xs text-void-fg-4 text-center max-w-[200px]">Open a folder in VS Code to start working with A-Coder.</p>
+					<p className="text-xs text-void-fg-4 text-center max-w-[200px]">Open a folder in VS Code to start working with A-Coder IDE.</p>
 				</div>
 			)}
 		</div>

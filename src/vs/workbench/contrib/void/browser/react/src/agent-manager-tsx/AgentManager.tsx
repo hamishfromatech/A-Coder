@@ -409,7 +409,7 @@ export const AgentManager = ({ className }: { className: string }) => {
 	return (
 		<div className={`@@void-scope ${isDark ? 'dark' : ''}`} style={{ height: '100%', width: '100%' }}>
 			<div className="absolute inset-0 flex flex-col bg-void-bg-4 text-void-fg-2 overflow-hidden font-sans antialiased"
-				role="application" aria-label="A-Coder Agent Manager"
+				role="application" aria-label="A-Coder IDE Agent Manager"
 			>
 
 				{/* === Top bar === */}
@@ -422,7 +422,7 @@ export const AgentManager = ({ className }: { className: string }) => {
 							<div className="w-6 h-6 rounded bg-void-bg-2 border border-void-border-1 flex items-center justify-center">
 								<Zap className="w-3.5 h-3.5 text-void-fg-0" />
 							</div>
-							<span className="text-sm font-semibold text-void-fg-0">A-Coder</span>
+							<span className="text-sm font-semibold text-void-fg-0">A-Coder IDE</span>
 						</div>
 
 						{/* Mode toggle: Simple / Advanced */}

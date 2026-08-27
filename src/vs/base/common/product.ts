@@ -75,6 +75,13 @@ export interface IProductConfiguration {
 
 	readonly urlProtocol: string;
 	readonly dataFolderName: string; // location for extensions (e.g. ~/.vscode-insiders)
+	/**
+	 * Per-app user-data folder under the shared A-Coder app-data directory
+	 * (e.g. "A-Coder/ide" → ~/Library/Application Support/A-Coder/ide on macOS).
+	 * Falls back to `nameShort` when absent. Kept separate from `nameShort` so
+	 * the display name can change without relocating user data.
+	 */
+	readonly userDataFolderName?: string;
 
 	readonly builtInExtensions?: IBuiltInExtension[];
 	readonly walkthroughMetadata?: IProductWalkthrough[];

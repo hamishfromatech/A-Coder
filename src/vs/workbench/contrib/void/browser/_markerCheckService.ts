@@ -3,7 +3,7 @@
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
  *--------------------------------------------------------------------------------------*/
 
-import { Disposable } from '../../../../base/common/lifecycle.js';
+import { Disposable, toDisposable } from '../../../../base/common/lifecycle.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { IMarkerService, MarkerSeverity } from '../../../../platform/markers/common/markers.js';
@@ -14,6 +14,7 @@ import { CancellationToken } from '../../../../base/common/cancellation.js';
 import { CodeActionContext, CodeActionTriggerType } from '../../../../editor/common/languages.js';
 import { URI } from '../../../../base/common/uri.js';
 import * as dom from '../../../../base/browser/dom.js';
+import { voidDevLog } from '../common/devLog.js';
 
 export interface IMarkerCheckService {
 	readonly _serviceBrand: undefined;
@@ -39,9 +40,9 @@ class MarkerCheckService extends Disposable implements IMarkerCheckService {
 				const errorsToProcess = errors.slice(0, 3);
 				for (const error of errorsToProcess) {
 
-					console.log(`----------------------------------------------`);
+					voidDevLog(`----------------------------------------------`);
 
-					console.log(`${error.resource.fsPath}: ${error.startLineNumber} ${error.message} ${error.severity}`); // ! all errors in the file
+					voidDevLog(`${error.resource.fsPath}: ${error.startLineNumber} ${error.message} ${error.severity}`); // ! all errors in the file
 
 					try {
 						// Get the text model for the file
@@ -82,9 +83,9 @@ class MarkerCheckService extends Disposable implements IMarkerCheckService {
 									// quickFixesForImports
 
 									if (quickFixes.length > 0) {
-										console.log('Available Quick Fixes:');
+										voidDevLog('Available Quick Fixes:');
 										quickFixes.forEach(action => {
-											console.log(`- ${action.title}`);
+											voidDevLog(`- ${action.title}`);
 										});
 									}
 								}
@@ -101,11 +102,14 @@ class MarkerCheckService extends Disposable implements IMarkerCheckService {
 		}
 		const { window } = dom.getActiveWindow()
 		// CPU OPTIMIZATION: Increased interval from 5s to 60s and only run when window is focused
-		window.setInterval(async () => {
+		const intervalId = window.setInterval(async () => {
 			if (dom.getActiveWindow().document.hasFocus()) {
 				await check();
 			}
 		}, 60000);
+		// Clear the interval when the service is disposed — without this the
+		// timer (and its model references) would outlive the service.
+		this._register(toDisposable(() => window.clearInterval(intervalId)));
 	}
 
 
@@ -129,11 +133,11 @@ class MarkerCheckService extends Disposable implements IMarkerCheckService {
 	// 		const markers = this._markerService.read({ resource });
 
 	// 		if (markers.length === 0) {
-	// 			console.log(`${resource.fsPath}: No diagnostics`);
+	// 			voidDevLog(`${resource.fsPath}: No diagnostics`);
 	// 			continue;
 	// 		}
 
-	// 		console.log(`Diagnostics for ${resource.fsPath}:`);
+	// 		voidDevLog(`Diagnostics for ${resource.fsPath}:`);
 	// 		markers.forEach(marker => this._logMarker(marker));
 	// 	}
 	// };

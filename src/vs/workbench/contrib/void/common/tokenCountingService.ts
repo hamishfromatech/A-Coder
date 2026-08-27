@@ -10,6 +10,7 @@ import { IVoidSettingsService } from './voidSettingsService.js';
 import { ProviderName, providerNames } from './voidSettingsTypes.js';
 import { Disposable, toDisposable } from '../../../../base/common/lifecycle.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
+import { voidDevLog, voidDevWarn } from './devLog.js';
 import { registerSingleton, InstantiationType } from '../../../../platform/instantiation/common/extensions.js';
 
 export interface ITokenCountingService {
@@ -68,7 +69,7 @@ export class TokenCountingService extends Disposable implements ITokenCountingSe
 		@IVoidSettingsService private readonly voidSettingsService: IVoidSettingsService,
 	) {
 		super();
-		console.log('[TokenCountingService] Using tiktoken via IPC with character-based fallback');
+		voidDevLog('[TokenCountingService] Using tiktoken via IPC with character-based fallback');
 		// Start cache cleanup interval
 		const interval = setInterval(() => this._cleanupExpiredCache(), this.CACHE_TTL_MS / 2);
 		this._register(toDisposable(() => clearInterval(interval)));
@@ -119,7 +120,7 @@ export class TokenCountingService extends Disposable implements ITokenCountingSe
 		const cappedRatio = Math.max(0.5, Math.min(5.0, smoothedRatio));
 
 		this._modelRatios.set(modelName, cappedRatio);
-		console.log(`[TokenCountingService] Updated token ratio for ${modelName}: ${cappedRatio.toFixed(3)} (last: ${ratio.toFixed(3)})`);
+		voidDevLog(`[TokenCountingService] Updated token ratio for ${modelName}: ${cappedRatio.toFixed(3)} (last: ${ratio.toFixed(3)})`);
 	}
 
 	/**
@@ -214,7 +215,7 @@ export class TokenCountingService extends Disposable implements ITokenCountingSe
 			this._setCachedWithTimestamp(text, modelName, finalCount);
 			return finalCount;
 		} catch (error) {
-			console.warn('[TokenCountingService] IPC token counting failed, using character estimate:', error);
+			voidDevWarn('[TokenCountingService] IPC token counting failed, using character estimate:', error);
 			return Math.ceil((text.length / 4) * multiplier);
 		}
 	}
@@ -325,7 +326,7 @@ export class TokenCountingService extends Disposable implements ITokenCountingSe
 			const baseCount = typeof count === 'number' ? count : Math.ceil(JSON.stringify(message).length / 4) + 4;
 			return Math.ceil(baseCount * multiplier);
 		} catch (error) {
-			console.warn('[TokenCountingService] IPC token counting failed, using character estimate:', error);
+			voidDevWarn('[TokenCountingService] IPC token counting failed, using character estimate:', error);
 			const messageStr = JSON.stringify(message);
 			return Math.ceil(((messageStr.length / 4) + 4) * multiplier);
 		}
@@ -414,7 +415,7 @@ export class TokenCountingService extends Disposable implements ITokenCountingSe
 
 			return finalCount;
 		} catch (error) {
-			console.warn('[TokenCountingService] IPC token counting failed, using character estimate:', error);
+			voidDevWarn('[TokenCountingService] IPC token counting failed, using character estimate:', error);
 			return Math.ceil(this._estimateMessagesTokens(messages) * multiplier);
 		}
 	}
@@ -676,7 +677,7 @@ export class TokenCountingService extends Disposable implements ITokenCountingSe
 
 		// Default for OpenRouter models (most are 128k+)
 		if (isOpenRouter) {
-			console.warn(`[TokenCountingService] Unknown OpenRouter model ${modelName}, defaulting to 128000`);
+			voidDevWarn(`[TokenCountingService] Unknown OpenRouter model ${modelName}, defaulting to 128000`);
 			return 128000;
 		}
 
@@ -692,7 +693,7 @@ export class TokenCountingService extends Disposable implements ITokenCountingSe
 			if (lowerName.includes('minimax')) {
 				return 200000;
 			}
-			console.warn(`[TokenCountingService] Unknown Ollama/local model ${modelName}, defaulting to 8192`);
+			voidDevWarn(`[TokenCountingService] Unknown Ollama/local model ${modelName}, defaulting to 8192`);
 			return 8192;
 		}
 
@@ -703,12 +704,12 @@ export class TokenCountingService extends Disposable implements ITokenCountingSe
 		// drop tokens mid-conversation with no warning). Users running a larger context should
 		// set it in Model Management (override), which is respected at the top of this function.
 		if (providerName === 'llamaCpp') {
-			console.warn(`[TokenCountingService] Unknown llama.cpp model ${modelName}, defaulting context window to 8192. Set the real -c/--ctx-size in Model Management if your server uses a larger context.`);
+			voidDevWarn(`[TokenCountingService] Unknown llama.cpp model ${modelName}, defaulting context window to 8192. Set the real -c/--ctx-size in Model Management if your server uses a larger context.`);
 			return 8192;
 		}
 
 		// Default to 131985 for unknown models (matches common modern model contexts)
-		console.warn(`[TokenCountingService] Unknown context window for ${modelName}, defaulting to 131985`);
+		voidDevWarn(`[TokenCountingService] Unknown context window for ${modelName}, defaulting to 131985`);
 		return 131985;
 	}
 
@@ -871,7 +872,7 @@ export class TokenCountingService extends Disposable implements ITokenCountingSe
 			window: contextWindow,
 			timestamp: Date.now()
 		});
-		console.log(`[TokenCountingService] Cached context window for ${modelName}: ${contextWindow}`);
+		voidDevLog(`[TokenCountingService] Cached context window for ${modelName}: ${contextWindow}`);
 	}
 
 	/**
@@ -905,7 +906,7 @@ export class TokenCountingService extends Disposable implements ITokenCountingSe
 
 			return undefined;
 		} catch (error) {
-			console.warn(`[TokenCountingService] Failed to fetch dynamic context window for ${modelName}:`, error);
+			voidDevWarn(`[TokenCountingService] Failed to fetch dynamic context window for ${modelName}:`, error);
 			return undefined;
 		}
 	}

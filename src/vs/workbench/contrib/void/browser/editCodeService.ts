@@ -39,7 +39,7 @@ import { Emitter } from '../../../../base/common/event.js';
 import { ILLMMessageService } from '../common/sendLLMMessageService.js';
 import { LLMChatMessage } from '../common/sendLLMMessageTypes.js';
 import { IMetricsService } from '../common/metricsService.js';
-import { voidDevWarn } from '../common/devLog.js';
+import { voidDevWarn, voidDevLog } from '../common/devLog.js';
 import { IHookService } from '../common/hookService.js';
 import { IMorphService } from './morphService.js';
 import { IEditCodeService, AddCtrlKOpts, StartApplyingOpts, CallBeforeStartApplyingOpts, } from './editCodeServiceInterface.js';
@@ -681,7 +681,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 			if (diffArea.type !== 'CtrlKZone') continue
 			if (!diffArea._mountInfo) {
 				diffArea._mountInfo = this._addCtrlKZoneInput(diffArea)
-				console.log('MOUNTED CTRLK', diffArea.diffareaid)
+				voidDevLog('MOUNTED CTRLK', diffArea.diffareaid)
 			}
 			else {
 				diffArea._mountInfo.refresh()
@@ -974,7 +974,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 		const elt: IUndoRedoElement = {
 			type: UndoRedoElementType.Resource,
 			resource: uri,
-			label: 'A-Coder Agent',
+			label: 'A-Coder IDE Agent',
 			code: 'undoredo.editCode',
 			undo: async () => {
 				opts?.onWillUndo?.();
@@ -1119,7 +1119,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 	// changes the start/line locations of all DiffAreas on the page (adjust their start/end based on the change) based on the change that was recently made
 	private _realignAllDiffAreasLines(uri: URI, text: string, recentChange: { startLineNumber: number; endLineNumber: number }) {
 
-		// console.log('recent change', recentChange)
+		// voidDevLog('recent change', recentChange)
 
 		// compute net number of newlines lines that were added/removed
 		const startLine = recentChange.startLineNumber
@@ -1133,12 +1133,12 @@ class EditCodeService extends Disposable implements IEditCodeService {
 
 			// if the diffArea is entirely above the range, it is not affected
 			if (diffArea.endLine < startLine) {
-				// console.log('CHANGE FULLY BELOW DA (doing nothing)')
+				// voidDevLog('CHANGE FULLY BELOW DA (doing nothing)')
 				continue
 			}
 			// if a diffArea is entirely below the range, shift the diffArea up/down by the delta amount of newlines
 			else if (endLine < diffArea.startLine) {
-				// console.log('CHANGE FULLY ABOVE DA')
+				// voidDevLog('CHANGE FULLY ABOVE DA')
 				const changedRangeHeight = endLine - startLine + 1
 				const deltaNewlines = newTextHeight - changedRangeHeight
 				diffArea.startLine += deltaNewlines
@@ -1146,20 +1146,20 @@ class EditCodeService extends Disposable implements IEditCodeService {
 			}
 			// if the diffArea fully contains the change, elongate it by the delta amount of newlines
 			else if (startLine >= diffArea.startLine && endLine <= diffArea.endLine) {
-				// console.log('DA FULLY CONTAINS CHANGE')
+				// voidDevLog('DA FULLY CONTAINS CHANGE')
 				const changedRangeHeight = endLine - startLine + 1
 				const deltaNewlines = newTextHeight - changedRangeHeight
 				diffArea.endLine += deltaNewlines
 			}
 			// if the change fully contains the diffArea, make the diffArea have the same range as the change
 			else if (diffArea.startLine > startLine && diffArea.endLine < endLine) {
-				// console.log('CHANGE FULLY CONTAINS DA')
+				// voidDevLog('CHANGE FULLY CONTAINS DA')
 				diffArea.startLine = startLine
 				diffArea.endLine = startLine + newTextHeight
 			}
 			// if the change contains only the diffArea's top
 			else if (startLine < diffArea.startLine && diffArea.startLine <= endLine) {
-				// console.log('CHANGE CONTAINS TOP OF DA ONLY')
+				// voidDevLog('CHANGE CONTAINS TOP OF DA ONLY')
 				const numOverlappingLines = endLine - diffArea.startLine + 1
 				const numRemainingLinesInDA = diffArea.endLine - diffArea.startLine + 1 - numOverlappingLines
 				const newHeight = (numRemainingLinesInDA - 1) + (newTextHeight - 1) + 1
@@ -1168,7 +1168,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 			}
 			// if the change contains only the diffArea's bottom
 			else if (startLine <= diffArea.endLine && diffArea.endLine < endLine) {
-				// console.log('CHANGE CONTAINS BOTTOM OF DA ONLY')
+				// voidDevLog('CHANGE CONTAINS BOTTOM OF DA ONLY')
 				const numOverlappingLines = diffArea.endLine - startLine + 1
 				diffArea.endLine += newTextHeight - numOverlappingLines
 			}
@@ -1236,7 +1236,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 		const lastDiff = computedDiffs.pop()
 
 		if (!lastDiff) {
-			// console.log('!lastDiff')
+			// voidDevLog('!lastDiff')
 			// if the writing is identical so far, display no changes
 			startLineInOriginalCode = 1
 			endLineInLlmTextSoFar = 1
@@ -1248,7 +1248,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 			else if (lastDiff.type === 'deletion')
 				endLineInLlmTextSoFar = lastDiff.startLine
 			else
-				throw new Error(`A-Coder: diff.type not recognized on: ${lastDiff}`)
+				throw new Error(`A-Coder IDE: diff.type not recognized on: ${lastDiff}`)
 		}
 
 		// at the start, add a newline between the stream and originalCode to make reasoning easier
@@ -1413,9 +1413,9 @@ class EditCodeService extends Disposable implements IEditCodeService {
 
 
 		public async instantlyApplyOriginalUpdatedBlocks({ uri, originalUpdatedBlocks, tryFuzzyMatching, onProgress }: { uri: URI, originalUpdatedBlocks: string, tryFuzzyMatching?: boolean, onProgress?: (data: string) => void }) {
-			console.log('[editCodeService] instantlyApplyOriginalUpdatedBlocks called');
-			console.log('[editCodeService] Morph enabled:', this._settingsService.state.globalSettings.enableMorphFastApply);
-			console.log('[editCodeService] Morph API key present:', !!this._settingsService.state.globalSettings.morphApiKey);
+			voidDevLog('[editCodeService] instantlyApplyOriginalUpdatedBlocks called');
+			voidDevLog('[editCodeService] Morph enabled:', this._settingsService.state.globalSettings.enableMorphFastApply);
+			voidDevLog('[editCodeService] Morph API key present:', !!this._settingsService.state.globalSettings.morphApiKey);
 	
 			// add to history as a checkpoint, before we start modifying
 			const { onFinishEdit } = this._addToHistory(uri, { onWillUndo: () => {} })
@@ -1442,20 +1442,20 @@ class EditCodeService extends Disposable implements IEditCodeService {
 				if (this._settingsService.state.globalSettings.enableMorphFastApply &&
 					this._settingsService.state.globalSettings.morphApiKey) {
 					onProgress?.('Attempting to use Morph Fast Apply...');
-					console.log('[editCodeService] Attempting to use Morph Fast Apply...');
+					voidDevLog('[editCodeService] Attempting to use Morph Fast Apply...');
 					try {
 						await this._applyWithMorph(uri, originalUpdatedBlocks);
 						onProgress?.('Successfully applied changes using Morph Fast Apply');
-						console.log('[editCodeService] Successfully applied changes using Morph Fast Apply');
+						voidDevLog('[editCodeService] Successfully applied changes using Morph Fast Apply');
 					} catch (morphError) {
 						// Fall back to standard apply if Morph fails
 						onProgress?.(`Morph Fast Apply failed, falling back to standard apply: ${morphError}`);
-						console.warn('[editCodeService] Morph Fast Apply failed, falling back to standard apply:', morphError);
+						voidDevWarn('[editCodeService] Morph Fast Apply failed, falling back to standard apply:', morphError);
 						await this._instantlyApplySRBlocks(uri, originalUpdatedBlocks, tryFuzzyMatching, onProgress);
 					}
 				} else {
 					onProgress?.('Using standard ORIGINAL/UPDATED apply...');
-					console.log('[editCodeService] Using standard apply (Morph disabled or no API key)');
+					voidDevLog('[editCodeService] Using standard apply (Morph disabled or no API key)');
 					// Standard apply logic
 					await this._instantlyApplySRBlocks(uri, originalUpdatedBlocks, tryFuzzyMatching, onProgress);
 				}
@@ -1495,7 +1495,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 		// Warn about very large content
 		const MAX_CONTENT_SIZE = 10 * 1024 * 1024; // 10MB
 		if (newContent.length > MAX_CONTENT_SIZE) {
-			console.warn(`[editCodeService] Writing large content (${Math.round(newContent.length / 1024 / 1024)}MB) to ${uri.fsPath}`);
+			voidDevWarn(`[editCodeService] Writing large content (${Math.round(newContent.length / 1024 / 1024)}MB) to ${uri.fsPath}`);
 		}
 
 		// Check if existing file is binary (for existing files)
@@ -1646,7 +1646,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 		// Warn about large files
 		const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 		if (content.length > MAX_FILE_SIZE) {
-			console.warn(`[editCodeService] Large file (${Math.round(content.length / 1024 / 1024)}MB) - edit operations may be slower`);
+			voidDevWarn(`[editCodeService] Large file (${Math.round(content.length / 1024 / 1024)}MB) - edit operations may be slower`);
 		}
 
 		// Find the first occurrence of oldString (using normalized strings)
@@ -1951,7 +1951,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 			startRange = [startLine_, endLine_]
 		}
 		else {
-			throw new Error(`A-Coder: diff.type not recognized on: ${from}`)
+			throw new Error(`A-Coder IDE: diff.type not recognized on: ${from}`)
 		}
 
 		const { model } = this._voidModelService.getModel(uri)
@@ -2020,7 +2020,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 
 		// helpers
 		const onDone = () => {
-			console.log('called onDone')
+			voidDevLog('called onDone')
 			diffZone._streamState = { isStreaming: false, }
 			this._onDidChangeStreamingInDiffZone.fire({ uri, diffareaid: diffZone.diffareaid })
 
@@ -2105,7 +2105,7 @@ class EditCodeService extends Disposable implements IEditCodeService {
 					},
 					onFinalMessage: (params) => {
 						const { fullText } = params
-						// console.log('DONE! FULL TEXT\n', extractText(fullText), diffZone.startLine, diffZone.endLine)
+						// voidDevLog('DONE! FULL TEXT\n', extractText(fullText), diffZone.startLine, diffZone.endLine)
 						// at the end, re-write whole thing to make sure no sync errors
 						const [croppedText, _1, _2] = extractText(fullText, 0)
 						this._writeURIText(uri, croppedText,
@@ -2371,7 +2371,7 @@ ${problematicCode}
 			const logMsg = `[editCodeService] Applying ${blocks.length} ORIGINAL/UPDATED blocks\n${blocks.map((b, i) => `Block ${i + 1}: orig=${b.orig.length} chars, final=${b.final.length} chars`).join('\n')}`
 
 
-			console.log(logMsg)
+			voidDevLog(logMsg)
 
 
 			console.error(logMsg) // Also log to stderr so it shows in terminal
@@ -2477,7 +2477,7 @@ ${problematicCode}
 				// Verify the matched text is what we expect (sanity check)
 				const actualText = modelStr.substring(startChar, endChar);
 				if (actualText !== matchedText) {
-					console.warn(`[editCodeService] Matched text mismatch! Expected length ${matchedText.length}, got ${actualText.length}`);
+					voidDevWarn(`[editCodeService] Matched text mismatch! Expected length ${matchedText.length}, got ${actualText.length}`);
 				}
 
 
@@ -2627,7 +2627,7 @@ ${problematicCode}
 		// Combine all blocks into the update format
 		const updatedCode = blocks.map(b => b.final).join('\n\n');
 
-		console.log('[editCodeService] Calling Morph Fast Apply API...');
+		voidDevLog('[editCodeService] Calling Morph Fast Apply API...');
 
 		// Call Morph API
 		const appliedCode = await this._morphService.applyCodeChange({
@@ -2827,12 +2827,12 @@ ${problematicCode}
 								const errorMessage = originalBounds
 
 
-								console.log('--------------Error finding text in code:')
-								console.log('originalFileCode', { originalFileCode })
-								console.log('fullText', { fullText })
-								console.log('error:', errorMessage)
-								console.log('block.orig:', block.orig)
-								console.log('---------')
+								voidDevLog('--------------Error finding text in code:')
+								voidDevLog('originalFileCode', { originalFileCode })
+								voidDevLog('fullText', { fullText })
+								voidDevLog('error:', errorMessage)
+								voidDevLog('block.orig:', block.orig)
+								voidDevLog('---------')
 								const content = this._errContentOfInvalidStr(errorMessage, block.orig)
 								const retryMsg = 'All of your previous outputs have been ignored. Please re-output ALL ORIGINAL/UPDATED blocks starting from the first one, and avoid the error this time.'
 								messages.push(
@@ -2857,12 +2857,12 @@ ${problematicCode}
 							} else {
 								// Invalid result type
 								const errorMessage: 'Invalid result type' = 'Invalid result type';
-								console.log('--------------Error finding text in code:')
-								console.log('originalFileCode', { originalFileCode })
-								console.log('fullText', { fullText })
-								console.log('error:', errorMessage)
-								console.log('block.orig:', block.orig)
-								console.log('---------')
+								voidDevLog('--------------Error finding text in code:')
+								voidDevLog('originalFileCode', { originalFileCode })
+								voidDevLog('fullText', { fullText })
+								voidDevLog('error:', errorMessage)
+								voidDevLog('block.orig:', block.orig)
+								voidDevLog('---------')
 								const content = this._errContentOfInvalidStr(errorMessage, block.orig)
 								const retryMsg = 'All of your previous outputs have been ignored. Please re-output ALL ORIGINAL/UPDATED blocks starting from the first one, and avoid the error this time.'
 								messages.push(
@@ -2886,12 +2886,12 @@ ${problematicCode}
 							if (hasOverlap) {
 								const errorMessage: 'Has overlap' = 'Has overlap';
 
-								console.log('--------------Error finding text in code:')
-								console.log('originalFileCode', { originalFileCode })
-								console.log('fullText', { fullText })
-								console.log('error:', errorMessage)
-								console.log('block.orig:', block.orig)
-								console.log('---------')
+								voidDevLog('--------------Error finding text in code:')
+								voidDevLog('originalFileCode', { originalFileCode })
+								voidDevLog('fullText', { fullText })
+								voidDevLog('error:', errorMessage)
+								voidDevLog('block.orig:', block.orig)
+								voidDevLog('---------')
 								const content = this._errContentOfInvalidStr(errorMessage, block.orig)
 								const retryMsg = 'All of your previous outputs have been ignored. Please re-output ALL ORIGINAL/UPDATED blocks starting from the first one, and avoid the error this time.'
 								messages.push(
@@ -2927,11 +2927,11 @@ ${problematicCode}
 
 							const [startLine, endLine] = convertOriginalRangeToFinalRange(boundsArray)
 
-							// console.log('---------adding-------')
-							// console.log('CURRENT TEXT!!!', { current: model?.getValue(EndOfLinePreference.LF) })
-							// console.log('block', deepClone(block))
-							// console.log('origBounds', boundsArray)
-							// console.log('start end', startLine, endLine)
+							// voidDevLog('---------adding-------')
+							// voidDevLog('CURRENT TEXT!!!', { current: model?.getValue(EndOfLinePreference.LF) })
+							// voidDevLog('block', deepClone(block))
+							// voidDevLog('origBounds', boundsArray)
+							// voidDevLog('start end', startLine, endLine)
 
 							// otherwise if no error, add the position as a diffarea
 							const adding: Omit<TrackingZone<SearchReplaceDiffAreaMetadata>, 'diffareaid'> = {
@@ -3004,7 +3004,7 @@ ${problematicCode}
 
 						const blocks = extractSearchReplaceBlocks(fullText)
 						if (blocks.length === 0) {
-							this._notificationService.info(`A-Coder: We ran Fast Apply, but the LLM didn't output any changes.`)
+							this._notificationService.info(`A-Coder IDE: We ran Fast Apply, but the LLM didn't output any changes.`)
 						}
 						this._writeURIText(uri, originalFileCode, 'wholeFileRange', { shouldRealignDiffAreas: true })
 
@@ -3210,10 +3210,10 @@ ${problematicCode}
 			throw new Error(`Void error: ${diff}.type not recognized`)
 		}
 
-		// console.log('DIFF', diff)
-		// console.log('DIFFAREA', diffArea)
-		// console.log('ORIGINAL', diffArea.originalCode)
-		// console.log('new original Code', newOriginalCode)
+		// voidDevLog('DIFF', diff)
+		// voidDevLog('DIFFAREA', diffArea)
+		// voidDevLog('ORIGINAL', diffArea.originalCode)
+		// voidDevLog('new original Code', newOriginalCode)
 
 		// update code now accepted as original
 		diffArea.originalCode = newOriginalCode
@@ -3284,7 +3284,7 @@ ${problematicCode}
 		//  B|  <-- endLine (we want to delete this whole line)
 		//  C
 		else if (diff.type === 'insertion') {
-			// console.log('REJECTING:', diff)
+			// voidDevLog('REJECTING:', diff)
 			// handle the case where the insertion was a newline at end of diffarea (applying to the next line doesnt work because it doesnt exist, vscode just doesnt delete the correct # of newlines)
 			if (diff.endLine === diffArea.endLine) {
 				// delete the line before instead of after
@@ -3517,7 +3517,7 @@ class AcceptRejectInlineWidget extends Widget implements IOverlayWidget {
 		// mount this widget
 
 		editor.addOverlayWidget(this);
-		// console.log('created elt', this._domNode)
+		// voidDevLog('created elt', this._domNode)
 	}
 
 	public override dispose(): void {

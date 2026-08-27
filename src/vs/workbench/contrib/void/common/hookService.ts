@@ -383,7 +383,9 @@ class HookService extends Disposable implements IHookService {
 			...input,
 		}
 		const keyField = MATCHER_KEY_OF_EVENT[eventName]
-		const key = keyField ? (fullInput as any)[keyField] as string : undefined
+		// HookInput has an index signature, so arbitrary per-event fields (e.g.
+		// `tool_name`) are accessible without a cast.
+		const key = keyField ? fullInput[keyField] as string | undefined : undefined
 
 		const isDecision = DECISION_EVENTS.has(eventName)
 		const results: HookEventResult[] = []
@@ -616,46 +618,46 @@ class HookService extends Disposable implements IHookService {
 	// ---------- convenience wrappers ----------
 
 	async firePreToolUse(threadId: string, toolName: string, toolInput: Record<string, unknown>): Promise<HookEventResult> {
-		return this.fire('PreToolUse', { tool_name: toolName, tool_input: toolInput, thread_id: threadId } as any)
+		return this.fire('PreToolUse', { tool_name: toolName, tool_input: toolInput, thread_id: threadId })
 	}
 	async firePostToolUse(threadId: string, toolName: string, toolInput: Record<string, unknown>, toolResult: unknown, error?: string): Promise<HookEventResult> {
-		return this.fire('PostToolUse', { tool_name: toolName, tool_input: toolInput, tool_result: toolResult, error, thread_id: threadId } as any)
+		return this.fire('PostToolUse', { tool_name: toolName, tool_input: toolInput, tool_result: toolResult, error, thread_id: threadId })
 	}
 	async fireStop(threadId: string): Promise<HookEventResult> {
-		return this.fire('Stop', { thread_id: threadId, turn: { reason: 'complete' } } as any)
+		return this.fire('Stop', { thread_id: threadId, turn: { reason: 'complete' } })
 	}
 	async fireStopFailure(threadId: string, error: string): Promise<HookEventResult> {
-		return this.fire('StopFailure', { thread_id: threadId, error } as any)
+		return this.fire('StopFailure', { thread_id: threadId, error })
 	}
 	async fireUserPromptSubmit(threadId: string, prompt: string): Promise<HookEventResult> {
-		return this.fire('UserPromptSubmit', { prompt, thread_id: threadId } as any)
+		return this.fire('UserPromptSubmit', { prompt, thread_id: threadId })
 	}
 	async fireSessionStart(source: 'startup' | 'resume' | 'clear' | 'compact'): Promise<HookEventResult> {
-		return this.fire('SessionStart', { source } as any)
+		return this.fire('SessionStart', { source })
 	}
 	async fireSubagentStart(subagentId: string, agentType: string): Promise<HookEventResult> {
-		return this.fire('SubagentStart', { agent_id: subagentId, agent_type: agentType } as any)
+		return this.fire('SubagentStart', { agent_id: subagentId, agent_type: agentType })
 	}
 	async fireSubagentStop(subagentId: string, agentType: string, status: string): Promise<HookEventResult> {
-		return this.fire('SubagentStop', { agent_id: subagentId, agent_type: agentType, status } as any)
+		return this.fire('SubagentStop', { agent_id: subagentId, agent_type: agentType, status })
 	}
 	async firePreCompact(threadId: string, transcript: unknown): Promise<HookEventResult> {
-		return this.fire('PreCompact', { thread_id: threadId, transcript } as any)
+		return this.fire('PreCompact', { thread_id: threadId, transcript })
 	}
 	async fireDiffZoneApply(diffid: number, uri: string): Promise<HookEventResult> {
-		return this.fire('DiffZoneApply', { diffid, uri } as any)
+		return this.fire('DiffZoneApply', { diffid, uri })
 	}
 	async fireDiffZoneReject(diffid: number, uri: string): Promise<HookEventResult> {
-		return this.fire('DiffZoneReject', { diffid, uri } as any)
+		return this.fire('DiffZoneReject', { diffid, uri })
 	}
 	async fireAutocompleteSuggest(uri: string, position: { line: number, character: number }, completions: unknown[]): Promise<HookEventResult> {
-		return this.fire('AutocompleteSuggest', { uri, position, completions } as any)
+		return this.fire('AutocompleteSuggest', { uri, position, completions })
 	}
 	async fireContextGather(snippets: string[]): Promise<HookEventResult> {
-		return this.fire('ContextGather', { snippets } as any)
+		return this.fire('ContextGather', { snippets })
 	}
 	async fireModeSwitch(from: string, to: string): Promise<HookEventResult> {
-		return this.fire('ModeSwitch', { from, to } as any)
+		return this.fire('ModeSwitch', { from, to })
 	}
 }
 

@@ -221,7 +221,7 @@ export class ApiServer {
 			});
 
 			// Send welcome message
-			ws.send(JSON.stringify({ type: 'connected', message: 'Connected to A-Coder API' }));
+			ws.send(JSON.stringify({ type: 'connected', message: 'Connected to A-Coder IDE API' }));
 		} catch (err) {
 			console.error('[API Server] WebSocket connection handler error:', err);
 			ws.close(1011, 'Internal server error');

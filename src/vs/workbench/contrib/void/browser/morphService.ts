@@ -10,6 +10,7 @@ import { IMainProcessService } from '../../../../platform/ipc/common/mainProcess
 import { IChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { CancellationToken } from '../../../../base/common/cancellation.js';
 import { generateUuid } from '../../../../base/common/uuid.js';
+import { voidDevLog } from '../common/devLog.js';
 
 export const IMorphService = createDecorator<IMorphService>('MorphService');
 
@@ -100,9 +101,9 @@ export class MorphService implements IMorphService {
 	}): Promise<{ file: string; content: string }[]> {
 		const { query, repoRoot, token } = params;
 
-		console.log('[MorphService] Starting fastContext...');
-		console.log('[MorphService] Query:', query);
-		console.log('[MorphService] Repo root:', repoRoot);
+		voidDevLog('[MorphService] Starting fastContext...');
+		voidDevLog('[MorphService] Query:', query);
+		voidDevLog('[MorphService] Repo root:', repoRoot);
 
 		// Get API key from settings
 		const apiKey = this._settingsService.state.globalSettings.morphApiKey;
@@ -114,7 +115,7 @@ export class MorphService implements IMorphService {
 		// Get IPC channel to electron-main
 		const channel = this._mainProcessService.getChannel('void-channel-morph');
 
-		console.log('[MorphService] Calling Morph SDK (warpGrep) via IPC channel...');
+		voidDevLog('[MorphService] Calling Morph SDK (warpGrep) via IPC channel...');
 
 		try {
 			// Call the main process to use Morph SDK. Race against the cancellation
@@ -129,7 +130,7 @@ export class MorphService implements IMorphService {
 
 			const contexts = await this._raceWithAbort(callPromise, token, requestId, channel);
 
-			console.log(`[MorphService] Successfully received ${contexts.length} contexts from Morph`);
+			voidDevLog(`[MorphService] Successfully received ${contexts.length} contexts from Morph`);
 			return contexts;
 		} catch (error) {
 			console.error('[MorphService] IPC call failed for fastContext:', error);
@@ -145,10 +146,10 @@ export class MorphService implements IMorphService {
 	}): Promise<string> {
 		const { instruction, originalCode, updatedCode, model } = params;
 
-		console.log('[MorphService] Starting applyCodeChange...');
-		console.log('[MorphService] Instruction:', instruction);
-		console.log('[MorphService] Original code length:', originalCode.length);
-		console.log('[MorphService] Updated code length:', updatedCode.length);
+		voidDevLog('[MorphService] Starting applyCodeChange...');
+		voidDevLog('[MorphService] Instruction:', instruction);
+		voidDevLog('[MorphService] Original code length:', originalCode.length);
+		voidDevLog('[MorphService] Updated code length:', updatedCode.length);
 
 		// Get API key and model from settings
 		const apiKey = this._settingsService.state.globalSettings.morphApiKey;
@@ -159,12 +160,12 @@ export class MorphService implements IMorphService {
 
 		// Use model from parameter or fall back to settings
 		const selectedModel = model || this._settingsService.state.globalSettings.morphModel;
-		console.log('[MorphService] Using model:', selectedModel);
+		voidDevLog('[MorphService] Using model:', selectedModel);
 
 		// Get IPC channel to electron-main
 		const channel = this._mainProcessService.getChannel('void-channel-morph');
 
-		console.log('[MorphService] Calling Morph SDK via IPC channel...');
+		voidDevLog('[MorphService] Calling Morph SDK via IPC channel...');
 
 		try {
 			// Call the main process to use Morph SDK
@@ -177,7 +178,7 @@ export class MorphService implements IMorphService {
 				model: selectedModel
 			}) as string;
 
-			console.log('[MorphService] Successfully received applied code, length:', appliedCode.length);
+			voidDevLog('[MorphService] Successfully received applied code, length:', appliedCode.length);
 			return appliedCode;
 		} catch (error) {
 			console.error('[MorphService] IPC call failed:', error);

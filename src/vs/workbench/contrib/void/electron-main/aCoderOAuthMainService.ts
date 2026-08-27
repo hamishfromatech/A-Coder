@@ -10,6 +10,7 @@ import { generateUuid } from '../../../../base/common/uuid.js';
 import * as http from 'http';
 import * as crypto from 'crypto';
 import { ACoderAuthState, ACoderModelResponse, IACoderOAuthMainService, OAuthProvider } from '../common/aCoderOAuthServiceTypes.js';
+import { voidDevLog } from '../common/devLog.js';
 import { StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { IApplicationStorageMainService } from '../../../../platform/storage/electron-main/storageMainService.js';
 
@@ -202,7 +203,7 @@ export class ACoderOAuthMainService implements IACoderOAuthMainService {
 						userId: this._userId ?? undefined,
 						expiresAt: this._expiresAt,
 					};
-					console.log(`[ACoderOAuth] Loaded encrypted tokens from storage (authenticated=${!isExpired})`);
+					voidDevLog(`[ACoderOAuth] Loaded encrypted tokens from storage (authenticated=${!isExpired})`);
 				}
 			}
 		} catch (e) {
@@ -232,7 +233,7 @@ export class ACoderOAuthMainService implements IACoderOAuthMainService {
 				this.writeToStorage(STORAGE_KEY_REFRESH_TOKEN, encryptData(this._refreshToken).toString('base64'));
 				this.writeToStorage(STORAGE_KEY_EXPIRES_AT, this._expiresAt.toString());
 
-				console.log('[ACoderOAuth] Saved tokens to encrypted storage');
+				voidDevLog('[ACoderOAuth] Saved tokens to encrypted storage');
 			}
 		} catch (e) {
 			console.error('[ACoderOAuth] Failed to save encrypted tokens:', e);
@@ -253,7 +254,7 @@ export class ACoderOAuthMainService implements IACoderOAuthMainService {
 		this._userId = null;
 		this._expiresAt = 0;
 
-		console.log('[ACoderOAuth] Cleared all encrypted tokens');
+		voidDevLog('[ACoderOAuth] Cleared all encrypted tokens');
 	}
 
 	/**
@@ -287,7 +288,7 @@ export class ACoderOAuthMainService implements IACoderOAuthMainService {
 	private async startCallbackServer(): Promise<number> {
 		// Close existing server if any
 		if (this._callbackServer) {
-			console.log('[ACoderOAuth] Closing existing callback server');
+			voidDevLog('[ACoderOAuth] Closing existing callback server');
 			this._callbackServer.close();
 			this._callbackServer = null;
 		}
@@ -306,7 +307,7 @@ export class ACoderOAuthMainService implements IACoderOAuthMainService {
 					res.writeHead(200, { 'Content-Type': 'text/html' });
 					res.end(`
 						<html>
-						<head><title>A-Coder Authentication</title></head>
+						<head><title>A-Coder IDE Authentication</title></head>
 						<body>
 							<script>
 								window.close();
@@ -358,7 +359,7 @@ export class ACoderOAuthMainService implements IACoderOAuthMainService {
 	 * Initiate OAuth flow for a given provider
 	 */
 	private async initiateOAuthFlow(provider: OAuthProvider): Promise<void> {
-		console.log(`[ACoderOAuth] Initiating ${provider} OAuth...`);
+		voidDevLog(`[ACoderOAuth] Initiating ${provider} OAuth...`);
 
 		// Generate PKCE parameters
 		const { codeVerifier, codeChallenge } = generatePKCE();
@@ -389,7 +390,7 @@ export class ACoderOAuthMainService implements IACoderOAuthMainService {
 		// Open the browser
 		await shell.openExternal(oauthUrl);
 
-		console.log(`[ACoderOAuth] Opening OAuth URL: ${oauthUrl}`);
+		voidDevLog(`[ACoderOAuth] Opening OAuth URL: ${oauthUrl}`);
 
 		// Wait for the callback
 		try {
@@ -410,7 +411,7 @@ export class ACoderOAuthMainService implements IACoderOAuthMainService {
 				expiresAt: this._expiresAt,
 			});
 
-			console.log(`[ACoderOAuth] Successfully authenticated as ${result.userEmail}`);
+			voidDevLog(`[ACoderOAuth] Successfully authenticated as ${result.userEmail}`);
 		} finally {
 			this._currentFlow = null;
 			if (this._callbackServer) {
@@ -425,7 +426,7 @@ export class ACoderOAuthMainService implements IACoderOAuthMainService {
 	 * Exchanges the authorization code with A-Coder's backend
 	 */
 	private async handleOAuthCallback(code: string, state: string): Promise<ACoderTokenResponse> {
-		console.log('[ACoderOAuth] Handling OAuth callback...');
+		voidDevLog('[ACoderOAuth] Handling OAuth callback...');
 
 		// Verify state for CSRF protection
 		if (state !== this._currentFlow?.state) {
@@ -472,7 +473,7 @@ export class ACoderOAuthMainService implements IACoderOAuthMainService {
 	 * Sign out and clear authentication state
 	 */
 	async signOut(): Promise<void> {
-		console.log('[ACoderOAuth] Signing out...');
+		voidDevLog('[ACoderOAuth] Signing out...');
 
 		// Notify the backend to revoke tokens
 		if (this._sessionToken) {
@@ -545,7 +546,7 @@ export class ACoderOAuthMainService implements IACoderOAuthMainService {
 			throw new Error('Not authenticated. Please sign in first.');
 		}
 
-		console.log('[ACoderOAuth] Fetching models from A-Coder backend...');
+		voidDevLog('[ACoderOAuth] Fetching models from A-Coder backend...');
 
 		const response = await fetch(`${ACODER_BACKEND_URL}/models`, {
 			headers: {
@@ -562,7 +563,7 @@ export class ACoderOAuthMainService implements IACoderOAuthMainService {
 		this._models = result;
 		this._onDidUpdateModels.fire(result);
 
-		console.log(`[ACoderOAuth] Fetched ${result.models.length} models`);
+		voidDevLog(`[ACoderOAuth] Fetched ${result.models.length} models`);
 		return result;
 	}
 
@@ -574,7 +575,7 @@ export class ACoderOAuthMainService implements IACoderOAuthMainService {
 			throw new Error('No refresh token available. Please sign in again.');
 		}
 
-		console.log('[ACoderOAuth] Refreshing session token...');
+		voidDevLog('[ACoderOAuth] Refreshing session token...');
 
 		const response = await fetch(`${ACODER_BACKEND_URL}/auth/refresh`, {
 			method: 'POST',
@@ -605,7 +606,7 @@ export class ACoderOAuthMainService implements IACoderOAuthMainService {
 			expiresAt: this._expiresAt,
 		});
 
-		console.log('[ACoderOAuth] Session token refreshed successfully');
+		voidDevLog('[ACoderOAuth] Session token refreshed successfully');
 	}
 
 	/**

@@ -1008,7 +1008,7 @@ const StudentOnboardingModal = ({ isOpen, onClose, onSelectLevel }: {
 					<div>
 						<h2 id="student-modal-title" className="text-lg font-semibold text-void-fg-1 leading-tight">Student Mode</h2>
 						<p className="text-void-fg-3 text-sm mt-1 leading-relaxed">
-							A-Coder will act as your personal tutor.
+							A-Coder IDE will act as your personal tutor.
 						</p>
 					</div>
 				</div>
@@ -4426,7 +4426,7 @@ export const SidebarChat = () => {
 				{/* Title with gradient */}
 				<div className="text-center space-y-2">
 					<h1 className='text-gradient-premium text-4xl font-bold text-balance tracking-tight leading-tight uppercase mix-blend-plus-lighter'>
-						{currentChatMode === 'learn' ? 'A-Coder Tutor' : 'A-Coder'}
+						{currentChatMode === 'learn' ? 'A-Coder IDE Tutor' : 'A-Coder IDE'}
 					</h1>
 					<div className="flex items-center justify-center gap-2 mt-3">
 						<span className={`model-badge`}>

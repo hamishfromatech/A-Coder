@@ -279,7 +279,7 @@ class SubagentService extends Disposable implements ISubagentService {
 			const modelSelection = run.modelSelection
 			if (!modelSelection) {
 				run.status = 'failed'
-				run.error = 'No chat model configured. Add a provider in A-Coder Settings, then try again.'
+				run.error = 'No chat model configured. Add a provider in A-Coder IDE IDE Settings, then try again.'
 				this._finish(run)
 				return this._result(run)
 			}
@@ -496,7 +496,7 @@ class SubagentService extends Disposable implements ISubagentService {
 		// Subagents have no UI to prompt for per-call approval, so if the user hasn't
 		// auto-approved external tools we refuse rather than run them autonomously.
 		if (!isBuiltin && !this._externalToolsAutoApproved()) {
-			return { ...baseTool, content: `Tool "${name}" requires approval. Enable "MCP tools" auto-approval in A-Coder Settings to let subagents run external tools autonomously.` }
+			return { ...baseTool, content: `Tool "${name}" requires approval. Enable "MCP tools" auto-approval in A-Coder IDE IDE Settings to let subagents run external tools autonomously.` }
 		}
 
 		if (isBuiltin) {

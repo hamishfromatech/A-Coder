@@ -16,7 +16,7 @@ export class NativeEnvironmentService extends AbstractNativeEnvironmentService {
 		super(args, {
 			homeDir: homedir(),
 			tmpDir: tmpdir(),
-			userDataDir: getUserDataPath(args, productService.nameShort)
+			userDataDir: getUserDataPath(args, productService.userDataFolderName ?? productService.nameShort)
 		}, productService);
 	}
 }

@@ -129,7 +129,7 @@ export const sendLLMMessage = async ({
 
 		// handle failed to fetch errors, which give 0 information by design
 		if (errorMessage === 'TypeError: fetch failed')
-			errorMessage = `Failed to fetch from ${displayInfoOfProviderName(providerName).title}. This likely means you specified the wrong endpoint in A-Coder's Settings, or your local model provider like Ollama is powered off.`
+			errorMessage = `Failed to fetch from ${displayInfoOfProviderName(providerName).title}. This likely means you specified the wrong endpoint in A-Coder IDE's Settings, or your local model provider like Ollama is powered off.`
 
 		// Legacy event capture
 		captureLLMEvent(`${loggingName} - Error`, { error: errorMessage })

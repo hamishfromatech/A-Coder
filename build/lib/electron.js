@@ -243,7 +243,13 @@ async function main(arch = process.arch) {
     const version = electronVersion;
     const electronPath = path_1.default.join(root, '.build', 'electron');
     const versionFile = path_1.default.join(electronPath, 'version');
-    const isUpToDate = fs_1.default.existsSync(versionFile) && fs_1.default.readFileSync(versionFile, 'utf8') === `${version}`;
+    // Also re-sync when the product name changed: the darwin bundle is named
+    // after `product.nameShort` at download time, so a rebrand would otherwise
+    // leave a stale bundle name that scripts/code.sh can't find.
+    const expectedDarwinBundle = process.platform === 'darwin' ? path_1.default.join(electronPath, `${product.nameShort}.app`) : undefined;
+    const isUpToDate = fs_1.default.existsSync(versionFile)
+        && fs_1.default.readFileSync(versionFile, 'utf8') === `${version}`
+        && (expectedDarwinBundle === undefined || fs_1.default.existsSync(expectedDarwinBundle));
     if (!isUpToDate) {
         await util.rimraf(electronPath)();
         await util.streamToPromise(getElectron(arch)());

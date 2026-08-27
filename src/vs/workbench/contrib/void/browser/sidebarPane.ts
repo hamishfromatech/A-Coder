@@ -156,7 +156,7 @@ registerAction2(class extends Action2 {
 	constructor() {
 		super({
 			id: VOID_OPEN_SIDEBAR_ACTION_ID,
-			title: 'Open A-Coder Sidebar',
+			title: 'Open A-Coder IDE Sidebar',
 		})
 	}
 	run(accessor: ServicesAccessor): void {

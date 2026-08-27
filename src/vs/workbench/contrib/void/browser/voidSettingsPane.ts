@@ -50,7 +50,7 @@ class VoidSettingsInput extends EditorInput {
 	}
 
 	override getName(): string {
-		return nls.localize('voidSettingsInputsName', 'A-Coder\'s Settings');
+		return nls.localize('voidSettingsInputsName', 'A-Coder IDE\'s Settings');
 	}
 
 	override getIcon() {
@@ -112,7 +112,7 @@ class VoidSettingsPane extends EditorPane {
 
 // register Settings pane
 Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane(
-	EditorPaneDescriptor.create(VoidSettingsPane, VoidSettingsPane.ID, nls.localize('VoidSettingsPane', "A-Coder\'s Settings Pane")),
+	EditorPaneDescriptor.create(VoidSettingsPane, VoidSettingsPane.ID, nls.localize('VoidSettingsPane', "A-Coder IDE\'s Settings Pane")),
 	[new SyncDescriptor(VoidSettingsInput)]
 );
 
@@ -122,7 +122,7 @@ registerAction2(class extends Action2 {
 	constructor() {
 		super({
 			id: VOID_TOGGLE_SETTINGS_ACTION_ID,
-			title: nls.localize2('voidSettings', "A-Coder: Toggle Settings"),
+			title: nls.localize2('voidSettings', "A-Coder IDE: Toggle Settings"),
 			icon: Codicon.settingsGear,
 			menu: [
 				{
@@ -177,7 +177,7 @@ registerAction2(class extends Action2 {
 	constructor() {
 		super({
 			id: VOID_OPEN_SETTINGS_ACTION_ID,
-			title: nls.localize2('a-coderSettingsAction2', "A-Coder: Open Settings"),
+			title: nls.localize2('a-coderSettingsAction2', "A-Coder IDE: Open Settings"),
 			f1: true,
 			icon: Codicon.settingsGear,
 		});
@@ -209,7 +209,7 @@ MenuRegistry.appendMenuItem(MenuId.GlobalActivity, {
 	group: '0_command',
 	command: {
 		id: VOID_TOGGLE_SETTINGS_ACTION_ID,
-		title: nls.localize('voidSettingsActionGear', "A-Coder\'s Settings")
+		title: nls.localize('voidSettingsActionGear', "A-Coder IDE\'s Settings")
 	},
 	order: 1
 });

@@ -91,7 +91,7 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 		if (state.type === StateType.Ready) {
 			// Update is ready
 			const version = state.update?.version
-			return { message: 'Restart A-Coder to update!', action: 'restart', version } as const
+			return { message: 'Restart A-Coder IDE to update!', action: 'restart', version } as const
 		}
 
 		if (state.type === StateType.Disabled) {
@@ -156,11 +156,11 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 			if (explicit) {
 				if (response.ok) {
 					if (!isUpToDate) {
-						message = 'A new version of A-Coder is available! Please reinstall (auto-updates are disabled on this OS) - it only takes a second!'
+						message = 'A new version of A-Coder IDE is available! Please reinstall (auto-updates are disabled on this OS) - it only takes a second!'
 						action = 'reinstall'
 					}
 					else {
-						message = 'A-Coder is up-to-date!'
+						message = 'A-Coder IDE is up-to-date!'
 					}
 				}
 				else {
@@ -171,7 +171,7 @@ export class VoidMainUpdateService extends Disposable implements IVoidUpdateServ
 			// not explicit
 			else {
 				if (response.ok && !isUpToDate) {
-					message = 'A new version of A-Coder is available! Please reinstall (auto-updates are disabled on this OS) - it only takes a second!'
+					message = 'A new version of A-Coder IDE is available! Please reinstall (auto-updates are disabled on this OS) - it only takes a second!'
 					action = 'reinstall'
 				}
 				else {
