@@ -249,7 +249,8 @@ export type BuiltinToolCallParams = {
 
 // RESULT OF TOOL CALL
 export type BuiltinToolResultType = {
-	'read_file': { fileContents: string, totalFileLen: number, totalNumLines: number, hasNextPage: boolean },
+	// totalNumLines is null when the true line count cannot be known without scanning the whole file (byte-paged reads of very large files)
+	'read_file': { fileContents: string, totalFileLen: number, totalNumLines: number | null, hasNextPage: boolean },
 	'outline_file': { outline: string, totalNumLines: number },
 	'ls_dir': { children: ShallowDirectoryItem[] | null, hasNextPage: boolean, hasPrevPage: boolean, itemsRemaining: number },
 	'get_dir_tree': { str: string, },
@@ -289,7 +290,7 @@ export type BuiltinToolResultType = {
 	'wait': { result: string; resolveReason: TerminalResolveReason; },
 	'check_terminal_status': { result: string; resolveReason: TerminalResolveReason; },
 	// ---
-	'rewrite_file': Promise<{ lintErrors: LintErrorItem[] | null }>,
+	'rewrite_file': Promise<{ lintErrors: LintErrorItem[] | null, bytesWritten?: number, linesWritten?: number }>,
 	'edit_file': Promise<{ lintErrors: LintErrorItem[] | null }>,
 	'edit_files': Promise<{ results: Array<{ uri: string, lintErrors: LintErrorItem[] | null, error?: string }> }>,
 	'create_file_or_folder': {},

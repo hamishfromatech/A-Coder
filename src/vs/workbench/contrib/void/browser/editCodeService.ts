@@ -24,6 +24,7 @@ import * as dom from '../../../../base/browser/dom.js';
 import { Widget } from '../../../../base/browser/ui/widget.js';
 import { URI } from '../../../../base/common/uri.js';
 import { IConsistentEditorItemService, IConsistentItemService } from './helperServices/consistentItemService.js';
+import { buildEditOperations, type EditResolutionError, normalizeLineEndings, resolveEditSpecs } from '../common/editFuzzyMatch.js';
 import { voidPrefixAndSuffix, ctrlKStream_userMessage, ctrlKStream_systemMessage, defaultQuickEditFimTags, rewriteCode_systemMessage, rewriteCode_userMessage, searchReplaceGivenDescription_systemMessage, searchReplaceGivenDescription_userMessage, tripleTick, } from '../common/prompt/prompts.js';
 import { IVoidCommandBarService } from './voidCommandBarService.js';
 import { IKeybindingService } from '../../../../platform/keybinding/common/keybinding.js';
@@ -102,12 +103,9 @@ const getLeadingWhitespacePx = (editor: ICodeEditor, startLine: number): number 
 
 
 /**
- * Normalizes line endings to LF for consistent string comparison.
- * Handles both CRLF (Windows) and CR (old Mac) line endings.
+ * Line-ending normalization for string comparison is provided by
+ * common/editFuzzyMatch.ts (handles CRLF and lone-CR endings).
  */
-const normalizeLineEndings = (str: string): string => {
-	return str.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-};
 
 /**
  * Find similar blocks for error reporting (helpful suggestions when not found).
@@ -1551,88 +1549,52 @@ class EditCodeService extends Disposable implements IEditCodeService {
 	}
 
 	/**
-	 * Count how many times `oldString` occurs in the file, using the same
-	 * line-ending normalization as `instantlyReplaceString`. Used for
-	 * atomic pre-validation in edit_files (existence + uniqueness) without
-	 * applying any change.
+	 * Validate a batch of string edits against the file's current content
+	 * without applying anything. Returns an error message when the batch is
+	 * invalid (missing file, unknown/duplicate old_string, overlapping edits),
+	 * or null when all edits would apply. Used by edit_files to guarantee
+	 * nothing is applied when any edit is bad.
 	 */
-	public countStringMatches({ uri, oldString }: { uri: URI, oldString: string }): number {
-		if (!oldString || oldString.length === 0) {
-			return 0
-		}
+	public validateStringEdits({ uri, edits }: { uri: URI, edits: Array<{ oldString: string, newString: string }> }): string | null {
 		const { model } = this._voidModelService.getModel(uri)
 		if (!model) {
-			return 0
+			return `file does not exist: ${uri.fsPath}`
 		}
 		const content = model.getValue(EndOfLinePreference.LF)
 		const normalizedContent = normalizeLineEndings(content)
-		const normalizedOldString = normalizeLineEndings(oldString)
-		if (!normalizedOldString) {
-			return 0
-		}
-		let count = 0
-		let idx = normalizedContent.indexOf(normalizedOldString)
-		while (idx !== -1) {
-			count++
-			idx = normalizedContent.indexOf(normalizedOldString, idx + 1)
-		}
-		return count
+		const result = resolveEditSpecs(normalizedContent, edits.map(e => ({ oldText: e.oldString, newText: e.newString })))
+		if (result.ok) return null
+		return this._stringEditsErrorMessage(result.error, edits, normalizedContent, uri)
 	}
 
-	public instantlyReplaceString({ uri, oldString, newString, onProgress }: { uri: URI, oldString: string, newString: string, onProgress?: (data: string) => void }) {
-		onProgress?.(`Replacing text in: ${uri.fsPath}...`);
+	/**
+	 * Apply one or more exact-text replacements to a file in a single atomic
+	 * Monaco edit operation (single undo step, one diff zone). All edits are
+	 * matched against the same original content — exact first, with a fuzzy
+	 * fallback that tolerates trailing-whitespace drift and smart quotes/dashes
+	 * (see common/editFuzzyMatch.ts). Uniqueness and overlap are validated
+	 * before anything is applied, so a bad edit can never leave partial state.
+	 */
+	public instantlyApplyStringEdits({ uri, edits, onProgress }: { uri: URI, edits: Array<{ oldString: string, newString: string }>, onProgress?: (data: string) => void }) {
+		if (edits.length === 0) {
+			throw new Error(`❌ EDIT FAILED: no edits were provided.`)
+		}
+		for (const edit of edits) {
+			if (edit.oldString.length > 100 * 1024) {
+				throw new Error(`❌ EDIT FAILED: old_string is too large (${Math.round(edit.oldString.length / 1024)}KB).
 
-		// === INPUT VALIDATION ===
-		// Check for empty old_string
-		if (!oldString || oldString.length === 0) {
-			throw new Error(`❌ EDIT FAILED: old_string cannot be empty.
-
-💡 SOLUTIONS:
-1. **Use rewrite_file instead** - To create or completely replace file content
-2. **Provide the text to replace** - old_string must contain the exact text you want to replace`);
+💡 SOLUTION: Use rewrite_file instead for large replacements.`)
+			}
 		}
 
-		// Check for no-op edit (same strings)
-		if (oldString === newString) {
-			onProgress?.(`Skipped: old_string and new_string are identical. No changes made.`);
-			return;
-		}
-
-		// Check for excessively large search string
-		const MAX_SEARCH_STRING_SIZE = 100 * 1024; // 100KB
-		if (oldString.length > MAX_SEARCH_STRING_SIZE) {
-			throw new Error(`❌ EDIT FAILED: old_string is too large (${Math.round(oldString.length / 1024)}KB).
-
-💡 SOLUTION: Use rewrite_file instead for large replacements.`);
-		}
-
-		// === CONCURRENT EDIT PROTECTION ===
-		const uriKey = uri.toString();
-		if (this._editsInProgress.has(uriKey)) {
-			throw new Error(`❌ EDIT FAILED: Another edit is in progress for this file.
-
-📄 File: ${uri.fsPath}
-
-💡 Please wait for the current edit to complete and try again.`);
-		}
-
-		const { model } = this._voidModelService.getModel(uri);
+		const { model } = this._voidModelService.getModel(uri)
 		if (!model) {
-			throw new Error(`File not found: ${uri.fsPath}`);
+			throw new Error(`File not found: ${uri.fsPath}`)
 		}
-
-		// === LINE ENDING NORMALIZATION ===
-		// Normalize both to LF for consistent comparison (handles CRLF vs LF differences)
-		const normalizedOldString = normalizeLineEndings(oldString);
-		const content = model.getValue(EndOfLinePreference.LF);
-		const normalizedContent = normalizeLineEndings(content);
-
-		// Detect if normalization changed anything (CRLF -> LF case)
-		const contentWasNormalized = normalizedContent !== content;
-		const oldStringWasNormalized = normalizedOldString !== oldString;
 
 		// === BINARY FILE PROTECTION ===
-		// Check for null bytes (strong indicator of binary content)
+		// Null bytes are a strong indicator of binary content.
+		const content = model.getValue(EndOfLinePreference.LF)
 		if (content.includes('\0')) {
 			throw new Error(`❌ EDIT FAILED: Cannot edit binary file.
 
@@ -1640,117 +1602,49 @@ class EditCodeService extends Disposable implements IEditCodeService {
 
 💡 This file appears to be a binary file (contains null bytes).
    Binary files like images, executables, and compiled files cannot be edited as text.
-   Use appropriate tools for this file type.`);
+   Use appropriate tools for this file type.`)
 		}
 
 		// Warn about large files
 		const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 		if (content.length > MAX_FILE_SIZE) {
-			voidDevWarn(`[editCodeService] Large file (${Math.round(content.length / 1024 / 1024)}MB) - edit operations may be slower`);
+			voidDevWarn(`[editCodeService] Large file (${Math.round(content.length / 1024 / 1024)}MB) - edit operations may be slower`)
 		}
 
-		// Find the first occurrence of oldString (using normalized strings)
-		const normalizedIndex = normalizedContent.indexOf(normalizedOldString);
-		if (normalizedIndex === -1) {
-			throw new Error(this._errStringNotFound(oldString, content));
+		const normalizedContent = normalizeLineEndings(content)
+		const specs = edits.map(e => ({ oldText: e.oldString, newText: e.newString }))
+		const result = resolveEditSpecs(normalizedContent, specs)
+		if (!result.ok) {
+			throw new Error(this._stringEditsErrorMessage(result.error, edits, normalizedContent, uri))
+		}
+		if (result.usedFuzzy) {
+			// Keep fuzzy edits observable: they are not byte-exact matches.
+			onProgress?.(`Matched via whitespace/unicode normalization (exact text not found)`)
 		}
 
-		// Check for multiple occurrences - this is an error, not a warning
-		const secondNormalizedIndex = normalizedContent.indexOf(normalizedOldString, normalizedIndex + 1);
-		if (secondNormalizedIndex !== -1) {
-			throw new Error(this._errStringNotUnique(oldString, content, normalizedIndex, secondNormalizedIndex));
+		// Build the Monaco edit operations (pure logic, unit-tested in
+		// test/common/editFuzzyMatch.test.ts). Every range references the same
+		// snapshot, so the batch applies atomically in one pushEditOperations.
+		const ops = buildEditOperations(normalizedContent, result.resolutions, specs, { eol: model.getEOL() === '\r\n' ? '\r\n' : '\n' })
+
+		if (ops.length === 0) {
+			throw new Error(`❌ EDIT FAILED: No changes made. The replacement produced identical content.
+
+💡 This might indicate the old_string and new_string are the same, or an issue with special characters.`)
 		}
 
-		// === POSITION MAPPING ===
-		// Map the position from normalized content back to original content if needed
-		// This handles the case where the file has CRLF but we normalized to LF
-		let actualIndex = normalizedIndex;
-		let actualOldStringLength = normalizedOldString.length;
+		// === CONCURRENT EDIT PROTECTION ===
+		const uriKey = uri.toString()
+		if (this._editsInProgress.has(uriKey)) {
+			throw new Error(`❌ EDIT FAILED: Another edit is in progress for this file.
 
-		if (contentWasNormalized || oldStringWasNormalized) {
-			// Count how many CRLF sequences exist before the match position in original content
-			// Each CRLF in the original becomes a single LF in normalized
-			// So we need to count CRLF occurrences in the original content before this position
+📄 File: ${uri.fsPath}
 
-			// Build a mapping: for each position in normalized content, what's the position in original?
-			// CRLF sequences in original = 2 chars, but become 1 char (LF) in normalized
-			let normPos = 0;
-			let origPos = 0;
-			const contentChars = content.split('');
-
-			for (let i = 0; i < contentChars.length && normPos <= normalizedIndex; i++) {
-				if (contentChars[i] === '\r' && contentChars[i + 1] === '\n') {
-					// CRLF sequence - in normalized this becomes LF (1 char)
-					if (normPos < normalizedIndex) {
-						origPos += 2;
-						normPos += 1;
-					}
-					i++; // skip the \n
-				} else if (contentChars[i] === '\r') {
-					// Lone CR - becomes LF
-					if (normPos < normalizedIndex) {
-						origPos += 1;
-						normPos += 1;
-					}
-				} else {
-					// Normal character
-					if (normPos < normalizedIndex) {
-						origPos += 1;
-						normPos += 1;
-					} else if (normPos === normalizedIndex) {
-						break;
-					}
-				}
-			}
-
-			actualIndex = origPos;
-
-			// Calculate the actual length of the matched text in original content
-			// We need to find the end position the same way
-			const normalizedEndIndex = normalizedIndex + normalizedOldString.length;
-			normPos = normalizedIndex;
-			origPos = actualIndex;
-
-			for (let i = actualIndex; i < contentChars.length && normPos < normalizedEndIndex; i++) {
-				if (contentChars[i] === '\r' && contentChars[i + 1] === '\n') {
-					// CRLF sequence
-					origPos += 2;
-					normPos += 1;
-					i++; // skip the \n
-				} else if (contentChars[i] === '\r') {
-					// Lone CR
-					origPos += 1;
-					normPos += 1;
-				} else {
-					// Normal character
-					origPos += 1;
-					normPos += 1;
-				}
-			}
-
-			actualOldStringLength = origPos - actualIndex;
+💡 Please wait for the current edit to complete and try again.`)
 		}
-
-		// Normalize the new string to match the file's line ending style
-		// If the file uses CRLF, convert the new string to use CRLF
-		const fileUsesCRLF = content.includes('\r\n');
-		let actualNewString = newString;
-		if (fileUsesCRLF) {
-			// Convert LF to CRLF in the replacement string
-			actualNewString = newString.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n');
-		} else {
-			// Ensure LF only (normalize any CRLF to LF)
-			actualNewString = normalizeLineEndings(newString);
-		}
-
-		// Mark edit as in progress
-		this._editsInProgress.add(uriKey);
+		this._editsInProgress.add(uriKey)
 
 		try {
-			// Use the mapped position from original content
-			const startPosition = model.getPositionAt(actualIndex);
-			const endPosition = model.getPositionAt(actualIndex + actualOldStringLength);
-
 			// start diffzone for tracking
 			const res = this._startStreamingDiffZone({
 				uri,
@@ -1760,13 +1654,13 @@ class EditCodeService extends Disposable implements IEditCodeService {
 				onWillUndo: () => { },
 			})
 			if (!res) {
-				throw new Error('Failed to create diff zone for tracking');
+				throw new Error('Failed to create diff zone for tracking')
 			}
 			const { diffZone, onFinishEdit } = res
 
 			// === STALE CONTENT VALIDATION ===
-			// Re-check that content hasn't changed since we read it
-			const currentContent = model.getValue(EndOfLinePreference.LF);
+			// Re-check that content hasn't changed since the matches were resolved.
+			const currentContent = model.getValue(EndOfLinePreference.LF)
 			if (normalizeLineEndings(currentContent) !== normalizedContent) {
 				// Clean up diff zone before throwing
 				diffZone._streamState = { isStreaming: false };
@@ -1774,24 +1668,15 @@ class EditCodeService extends Disposable implements IEditCodeService {
 
 📄 File: ${uri.fsPath}
 
-💡 The file content changed between reading and editing. Please retry the edit.`);
+💡 The file content changed between reading and editing. Please retry the edit.`)
 			}
 
-			// Create the range for the replacement
-			const range = {
-				startLineNumber: startPosition.lineNumber,
-				startColumn: startPosition.column,
-				endLineNumber: endPosition.lineNumber,
-				endColumn: endPosition.column
-			};
+			// Apply all edits in one atomic Monaco operation (single undo step).
+			this.weAreWriting = true
+			model.pushEditOperations([], ops, () => null)
+			this.weAreWriting = false
 
-			// Apply the edit using Monaco's pushEditOperations
-			// Use actualNewString which has the correct line endings for the file
-			this.weAreWriting = true;
-			model.pushEditOperations([], [{ range, text: actualNewString }], () => null);
-			this.weAreWriting = false;
-
-			onProgress?.(`Successfully replaced text in: ${uri.fsPath}`);
+			onProgress?.(`Successfully applied ${ops.length} edit${ops.length === 1 ? '' : 's'} to: ${uri.fsPath}`)
 
 			// Finish diff zone tracking
 			diffZone._streamState = { isStreaming: false, }
@@ -1801,14 +1686,57 @@ class EditCodeService extends Disposable implements IEditCodeService {
 
 			// Auto accept if enabled
 			if (this._settingsService.state.globalSettings.autoAcceptLLMChanges) {
-				this.acceptOrRejectAllDiffAreas({ uri, removeCtrlKs: false, behavior: 'accept' });
+				this.acceptOrRejectAllDiffAreas({ uri, removeCtrlKs: false, behavior: 'accept' })
 			}
 		} finally {
 			// Always remove from in-progress set
-			this._editsInProgress.delete(uriKey);
+			this._editsInProgress.delete(uriKey)
 		}
 	}
 
+	/**
+	 * Map a typed resolution error from resolveEditSpecs to a rich, actionable
+	 * error message. Batch errors are indexed (edits[i]) so the model can tell
+	 * which of its edits failed.
+	 */
+	private _stringEditsErrorMessage(error: EditResolutionError, edits: Array<{ oldString: string, newString: string }>, fileContents: string, uri: URI): string {
+		const total = edits.length
+		switch (error.type) {
+			case 'empty-old-text':
+				return `❌ EDIT FAILED: ${total === 1 ? 'old_string' : `edits[${error.editIndex}].old_string`} cannot be empty.
+
+💡 SOLUTIONS:
+1. **Use rewrite_file instead** - To create or completely replace file content
+2. **Provide the text to replace** - old_string must contain the exact text you want to replace`
+			case 'not-found': {
+				const searchText = edits[error.editIndex].oldString
+				const base = this._errStringNotFound(searchText, fileContents)
+				if (total === 1) return base
+				return `edit_files: edits[${error.editIndex}] (edit ${error.editIndex + 1} of ${total}) — old_string was not found in ${uri.fsPath}.
+
+${base}`
+			}
+			case 'not-unique': {
+				if (error.domain === 'fuzzy') {
+					return `❌ EDIT FAILED: ${total === 1 ? 'The old_string' : `edits[${error.editIndex}].old_string`} matched ${error.occurrences} locations after normalizing trailing whitespace, smart quotes, and unicode dashes.
+
+💡 SOLUTIONS:
+1. Include 2-3 more surrounding lines so the match is unique.
+2. Copy the text directly from read_file output to guarantee exactness.`
+				}
+				const base = this._errStringNotUnique(edits[error.editIndex].oldString, fileContents)
+				if (total === 1) return base
+				return `edit_files: edits[${error.editIndex}] (edit ${error.editIndex + 1} of ${total}) — old_string is not unique in ${uri.fsPath} (found ${error.occurrences} matches).
+
+${base}`
+			}
+			case 'overlap': {
+				return `❌ EDIT FAILED: edits[${error.editIndexA}] and edits[${error.editIndexB}] overlap in ${uri.fsPath}.
+
+💡 Each edit is matched against the original file, not incrementally. Merge them into one edit or target disjoint regions.`
+			}
+		}
+	}
 
 	private _findOverlappingDiffArea({ startLine, endLine, uri, filter }: { startLine: number, endLine: number, uri: URI, filter?: (diffArea: DiffArea) => boolean }): DiffArea | null {
 		// check if there's overlap with any other diffAreas and return early if there is
@@ -2192,14 +2120,16 @@ ${similarBlocksStr}
 3. **Use rewrite_file instead** - More reliable for complex changes:
    - Provide the complete new file content
    - No need to match exact whitespace
-   - Works better for large refactors`;
+   - Works better for large refactors
+
+Note: trailing whitespace, smart quotes (\u201c\u201d), unicode dashes, and non-breaking spaces are already normalized automatically before matching, so these alone are not the issue.`;
 	}
 
 	/**
 	 * Generates a human-readable error message when the search string appears multiple times.
 	 * Shows the line numbers of all occurrences to help the LLM add context.
 	 */
-	private _errStringNotUnique = (searchText: string, fileContents: string, firstIndex: number, secondIndex: number): string => {
+	private _errStringNotUnique = (searchText: string, fileContents: string): string => {
 		const preview = searchText.length > 300 ? searchText.substring(0, 300) + '...' : searchText;
 
 		// Find line numbers of all occurrences (not just first two)

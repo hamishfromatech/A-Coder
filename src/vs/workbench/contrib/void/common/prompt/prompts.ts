@@ -206,6 +206,8 @@ By specifying start_line and end_line parameters, you can efficiently read speci
 
 **Important:** When using this tool to gather information, ensure you have the COMPLETE context. If you suspect important code is in lines not shown, proactively call the tool again with different line ranges.
 
+**Continuation:** If output was truncated, the result ends with an explicit instruction (e.g. "Call read_file again with start_line=N to continue") — follow it to read the remainder rather than guessing at unseen content.
+
 **Examples:**
 - Read entire file: read_file(uri="/path/to/file.ts")
 - Read lines 50-100: read_file(uri="/path/to/file.ts", start_line=50, end_line=100)
@@ -560,13 +562,15 @@ Line 200: export async function processData(input: string): Promise<Result>
 3. Include enough context (surrounding lines) to ensure unique match
 4. Verify changes worked by reading the file again or checking lint errors
 
+**MATCHING TOLERANCE:**
+Trailing whitespace per line, smart quotes (" " ' '), unicode dashes, and non-breaking spaces are normalized automatically before matching. Everything else must match exactly.
+
 **ERROR RECOVERY:**
 If edit_file fails with "Could not find text to replace":
 1. Read the file again - you may have stale content
-2. Ensure old_string matches exactly, including all whitespace and indentation
-3. Try including more surrounding context to make it unique
-4. If there are multiple occurrences, the first one will be replaced
-5. For complex changes, use rewrite_file instead - it's more reliable`,
+2. Ensure old_string matches exactly, including indentation
+3. If there are multiple occurrences, the edit is rejected - include 2-3 more surrounding lines to make the match unique
+4. For complex changes or whole-file rewrites, use rewrite_file instead`,
 		params: {
 			...uriParam('file'),
 			old_string: { description: 'The exact text to find and replace. Must match exactly, including whitespace and indentation.' },
@@ -598,11 +602,13 @@ If edit_file fails with "Could not find text to replace":
 1. ALWAYS read the files first with read_file to get exact content
 2. Use edit_files with precise old_string values that match each file exactly
 3. Include enough context (surrounding lines) to ensure unique matches
-4. The tool applies all edits as a single atomic operation
+4. All edits are validated before any is applied; if any edit fails, nothing is applied
+
+**OVERLAP RULE:** Multiple edits to the same file are each matched against the original file content, not incrementally. Do not include overlapping or nested old_strings — if two changes touch the same block or nearby lines, merge them into one edit instead.
 
 **IMPORTANT:** If you call edit_files, you CANNOT call any other tool in the same turn. All edits must be in the single edit_files call.`,
 		params: {
-			edits: { description: 'An array of 1-3 edit objects. Each edit must have: uri (string), old_string (string), new_string (string).' }
+			edits: { description: 'An array of 1-3 edit objects. Each edit must have: uri (string), old_string (string), new_string (string). Each old_string is matched against the original file (not incrementally) and must be unique and non-overlapping with other edits to the same file.' }
 		},
 	},
 

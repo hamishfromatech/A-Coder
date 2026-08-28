@@ -1289,6 +1289,13 @@ export class ToolsService implements IToolsService {
 					const content = await this._fileService.readFile(uri, { length, position: fromIdx });
 					const rawContents = content.value.toString();
 
+					// Binary detection: raw reads of binary files return mojibake that
+					// wastes model context. Null bytes are the strongest cheap indicator.
+					if (rawContents.includes('\0')) {
+						const fileContents = `Cannot read ${path.basename(uri.fsPath)}: this appears to be a binary file (${Math.round(stat.size / 1024)}KB). Binary files (images, executables, compiled assets) cannot be read as text.`;
+						return { result: { fileContents, totalFileLen: stat.size, hasNextPage: false, totalNumLines: null } };
+					}
+
 					// NOTE: We deliberately do NOT prefix line numbers here. The true line
 					// number of `fromIdx` can only be known by scanning the preceding bytes,
 					// which would defeat the purpose of the paged read. Fabricating numbers
@@ -1296,10 +1303,13 @@ export class ToolsService implements IToolsService {
 					// targeting the wrong lines for edits. For accurately-numbered content,
 					// the model should call read_file with start_line and end_line, which
 					// goes through the model path below and returns exact line numbers.
-					const fileContents = `⚠️ Large file (${Math.round(stat.size / 1024)}KB). Line numbers are omitted because they cannot be determined without scanning the whole file. To read an accurately-numbered range, call read_file again with start_line and end_line.\n\n${rawContents}`;
 					const hasNextPage = toIdx < stat.size;
+					const continuationHint = hasNextPage
+						? `\n\n[Showing bytes ${fromIdx + 1}-${toIdx} of ${stat.size}. Call read_file again with pageNumber=${pageNumber + 1} to continue.]`
+						: '';
+					const fileContents = `⚠️ Large file (${Math.round(stat.size / 1024)}KB). Line numbers are omitted because they cannot be determined without scanning the whole file. To read an accurately-numbered range, call read_file again with start_line and end_line.\n\n${rawContents}${continuationHint}`;
 
-					return { result: { fileContents, totalFileLen: stat.size, hasNextPage, totalNumLines: Math.floor(stat.size / 80) } };
+					return { result: { fileContents, totalFileLen: stat.size, hasNextPage, totalNumLines: null } };
 				}
 
 				// Fallback to model for smaller files or specific line ranges
@@ -1312,15 +1322,35 @@ export class ToolsService implements IToolsService {
 
 				// If specific line range is requested, return that range
 				if (startLine !== null || endLine !== null) {
-					const startLineNumber = startLine === null ? 1 : startLine
+					const startLineNumber = startLine === null ? 1 : Math.max(1, startLine)
 					const endLineNumber = endLine === null ? totalNumLines : endLine
+					// Bounds-check before Monaco: out-of-range arguments make
+					// getValueInRange throw an opaque "Invalid arguments" error.
+					if (startLineNumber > totalNumLines) {
+						throw new Error(`start_line ${startLineNumber} is beyond the end of the file (${totalNumLines} total lines). Use start_line between 1 and ${totalNumLines}.`)
+					}
+					if (endLineNumber < startLineNumber) {
+						throw new Error(`end_line (${endLineNumber}) is before start_line (${startLineNumber}).`)
+					}
+					const clampedEndLineNumber = Math.min(endLineNumber, totalNumLines)
 					const rawContents = model.getValueInRange({
 						startLineNumber,
 						startColumn: 1,
-						endLineNumber,
+						endLineNumber: clampedEndLineNumber,
 						endColumn: Number.MAX_SAFE_INTEGER
 					}, EndOfLinePreference.LF)
-					const fileContents = addLineNumbers(rawContents, startLineNumber)
+					let fileContents = addLineNumbers(rawContents, startLineNumber)
+					// Actionable continuation hints when the range stopped early.
+					const hints: string[] = []
+					if (endLineNumber > totalNumLines) {
+						hints.push(`end_line ${endLineNumber} is beyond the end of the file; showing lines ${startLineNumber}-${totalNumLines} (${totalNumLines} total lines).`)
+					}
+					if (clampedEndLineNumber < totalNumLines) {
+						hints.push(`${totalNumLines - clampedEndLineNumber} more lines in file. Call read_file again with start_line=${clampedEndLineNumber + 1} to continue.`)
+					}
+					if (hints.length > 0) {
+						fileContents += `\n\n[${hints.join(' ')}]`
+					}
 					return { result: { fileContents, totalFileLen, hasNextPage: false, totalNumLines } }
 				}
 
@@ -1338,11 +1368,19 @@ export class ToolsService implements IToolsService {
 					endColumn: endPos.column
 				}, EndOfLinePreference.LF)
 
+				if (rawContents.includes('\0')) {
+					const fileContents = `Cannot read ${path.basename(uri.fsPath)}: this appears to be a binary file. Binary files (images, executables, compiled assets) cannot be read as text.`
+					return { result: { fileContents, totalFileLen, hasNextPage: false, totalNumLines: null } }
+				}
+
 				// Calculate line number for the start of this page
 				const linesBeforePage = startPos.lineNumber
-				const fileContents = addLineNumbers(rawContents, linesBeforePage)
+				let fileContents = addLineNumbers(rawContents, linesBeforePage)
 
 				const hasNextPage = toIdx < totalFileLen
+				if (hasNextPage) {
+					fileContents += `\n\n[Showing lines ${startPos.lineNumber}-${endPos.lineNumber} of ${totalNumLines}. Call read_file again with pageNumber=${pageNumber + 1} to continue.]`
+				}
 
 				return { result: { fileContents, totalFileLen, hasNextPage, totalNumLines } }
 			},
@@ -1678,10 +1716,12 @@ export class ToolsService implements IToolsService {
 				this._syncToMorphRepoStorage(uri, 'Rewrite file: ' + path.basename(uri.fsPath));
 
 				// at end, get lint errors
+				const bytesWritten = new TextEncoder().encode(newContent).length
+				const linesWritten = newContent.split('\n').length
 				const lintErrorsPromise = Promise.resolve().then(async () => {
 					await this._waitForMarkerChange(uri, 2000)
 					const { lintErrors } = this._getLintErrors(uri)
-					return { lintErrors }
+					return { lintErrors, bytesWritten, linesWritten }
 				})
 				return { result: lintErrorsPromise }
 			},
@@ -1690,9 +1730,11 @@ export class ToolsService implements IToolsService {
 				await this._voidModelService.initializeModel(uri)
 				await this._editCodeService.callBeforeApplyOrEdit(uri)
 
-				// Use simple string replacement (Cursor-style approach)
+				// Exact-text replacement with fuzzy fallback and uniqueness/overlap
+				// validation (see common/editFuzzyMatch.ts). Matches a-coder-cli's
+				// edit tool semantics.
 				opts?.onData?.(`Replacing text in ${path.basename(uri.fsPath)}...`);
-				this._editCodeService.instantlyReplaceString({ uri, oldString: old_string, newString: new_string, onProgress: opts?.onData });
+				this._editCodeService.instantlyApplyStringEdits({ uri, edits: [{ oldString: old_string, newString: new_string }], onProgress: opts?.onData });
 
 				// Morph Repo Storage: sync to cloud if enabled
 				this._syncToMorphRepoStorage(uri, 'Edit file: ' + path.basename(uri.fsPath));
@@ -1708,31 +1750,42 @@ export class ToolsService implements IToolsService {
 			},
 
 			edit_files: async ({ edits }, opts) => {
-				// ATOMICITY: validate every edit (old_string exists and is unique) BEFORE
-				// applying any. This prevents edit 1 from being applied when edit 2 has a
-				// bad old_string, which previously left the workspace in a partial state.
-				for (let i = 0; i < edits.length; i++) {
-					const { uri, old_string } = edits[i]
+				// ATOMICITY: validate every edit (file exists, old_string found and
+				// unique, no overlaps) BEFORE applying any, so a single bad edit
+				// aborts the whole call. Then apply per file: each file's edits
+				// resolve against one content snapshot and land in a single atomic
+				// Monaco operation (a-coder-cli edit-tool semantics — matched
+				// against the original, never incrementally).
+				const filesOrder: URI[] = []
+				const editsByFile = new Map<string, Array<{ oldString: string, newString: string }>>()
+				for (const { uri, old_string, new_string } of edits) {
+					const key = uri.toString()
+					if (!editsByFile.has(key)) {
+						editsByFile.set(key, [])
+						filesOrder.push(uri)
+					}
+					editsByFile.get(key)!.push({ oldString: old_string, newString: new_string })
+				}
+
+				const validationErrors: string[] = []
+				for (const uri of filesOrder) {
 					await this._voidModelService.initializeModel(uri)
-					const matches = this._editCodeService.countStringMatches({ uri, oldString: old_string })
-					if (matches === 0) {
-						throw new Error(`edit_files: edit ${i + 1}/${edits.length} — old_string was not found in ${path.basename(uri.fsPath)}. Re-read the file and copy the exact current text.`)
-					}
-					if (matches > 1) {
-						throw new Error(`edit_files: edit ${i + 1}/${edits.length} — old_string is not unique in ${path.basename(uri.fsPath)} (found ${matches} matches). Include more surrounding lines so it matches exactly one location.`)
-					}
+					const error = this._editCodeService.validateStringEdits({ uri, edits: editsByFile.get(uri.toString())! })
+					if (error) validationErrors.push(error)
+				}
+				if (validationErrors.length > 0) {
+					throw new Error(`edit_files: ${validationErrors[0]}`)
 				}
 
 				const results: Array<{ uri: string, lintErrors: LintErrorItem[] | null, error?: string }> = []
 				const applied: URI[] = []
 
-				for (let i = 0; i < edits.length; i++) {
-					const { uri, old_string, new_string } = edits[i]
+				for (const uri of filesOrder) {
+					const fileEdits = editsByFile.get(uri.toString())!
 					try {
-						await this._voidModelService.initializeModel(uri)
 						await this._editCodeService.callBeforeApplyOrEdit(uri)
-						opts?.onData?.(`Replacing text in ${path.basename(uri.fsPath)} (${i + 1}/${edits.length})...`);
-						this._editCodeService.instantlyReplaceString({ uri, oldString: old_string, newString: new_string, onProgress: (data) => {
+						opts?.onData?.(`Applying ${fileEdits.length} edit${fileEdits.length === 1 ? '' : 's'} to ${path.basename(uri.fsPath)}...`);
+						this._editCodeService.instantlyApplyStringEdits({ uri, edits: fileEdits, onProgress: (data) => {
 							opts?.onData?.(data)
 						} });
 						// Morph Repo Storage: sync to cloud if enabled
