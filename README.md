@@ -202,8 +202,49 @@ Monitor and control your IDE remotely:
 ## 🛠️ Getting Started
 
 ### Installation
-Download the latest release for your platform:
-- [Windows](#) | [macOS](#) | [Linux](#)
+
+Install the latest release with one command:
+
+**macOS / Linux (bash):**
+```bash
+curl -fsSL https://raw.githubusercontent.com/hamishfromatech/A-Coder/main/install.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/hamishfromatech/A-Coder/main/install.ps1 | iex
+```
+
+Or download `install.sh` / `install.ps1` from the repo root and run it directly for more options:
+
+```bash
+# macOS: app in /Applications + CLI on PATH
+./install.sh
+
+# Linux: native .deb/.rpm when available, otherwise tarball in /opt/a-coder
+./install.sh
+
+# Any platform: no-sudo install
+./install.sh --user          # bash
+./install.ps1 -UserSetup     # PowerShell (Windows)
+
+# Pin a specific release
+./install.sh --version 1.99.30097
+./install.ps1 -Version 1.99.30097
+```
+
+Both scripts verify SHA-256 checksums against the sidecars published with every release.
+Run `./install.sh --help` or `Get-Help .\install.ps1` for all options
+(`--tarball`, `-Portable`, `-Msi`, `--dry-run`, ...).
+
+Or grab an installer manually from the
+[latest release](https://github.com/hamishfromatech/A-Coder/releases/latest):
+
+| Platform | Assets |
+|----------|--------|
+| macOS | `A-Coder.darwin.<arch>.<v>.dmg` or `A-Coder-darwin-<arch>-<v>.zip` |
+| Windows | `A-CoderSetup-<arch>-<v>.exe` (system), `A-CoderUserSetup-<arch>-<v>.exe` (user), `.msi`, `.zip` |
+| Linux | `a-coder_<v>_<arch>.deb`, `.rpm`, `A-Coder-linux-<arch>-<v>.tar.gz` |
 
 ### Quick Setup
 1. Add your API key (or connect to local models)
