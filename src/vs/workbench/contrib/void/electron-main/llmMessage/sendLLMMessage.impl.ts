@@ -16,7 +16,7 @@ import { GoogleAuth } from 'google-auth-library'
 
 import { AnthropicLLMChatMessage, AnthropicReasoning, GeminiLLMChatMessage, LLMChatMessage, LLMFIMMessage, ModelListParams, OllamaModelResponse, OnError, OnFinalMessage, OnText, OpenAILLMChatMessage, RawToolCallObj, RawToolParamsObj } from '../../common/sendLLMMessageTypes.js';
 import { ChatMode, displayInfoOfProviderName, GlobalSettings, ModelSelectionOptions, OverridesOfModel, ProviderName, SettingsOfProvider } from '../../common/voidSettingsTypes.js';
-import { getSendableReasoningInfo, getModelCapabilities, getProviderCapabilities, defaultProviderSettings, getReservedOutputTokenSpace } from '../../common/modelCapabilities.js';
+import { getSendableReasoningInfo, getModelCapabilities, getProviderCapabilities, defaultProviderSettings, getReservedOutputTokenSpace, getMaxOutputTokens } from '../../common/modelCapabilities.js';
 import { availableTools, InternalToolInfo } from '../../common/prompt/prompts.js';
 import { sanitizeJsonSchemaForGBNF } from '../../common/helpers/sanitizeJsonSchemaForGBNF.js';
 import { generateUuid } from '../../../../../base/common/uuid.js';
@@ -684,10 +684,33 @@ const sanitizeOllamaCloudMessages = (messages: any[]): any[] => {
 
 // ------------ OPENAI-COMPATIBLE ------------
 
+// Mirrors a-coder-cli's clampMaxTokensToContext: never request more output than what's
+// left of the context window (CONTEXT_SAFETY_TOKENS buffer). Char-based estimate since
+// tiktoken lives in the browser process; conservative ceil(chars/4) is good enough here.
+const CONTEXT_SAFETY_TOKENS = 4_096
+const estimateContextTokensFromMessages = (messages: unknown[]): number => {
+	try {
+		return Math.ceil(JSON.stringify(messages).length / 4)
+	} catch {
+		return 0
+	}
+}
+const clampMaxTokensToContext = (contextWindow: number, maxTokens: number, estimatedContextTokens: number): number => {
+	if (!(contextWindow > 0)) return Math.max(1, maxTokens)
+	const available = contextWindow - estimatedContextTokens - CONTEXT_SAFETY_TOKENS
+	return Math.min(maxTokens, Math.max(1, available))
+}
 
+// Providers whose OpenAI-compatible endpoint accepts `max_tokens`. googleVertex /
+// microsoftAzure / awsBedrock are excluded (deployment names are opaque, so newer-model
+// detection isn't possible there). `openAI` is handled separately (max_completion_tokens).
+const OPENAI_COMPAT_MAX_TOKENS_PROVIDERS: ProviderName[] = ['openRouter', 'ollama', 'ollamaCloud', 'vLLM', 'lmStudio', 'deepseek', 'groq', 'mistral', 'aCoder', 'openAICompatible', 'liteLLM', 'xAI']
+// newer OpenAI models (o-series) require max_completion_tokens instead of max_tokens; the
+// OpenAI branch below always sends max_completion_tokens, which all Chat Completions models accept
 const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onError, settingsOfProvider, globalSettings, modelSelectionOptions, modelName: modelName_, _setAborter, providerName, chatMode, separateSystemMessage, overridesOfModel, mcpTools, acpTools, composioTools, allowedTools, allowExternalTools }: SendChatParams_Internal) => {
 	const {
 		modelName,
+		contextWindow,
 		reasoningCapabilities,
 		additionalOpenAIPayload,
 		specialToolFormat,
@@ -698,11 +721,13 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 	// reasoning
 	const reasoningInfo = getSendableReasoningInfo('Chat', providerName, modelName_, modelSelectionOptions, overridesOfModel) // user's modelName_ here
 
-	// Output token cap. Sent for llama.cpp (whose server defaults to n_predict=-1 / infinite)
-	// so a long generation — especially with reasoning enabled — doesn't run to n_ctx
-	// exhaustion and get silently truncated by the server's context shift. Only sent when we
-	// actually know the model's reserved output space; autodetected/unknown models have none.
-	const maxTokens = getReservedOutputTokenSpace(providerName, modelName_, { isReasoningEnabled: !!reasoningInfo?.isReasoningEnabled, overridesOfModel })
+	// Output token cap (see clampMaxTokensToContext above). Resolved from the model's
+	// maxOutputTokens / generated models.dev catalog / reservedOutputTokenSpace, then clamped
+	// against what's left of the context window so a long generation can't overflow it.
+	const rawOutputCap = getMaxOutputTokens(providerName, modelName_, { isReasoningEnabled: !!reasoningInfo?.isReasoningEnabled, overridesOfModel })
+	const maxOutputCap = rawOutputCap !== null
+		? clampMaxTokensToContext(contextWindow, rawOutputCap, estimateContextTokensFromMessages(messages))
+		: null
 
 	const includeInPayload = {
 		...providerReasoningIOSettings?.input?.includeInPayload?.(reasoningInfo),
@@ -788,8 +813,12 @@ const _sendOpenAICompatibleChat = async ({ messages, onText, onFinalMessage, onE
 		// `tool_calls` deltas instead of leaving them as text in `content` (which we'd then
 		// only catch via the XML-tool fallback).
 		...(providerName === 'llamaCpp' && specialToolFormat === 'openai-style' && potentialTools && potentialTools.length > 0 ? { parse_tool_calls: true } : {}),
-		// llama.cpp: cap output so generation can't run to n_ctx exhaustion (see maxTokens above).
-		...(providerName === 'llamaCpp' && typeof maxTokens === 'number' ? { max_tokens: maxTokens } : {}),
+		// Output cap (mirrors a-coder-cli's clampMaxTokensToContext): prevents runaway generation
+		// from overflowing the context window. Sent as max_tokens for most OpenAI-compatible
+		// providers; openAI always uses max_completion_tokens (required by o-series models).
+		...(typeof maxOutputCap === 'number' && (providerName === 'openAI' || providerName === 'llamaCpp' || OPENAI_COMPAT_MAX_TOKENS_PROVIDERS.includes(providerName))
+			? (providerName === 'openAI' ? { max_completion_tokens: maxOutputCap } : { max_tokens: maxOutputCap })
+			: {}),
 		...includeInPayload,
 		...additionalOpenAIPayload
 		// max_completion_tokens: maxTokens,
@@ -1405,6 +1434,7 @@ const anthropicTools = (chatMode: ChatMode | null, mcpTools: InternalToolInfo[] 
 const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessage, onError, settingsOfProvider, globalSettings, modelSelectionOptions, overridesOfModel, modelName: modelName_, _setAborter, separateSystemMessage, chatMode, mcpTools, acpTools, composioTools, allowedTools, allowExternalTools }: SendChatParams_Internal) => {
 	const {
 		modelName,
+		contextWindow,
 		specialToolFormat,
 	} = getModelCapabilities(providerName, modelName_, overridesOfModel)
 
@@ -1415,8 +1445,15 @@ const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessag
 	const reasoningInfo = getSendableReasoningInfo('Chat', providerName, modelName_, modelSelectionOptions, overridesOfModel) // user's modelName_ here
 	const includeInPayload = providerReasoningIOSettings?.input?.includeInPayload?.(reasoningInfo) || {}
 
-	// anthropic-specific - max tokens
-	const maxTokens = getReservedOutputTokenSpace(providerName, modelName_, { isReasoningEnabled: !!reasoningInfo?.isReasoningEnabled, overridesOfModel })
+	// anthropic-specific - max tokens (required by the API). Clamped against what's left of
+	// the context window so a long generation can't overflow it (mirrors a-coder-cli).
+	const rawMaxTokens = getMaxOutputTokens(providerName, modelName_, { isReasoningEnabled: !!reasoningInfo?.isReasoningEnabled, overridesOfModel })
+		?? getReservedOutputTokenSpace(providerName, modelName_, { isReasoningEnabled: !!reasoningInfo?.isReasoningEnabled, overridesOfModel })
+	let maxTokens = clampMaxTokensToContext(contextWindow, rawMaxTokens ?? 4_096, estimateContextTokensFromMessages(messages))
+	// anthropic requires max_tokens >= the thinking budget when reasoning is on
+	if (reasoningInfo?.type === 'budget_slider_value') {
+		maxTokens = Math.max(maxTokens, reasoningInfo.reasoningBudget)
+	}
 
 	// tools
 	const potentialTools = anthropicTools(chatMode, mcpTools, acpTools, composioTools, {
@@ -1446,7 +1483,7 @@ const sendAnthropicChat = async ({ messages, providerName, onText, onFinalMessag
 		system: separateSystemMessage ?? undefined,
 		messages: messages as AnthropicLLMChatMessage[],
 		model: modelName,
-		max_tokens: maxTokens ?? 4_096, // anthropic requires this
+		max_tokens: maxTokens, // anthropic requires this; clamped to the context window above
 		...includeInPayload,
 		...nativeToolsObj,
 	})
@@ -1859,6 +1896,7 @@ const sendGeminiChat = async ({
 
 	const {
 		modelName,
+		contextWindow,
 		specialToolFormat,
 		// reasoningCapabilities,
 	} = getModelCapabilities(providerName, modelName_, overridesOfModel)
@@ -1872,6 +1910,15 @@ const sendGeminiChat = async ({
 		: reasoningInfo.type === 'budget_slider_value' ?
 			{ thinkingBudget: reasoningInfo.reasoningBudget }
 			: undefined // Gemini only supports budget_slider, not effort_slider
+
+	// output cap, clamped against what's left of the context window (mirrors a-coder-cli)
+	const rawGeminiMaxOutput = getMaxOutputTokens(providerName, modelName_, { isReasoningEnabled: !!reasoningInfo?.isReasoningEnabled, overridesOfModel })
+	let geminiMaxOutputTokens: number | undefined = rawGeminiMaxOutput !== null
+		? clampMaxTokensToContext(contextWindow, rawGeminiMaxOutput, estimateContextTokensFromMessages(messages))
+		: undefined
+	if (reasoningInfo?.type === 'budget_slider_value') {
+		geminiMaxOutputTokens = Math.max(geminiMaxOutputTokens ?? 0, reasoningInfo.reasoningBudget)
+	}
 
 	voidDevLog(`[sendLLMMessage] Gemini reasoning config:`, {
 		reasoningInfo,
@@ -1910,6 +1957,7 @@ const sendGeminiChat = async ({
 			systemInstruction: separateSystemMessage,
 			thinkingConfig: thinkingConfig,
 			tools: toolConfig,
+			...(typeof geminiMaxOutputTokens === 'number' && geminiMaxOutputTokens > 0 ? { maxOutputTokens: geminiMaxOutputTokens } : {}),
 		},
 		contents: messages as GeminiLLMChatMessage[],
 	})

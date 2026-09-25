@@ -4,6 +4,8 @@
  *--------------------------------------------------------------------------------------*/
 
 import { FeatureName, ModelSelectionOptions, OverridesOfModel, ProviderName } from './voidSettingsTypes.js';
+import { generatedModelCatalog } from './modelCatalog.generated.js';
+import type { GeneratedModelCatalog } from './modelCatalog.generated.js';
 
 
 
@@ -189,6 +191,7 @@ export type VoidStaticModelInfo = { // not stateful
 
 	contextWindow: number; // input tokens
 	reservedOutputTokenSpace: number | null; // reserve this much space in the context window for output, defaults to 16384 if null
+	maxOutputTokens?: number | null; // hard cap on output tokens sent as max_tokens/max_completion_tokens, defaults to null (uncapped). Resolved by getMaxOutputTokens: override -> this -> generated catalog -> reservedOutputTokenSpace
 
 	supportsSystemMessage: false | 'system-role' | 'developer-role' | 'separated'; // typically you should use 'system-role'. 'separated' means the system message is passed as a separate field (e.g. anthropic)
 	specialToolFormat?: 'openai-style' | 'anthropic-style' | 'gemini-style' | 'marker-style', // typically you should use 'openai-style'. null means "can't call tools by default", and asks the LLM to output XML in agent mode
@@ -233,6 +236,7 @@ export type VoidStaticModelInfo = { // not stateful
 export const modelOverrideKeys = [
 	'contextWindow',
 	'reservedOutputTokenSpace',
+	'maxOutputTokens',
 	'supportsSystemMessage',
 	'specialToolFormat',
 	'supportsFIM',
@@ -271,6 +275,7 @@ type VoidStaticProviderInfo = { // doesn't change (not stateful)
 const defaultModelOptions = {
 	contextWindow: 256_768,
 	reservedOutputTokenSpace: 16_384, // Increased from 4096 to allow larger file content in tool calls
+	maxOutputTokens: null,
 	cost: { input: 0, output: 0 },
 	downloadable: false,
 	supportsSystemMessage: false,
@@ -2122,6 +2127,43 @@ const modelSettingsOfProvider: { [providerName in ProviderName]: VoidStaticProvi
 
 // ---------------- exports ----------------
 
+// keys used by the generated catalog (same names as A-Coder IDE providers, emitted by
+// scripts/generate-model-catalog.mjs). ollama / ollamaCloud / local providers are absent:
+// their context windows come from the runtime probe (refreshModelService -> tokenCountingService).
+const generatedCatalogProvidersOf: Partial<{ [p in ProviderName]: string[] }> = {
+	anthropic: ['anthropic'],
+	openAI: ['openAI'],
+	gemini: ['gemini'],
+	googleVertex: ['googleVertex'],
+	xAI: ['xAI'],
+	deepseek: ['deepseek'],
+	groq: ['groq'],
+	mistral: ['mistral'],
+	openRouter: ['openRouter'],
+}
+
+/** look up a model in the generated (models.dev) catalog; hand-written tables always win over this */
+const lookupGeneratedModelCatalog = (providerName: ProviderName, modelName: string): { contextWindow: number; maxTokens: number } | undefined => {
+	const providerIds = generatedCatalogProvidersOf[providerName]
+	if (!providerIds) return undefined
+	// go through the declared index-signature type (the generated literal type isn't indexable by string)
+	const catalog: GeneratedModelCatalog = generatedModelCatalog
+	const lowerName = modelName.toLowerCase()
+	// candidates: exact name, and for openRouter-style "vendor/model" ids the last path segment
+	const candidateNames = [modelName, lowerName]
+	if (lowerName.includes('/')) candidateNames.push(lowerName.split('/').pop()!)
+	for (const providerId of providerIds) {
+		const models = catalog[providerId]
+		if (!models) continue
+		for (const candidate of candidateNames) {
+			if (models[candidate]) return models[candidate]
+			const caseMatch = Object.keys(models).find(k => k.toLowerCase() === candidate)
+			if (caseMatch) return models[caseMatch]
+		}
+	}
+	return undefined
+}
+
 // returns the capabilities and the adjusted modelName if it was a fallback
 export const getModelCapabilities = (
 	providerName: ProviderName,
@@ -2163,6 +2205,13 @@ export const getModelCapabilities = (
 	const result = modelOptionsFallback(modelName)
 	if (result) {
 		const base = { ...defaultModelOptions, ...result, modelName: result.modelName, isUnrecognizedModel: false as const };
+		return mergeWithOverrides(base, overrides);
+	}
+
+	// fall back to the generated models.dev catalog before giving up on recognition
+	const catalogEntry = lookupGeneratedModelCatalog(providerName, modelName)
+	if (catalogEntry) {
+		const base = { ...defaultModelOptions, contextWindow: catalogEntry.contextWindow, maxOutputTokens: catalogEntry.maxTokens, modelName, recognizedModelName: modelName, isUnrecognizedModel: false as const };
 		return mergeWithOverrides(base, overrides);
 	}
 
@@ -2216,6 +2265,27 @@ export const getReservedOutputTokenSpace = (providerName: ProviderName, modelNam
 		reservedOutputTokenSpace,
 	} = getModelCapabilities(providerName, modelName, opts.overridesOfModel)
 	return opts.isReasoningEnabled && reasoningCapabilities ? reasoningCapabilities.reasoningReservedOutputTokenSpace : reservedOutputTokenSpace
+}
+
+// resolve the hard cap on output tokens for a model (used when building the request payload).
+// Resolution order: user override -> static maxOutputTokens (incl. generated catalog) ->
+// reasoning-aware reservedOutputTokenSpace -> null (uncapped).
+export const getMaxOutputTokens = (providerName: ProviderName, modelName: string, opts: { isReasoningEnabled: boolean, overridesOfModel: OverridesOfModel | undefined }): number | null => {
+	const overrides = opts.overridesOfModel?.[providerName]?.[modelName]
+	if (overrides?.maxOutputTokens !== undefined && overrides.maxOutputTokens !== null && typeof overrides.maxOutputTokens === 'number' && overrides.maxOutputTokens > 0) {
+		return overrides.maxOutputTokens
+	}
+	const info = getModelCapabilities(providerName, modelName, opts.overridesOfModel)
+	const reserved = getReservedOutputTokenSpace(providerName, modelName, opts)
+	if (typeof info.maxOutputTokens === 'number' && info.maxOutputTokens > 0) {
+		return info.maxOutputTokens
+	}
+	// catalog can cap models the hand-written tables know but leave uncapped (e.g. openRouter)
+	if (!(typeof reserved === 'number' && reserved > 0)) {
+		const catalogEntry = lookupGeneratedModelCatalog(providerName, modelName)
+		if (catalogEntry) return catalogEntry.maxTokens
+	}
+	return typeof reserved === 'number' && reserved > 0 ? reserved : null
 }
 
 // used to force reasoning state (complex) into something simple we can just read from when sending a message

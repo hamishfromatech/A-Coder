@@ -558,7 +558,7 @@ export const ModelDump = ({ filteredProviders }: { filteredProviders?: ProviderN
 			const cleaned: Partial<ModelOverrides> = {};
 			for (const k of modelOverrideKeys) {
 				if (k in parsed && parsed[k] !== null && parsed[k] !== undefined && parsed[k] !== '') {
-					if (k === 'contextWindow' || k === 'reservedOutputTokenSpace' || k === 'defaultTemperature') {
+					if (k === 'contextWindow' || k === 'reservedOutputTokenSpace' || k === 'maxOutputTokens' || k === 'defaultTemperature') {
 						const num = Number(parsed[k]);
 						if (!Number.isNaN(num)) {
 							cleaned[k] = num;

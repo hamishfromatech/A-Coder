@@ -8,6 +8,7 @@ import { IMainProcessService } from '../../../../platform/ipc/common/mainProcess
 import { CompressionConfig, CompressionStats } from './contextCompressionService.js';
 import { IVoidSettingsService } from './voidSettingsService.js';
 import { ProviderName, providerNames } from './voidSettingsTypes.js';
+import { getModelCapabilities } from './modelCapabilities.js';
 import { Disposable, toDisposable } from '../../../../base/common/lifecycle.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { voidDevLog, voidDevWarn } from './devLog.js';
@@ -596,6 +597,17 @@ export class TokenCountingService extends Disposable implements ITokenCountingSe
 		const cached = this._getDynamicContextWindow(modelName);
 		if (cached !== undefined) {
 			return cached;
+		}
+
+		// Consult the canonical static capabilities (hand-written tables + generated models.dev
+		// catalog) so this lookup can't disagree with the one in convertToLLMMessageService /
+		// modelCapabilities. The legacy name-heuristic map below remains only as a fallback for
+		// models the capabilities tables don't recognize.
+		if (providerName) {
+			const capabilities = getModelCapabilities(providerName, cleanModelName, this.voidSettingsService.state.overridesOfModel);
+			if (!capabilities.isUnrecognizedModel && typeof capabilities.contextWindow === 'number' && capabilities.contextWindow > 0) {
+				return capabilities.contextWindow;
+			}
 		}
 
 		// Use the model name already stripped of provider prefix by _parseProviderAndModel.
