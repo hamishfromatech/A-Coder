@@ -107,7 +107,9 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               release_id: release.data.id,
-              body: `${{ steps.generate.outputs.notes }}`
+              body: process.env.NOTES
             });
 
             console.log(`Updated release notes for ${{ steps.release_dispatch.outputs.release_tag }}`);
+        env:
+          NOTES: ${{ steps.generate.outputs.notes }}
